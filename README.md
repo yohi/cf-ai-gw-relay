@@ -7,7 +7,7 @@ OpenCode の ChatGPT Codex 通信を Cloudflare AI Gateway 経由で観測可能
 - `packages/opencode-plugin`: npm パッケージ `@yohi/cloudflare-ai-gateway-chatgpt`
 - `apps/deno-relay`: Deno Deploy 固定アップストリーム egress relay
 
-二者は実行時ライブラリを共有しません。結合は文書化された HTTP contract です。既存の ChatGPT Custom Provider は `X-ChatGPT-Relay-Authorization` ヘッダー付きで relay の `POST /v1/responses` に到達し、汎用 provider は `X-Relay-Authorization` ヘッダー付きで `/upstream/<provider-slug>/*` に到達します。実行時依存は、plugin 側が `semver` のみ、relay 側がゼロです。
+二者は実行時ライブラリを共有しません。結合は文書化された HTTP contract です。既存の ChatGPT Custom Provider は `X-ChatGPT-Relay-Authorization` ヘッダー付きで、現在実装されている relay の `POST /v1/responses` に到達します。汎用 provider 向けの `/upstream/<provider-slug>/*` は、将来の汎用 relay 実装に向けた文書化契約です。実行時依存は、plugin 側が `semver` のみ、relay 側がゼロです。
 
 Deno Deploy の application directory はリポジトリルートです。entrypoint はルート `deno.json` の `deploy.runtime.entrypoint` で `./apps/deno-relay/main.ts` に固定し、Deno Deploy dashboard の自動推測に依存しません。
 
@@ -49,15 +49,14 @@ Custom Provider の `base_url` には relay の origin のみを指定します�
 {base}/v1/{account}/{gateway}/custom-{slug}/v1/responses
 ```
 
-汎用 provider の Custom Provider では、provider の base URL を relay の固定 route に
-向けます。`command-code` の例では次の形式です。
+汎用 provider の Custom Provider については、将来の汎用 relay 実装が使用する固定 route の契約として、provider の base URL を次のように向けます。`command-code` の例では次の形式です。
 
 ```text
 https://<relay-domain>.deno.dev/upstream/command-code/
 ```
 
 OpenAI SDK は `/v1/chat/completions`、Anthropic SDK は `/v1/messages` をこの route
-suffix として送信します。relay は suffix を `command-code` の固定 upstream
+suffix として送信する想定です。将来の汎用 relay は suffix を `command-code` の固定 upstream
 `https://api.commandcode.ai/provider/` 配下へ path data として付加し、任意の origin
 へ解決しません。
 
@@ -93,20 +92,19 @@ metadata は固定の 3 項目のみを出力します。agent、session、accou
 
 ## Relay のリクエスト処理
 
-relay は次の二つの経路を受け付けます。その他の route は `404` を返します。
+現在の relay が実装している経路は、既存互換の `POST /v1/responses` のみです。`X-ChatGPT-Relay-Authorization: Bearer <RELAY_SECRET>` を使用し、その他の route は `404` を返します。
 
-- 既存互換: `POST /v1/responses`。`X-ChatGPT-Relay-Authorization: Bearer <RELAY_SECRET>` を使用します。
-- 汎用経路: `/upstream/<provider-slug>/*`。`X-Relay-Authorization: Bearer <RELAY_SECRET>` を使用します。標準 `Authorization` は provider credential として扱います。
+`/upstream/<provider-slug>/*` はまだ実装されていない、将来の汎用 relay に関する文書化契約です。以下では、その将来実装が満たすべき仕様を記載します。将来の汎用経路では `X-Relay-Authorization: Bearer <RELAY_SECRET>` を使用し、標準 `Authorization` は provider credential として扱います。
 
-relay は Deno Deploy secret から設定された正確な bearer 値を要求し、認証情報の欠落または不正があれば `401` を upstream fetch の前に返します。ただし、relay secret 自体が未設定の場合は `503` を返します。
+現在実装されている legacy 経路、および将来実装される汎用経路の契約では、relay は Deno Deploy secret から設定された正確な bearer 値を要求し、認証情報の欠落または不正があれば `401` を upstream fetch の前に返します。ただし、relay secret 自体が未設定の場合は `503` を返します。
 
-認証後、既存互換経路は固定 upstream へリクエストを転送します。
+認証後、現在実装されている既存互換経路は固定 upstream へリクエストを転送します。
 
 ```text
 https://chatgpt.com/backend-api/codex/responses
 ```
 
-リクエスト body stream は解析・バッファリングせずそのまま転送します。OAuth `Authorization`、`ChatGPT-Account-Id`、residency、その他 Codex protocol ヘッダーを保持します。転送前に次のヘッダーを除去します。
+現在実装されている legacy 経路では、リクエスト body stream は解析・バッファリングせずそのまま転送します。OAuth `Authorization`、`ChatGPT-Account-Id`、residency、その他 Codex protocol ヘッダーを保持します。転送前に次のヘッダーを除去します。将来の汎用 relay も、この denylist と hop-by-hop header 処理を契約として適用します。
 
 - `cf-aig-*`
 - `cf-*`
@@ -128,7 +126,7 @@ https://chatgpt.com/backend-api/codex/responses
 
 さらに、リクエストの `Connection` ヘッダーを case-insensitive な comma-separated token list として解析し、そのリストに挙げられた各ヘッダーも除去します。応答ヘッダーについても同様に `Connection` とその token に挙げられた名前、および標準 hop-by-hop ヘッダーを除去します。残りの upstream 応答ヘッダー、status、body stream は保持されます。
 
-汎用経路では、provider preset が provider-compatible route として定義した route policy に
+将来の汎用 relay 契約では、provider preset が provider-compatible route として定義した route policy に
 解決した `POST` かつ `Content-Type` の media type が `application/json` の場合に限り、body
 の raw/token-preserving scan で route policy に対応する tool schema を正規化します。
 normalizer は body member 名から provider policy を推測しません。OpenAI の
@@ -137,13 +135,13 @@ normalizer は body member 名から provider policy を推測しません。Ope
 は変更しません。`messages` 等の対象外フィールドと JSON number token は保持します。
 
 root `anyOf` の compatibility flatten は OpenAI の `/v1/chat/completions` にだけ適用します。
-Anthropic の `/v1/messages` では `tools[].input_schema` の root `anyOf` とその branch を
-変更しません。root `anyOf` が存在する対象 schema は、`type: "object"` や
-`properties: {}` の補完を含む正規化全体をスキップして、対象 schema の request body byte
-span を入力のまま保持します。OpenAI route で flatten できない `anyOf` も同じ扱いです。
-同じ body 内にある別の安全な OpenAI 対象 schema の正規化は妨げません。root `anyOf` が
-ない場合、または OpenAI route で安全な flatten に成功した場合だけ、欠落した `type` や
-`properties` を補完します。
+Anthropic の `/v1/messages` では `tools[].input_schema` は root `anyOf` の有無にかかわらず
+変更せず、対象 schema の request body byte span を入力のまま保持します。
+root `anyOf` が存在する対象 schema は、`type: "object"` や `properties: {}` の補完を含む
+正規化全体をスキップします。OpenAI route で flatten できない `anyOf` も同じ扱いです。
+同じ body 内にある別の安全な OpenAI 対象 schema の正規化は妨げません。
+OpenAI route で root `anyOf` がない場合、または安全な flatten に成功した場合だけ、
+欠落した `type` や `properties` を補完します。
 
 認識済み provider-compatible JSON route の正規化 body には、
 `MAX_NORMALIZATION_BODY_BYTES = 4 * 1024 * 1024`（4 MiB）の固定上限があります。
@@ -165,7 +163,7 @@ JSON parse を行わず body を raw forward します。その route を provid
 公開するには、provider preset に route と envelope を先に定義する必要があります。
 既存の `/v1/responses` はこの解析を行いません。
 
-汎用経路の upstream `401`、`403`、`429`、`5xx` および通常の response は pass-through
+将来の汎用 relay 契約では、upstream `401`、`403`、`429`、`5xx` および通常の response は pass-through
 します。upstream の `304 Not Modified` も redirect ではないため、status とサニタイズ後の
 response headers を pass-through し、downstream body は空にします。`If-None-Match` と `If-Modified-Since` は denylist
 に含めず、upstream へ保持・転送します。`304` 以外の `3xx`（`300`、`301`、`302`、`303`、
@@ -176,7 +174,9 @@ response headers を pass-through し、downstream body は空にします。`If
 （`Location` を含む）、body を pass-through します。relay には retry loop、cache、
 payload persistence、または credential/payload のアプリケーションログはありません。
 
-### タイムアウトとキャンセル
+### タイムアウトとキャンセル（将来の汎用 relay 契約）
+
+`/upstream/*` の将来実装は、次のタイムアウトとキャンセル契約に従います。
 
 - **30 秒の connect-and-response-header タイムアウト**: upstream `fetch` の直前に開始し、DNS、TCP/TLS connection、および完全な upstream 応答ヘッダーの受信をカバーします。期限切れの場合、upstream request を abort し、正確な JSON body `{"error":"upstream_connect_or_header_timeout"}` で `504` を返します。
 - **120 秒の SSE idle タイマー**: upstream ヘッダー受信後に開始し、upstream body chunk を受信するたびにリセットします。総時間ではありません。期限切れの場合、upstream request を abort し、`upstream_sse_idle_timeout` stream error で downstream stream を終了します。応答ヘッダーは既に送信済みのため、2 番目の HTTP status や body に置き換えることはありません。非 SSE 応答には relay による総時間制限はありません。
@@ -187,7 +187,7 @@ payload persistence、または credential/payload のアプリケーション�
 
 `.github/workflows/acceptance.yml` の `protected-acceptance` environment から、実 Cloudflare
 AI Gateway Custom Provider、実 Deno Deploy relay、実 Command Code Provider API を通る
-acceptance を手動実行します。必須値は次のとおりです。
+acceptance を手動実行します。将来的な汎用 relay `/upstream/*` 実装時に確認する項目も含み、必須値は次のとおりです。
 
 - `RELAY_ACCEPTANCE_ORIGIN`: legacy relay の直接検証先
 - `RELAY_ACCEPTANCE_RELAY_SECRET`: legacy direct acceptance の認証にだけ使用する protected
@@ -268,7 +268,7 @@ PAT (classic) を準備してください。
 
 1. [ ] OpenCode が `PluginInput` でホストバージョン能力を公開したリリースが出ていること。さらに activate 拒否時にホスト側が一致する Codex リクエストを block できること（拒否だけでは direct request を防げない）。
 2. [ ] `SUPPORTED_OPENCODE_RANGE` と `peerDependencies.opencode` を実際の能力提供バージョンに更新し、`test/package-consistency.test.ts` を通すこと。
-3. [ ] 保護付き acceptance suite（実 Cloudflare / Deno Deploy / ChatGPT OAuth / Command Code 認証情報）を `protected-acceptance` 環境で実行し、legacy の 200 SSE、tool call、reasoning、token refresh、代表エラー、両ログペイロードモードに加え、固定の safe root `anyOf` fixture を使った generic `command-code` の OpenAI/Anthropic/models path、provider-compatible error envelope、header injection、Gateway log 作成、パスマッピングを確認すること。`MAX_NORMALIZATION_BODY_BYTES` の上限超過契約も実装テストで確認し、必須値が未設定の場合は skip せず fail させること。
+3. [ ] 保護付き acceptance suite（実 Cloudflare / Deno Deploy / ChatGPT OAuth / Command Code 認証情報）を `protected-acceptance` 環境で実行し、legacy の 200 SSE、tool call、reasoning、token refresh、代表エラー、両ログペイロードモードを確認すること。さらに、将来の汎用 `/upstream/*` relay 実装時には、固定の safe root `anyOf` fixture を使った generic `command-code` の OpenAI/Anthropic/models path、provider-compatible error envelope、header injection、Gateway log 作成、パスマッピング、`MAX_NORMALIZATION_BODY_BYTES` の上限超過契約も実装テストで確認し、必須値が未設定の場合は skip せず fail させること。
 4. [ ] README のサポート範囲表記を更新すること。
 5. [ ] 初回の手動公開前に、`write:packages` 権限を持つ GitHub PAT
    (classic) で GitHub Packages registry に認証すること。その後、

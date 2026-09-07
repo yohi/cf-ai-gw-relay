@@ -110,6 +110,7 @@ Deno.test("forwards only authenticated requests and sanitizes hop headers", asyn
     "X-Forwarded-Host": "gateway.example",
     Connection: "X-Request-Internal, keep-alive",
     "X-Request-Internal": "private",
+    "X-Relay-Authorization": "Bearer generic-token",
   }));
 
   assertEquals(response.status, 200, "response status");
@@ -137,7 +138,12 @@ Deno.test("forwards only authenticated requests and sanitizes hop headers", asyn
   assertEquals(
     upstream.headers.get("X-ChatGPT-Relay-Authorization"),
     null,
-    "relay authorization",
+    "ChatGPT relay authorization",
+  );
+  assertEquals(
+    upstream.headers.get("X-Relay-Authorization"),
+    null,
+    "generic relay authorization",
   );
   assertEquals(
     upstream.headers.get("cf-aig-authorization"),

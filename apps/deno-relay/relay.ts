@@ -17,6 +17,7 @@ const requestHeadersToRemove = new Set([
   "trailer",
   "transfer-encoding",
   "upgrade",
+  "x-relay-authorization",
   "x-real-ip",
 ]);
 const responseHopByHopHeaders = new Set([
