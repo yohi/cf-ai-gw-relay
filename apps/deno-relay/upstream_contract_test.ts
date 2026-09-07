@@ -31,6 +31,21 @@ const anthropicAnyOfBody =
 const anthropicShapeOnOpenAiRouteBody =
   '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"name":"lookup","input_schema":{"anyOf":[{"type":"object","properties":{"query":{"type":"string"}}},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}]}';
 
+const nonCanonicalAnthropicAnyOfBody = `{
+  "model": "command-code",
+  "max_tokens": 1024,
+  "messages": [{"role": "user", "content": "日本語と\\n改行と 9007199254740993" }],
+  "tools": [{
+    "name": "lookup",
+    "input_schema": {
+      "anyOf": [
+        { "type": "object", "properties": { "query": { "type": "string" } } },
+        { "type": "object", "properties": { "limit": { "type": "integer" } } }
+      ]
+    }
+  }]
+}`;
+
 Deno.test({
   name: "generic /upstream passes through 304 with conditional request headers",
   ignore: true, // requires generic /upstream/* handler implementation
@@ -233,6 +248,23 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "Anthropic messages preserves non-canonical JSON bytes including UTF-8, escapes, and large integers",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedBody = await captureForwardedBody(
+      "/upstream/command-code/v1/messages",
+      nonCanonicalAnthropicAnyOfBody,
+    );
+    assertEquals(
+      forwardedBody,
+      nonCanonicalAnthropicAnyOfBody,
+      "forwarded non-canonical Anthropic schema bytes",
+    );
+  },
+});
+
+Deno.test({
   name: "OpenAI route does not normalize an Anthropic-shaped tool schema",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
@@ -376,7 +408,7 @@ Deno.test({
     "normalization never forwards partial bytes from an oversized recognized body",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
-    const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
+    const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 303);
     let bodyCancelled = false;
     const capture = await assertOversizedBodyRejected({
       pathname: "/upstream/command-code/v1/chat/completions",

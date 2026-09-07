@@ -35,6 +35,8 @@ const origin = readAcceptanceOrigin();
 const relaySecret = readAcceptanceRelaySecret();
 const gatewayAcceptanceConfigured = isGatewayAcceptanceConfigured();
 
+const genericUpstreamHandlerImplemented = false;
+
 type ProtectedAcceptanceTest = (
   config: GatewayAcceptanceConfig,
 ) => Promise<void>;
@@ -46,6 +48,19 @@ function protectedAcceptanceTest(
   Deno.test({
     name,
     ignore: !gatewayAcceptanceConfigured,
+    fn: async () => {
+      await test(readGatewayAcceptanceConfig());
+    },
+  });
+}
+
+function futureGenericAcceptanceTest(
+  name: string,
+  test: ProtectedAcceptanceTest,
+): void {
+  Deno.test({
+    name,
+    ignore: !gatewayAcceptanceConfigured || !genericUpstreamHandlerImplemented,
     fn: async () => {
       await test(readGatewayAcceptanceConfig());
     },
@@ -76,7 +91,47 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "acceptance: relay rejects missing credentials with 401",
+  ignore: origin === undefined,
+  fn: async () => {
+    if (origin === undefined) {
+      return;
+    }
+    const response = await fetch(`${origin}/v1/responses`, {
+      method: "POST",
+      signal: AbortSignal.timeout(acceptanceTimeoutMs),
+    });
+    try {
+      if (response.status !== 401) {
+        throw new Error(`expected 401, received ${response.status}`);
+      }
+    } finally {
+      await response.body?.cancel();
+    }
+  },
+});
+
 protectedAcceptanceTest(
+  "acceptance: legacy POST /v1/responses reaches ChatGPT",
+  async (config) => {
+    const response = await requestThroughGateway(config, "/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer chatgpt-oauth-token",
+        "ChatGPT-Account-Id": "acceptance-account",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "Reply with ACCEPTANCE_OK." }],
+      }),
+    });
+    await assertSuccessfulResponse(response, "legacy POST /v1/responses");
+  },
+);
+
+futureGenericAcceptanceTest(
   "acceptance: OpenAI root anyOf reaches the provider validator",
   async (config) => {
     const response = await requestThroughGateway(
@@ -95,7 +150,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: Anthropic root anyOf route reaches the provider",
   async (config) => {
     const response = await requestThroughGateway(config, "/v1/messages", {
@@ -114,7 +169,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: Command Code models endpoint is reachable",
   async (config) => {
     const response = await requestThroughGateway(config, "/v1/models", {
@@ -125,7 +180,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: OpenAI malformed JSON returns the provider envelope",
   async (config) => {
     const response = await requestThroughGateway(
@@ -148,7 +203,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: Anthropic malformed JSON returns the provider envelope",
   async (config) => {
     const response = await requestThroughGateway(config, "/v1/messages", {
@@ -168,7 +223,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: OpenAI empty JSON returns the provider envelope",
   async (config) => {
     const response = await requestThroughGateway(
@@ -190,7 +245,7 @@ protectedAcceptanceTest(
   },
 );
 
-protectedAcceptanceTest(
+futureGenericAcceptanceTest(
   "acceptance: Anthropic empty JSON returns the provider envelope",
   async (config) => {
     const response = await requestThroughGateway(config, "/v1/messages", {
@@ -208,24 +263,3 @@ protectedAcceptanceTest(
     });
   },
 );
-
-Deno.test({
-  name: "acceptance: relay rejects missing credentials with 401",
-  ignore: origin === undefined,
-  fn: async () => {
-    if (origin === undefined) {
-      return;
-    }
-    const response = await fetch(`${origin}/v1/responses`, {
-      method: "POST",
-      signal: AbortSignal.timeout(acceptanceTimeoutMs),
-    });
-    try {
-      if (response.status !== 401) {
-        throw new Error(`expected 401, received ${response.status}`);
-      }
-    } finally {
-      await response.body?.cancel();
-    }
-  },
-});

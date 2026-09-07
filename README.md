@@ -188,7 +188,6 @@ payload persistence、または credential/payload のアプリケーション�
 `.github/workflows/acceptance.yml` の `protected-acceptance` environment から、実 Cloudflare
 AI Gateway Custom Provider、実 Deno Deploy relay、実 Command Code Provider API を通る
 acceptance を手動実行します。将来的な汎用 relay `/upstream/*` 実装時に確認する項目も含み、必須値は次のとおりです。
-acceptance を手動実行します。必須値は次のとおりです。
 
 - `RELAY_ACCEPTANCE_ORIGIN`: legacy relay の直接検証先
 - `RELAY_ACCEPTANCE_RELAY_SECRET`: legacy direct acceptance の認証にだけ使用する protected
