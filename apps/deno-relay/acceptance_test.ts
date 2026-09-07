@@ -35,13 +35,16 @@ const origin = readAcceptanceOrigin();
 const relaySecret = readAcceptanceRelaySecret();
 const gatewayAcceptanceConfigured = isGatewayAcceptanceConfigured();
 
+// 汎用 `/upstream/*` handler が実装されるまで true にしない。
 const genericUpstreamHandlerImplemented = false;
 
 type ProtectedAcceptanceTest = (
   config: GatewayAcceptanceConfig,
 ) => Promise<void>;
 
-function protectedAcceptanceTest(
+// 現状は汎用 acceptance のみが有効化対象。legacy ChatGPT OAuth 経路の実 token 注入が
+// 可能になったら `_protectedAcceptanceTest` を復活させて legacy テストを追加する。
+function _protectedAcceptanceTest(
   name: string,
   test: ProtectedAcceptanceTest,
 ): void {
@@ -111,25 +114,6 @@ Deno.test({
     }
   },
 });
-
-protectedAcceptanceTest(
-  "acceptance: legacy POST /v1/responses reaches ChatGPT",
-  async (config) => {
-    const response = await requestThroughGateway(config, "/v1/responses", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer chatgpt-oauth-token",
-        "ChatGPT-Account-Id": "acceptance-account",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "Reply with ACCEPTANCE_OK." }],
-      }),
-    });
-    await assertSuccessfulResponse(response, "legacy POST /v1/responses");
-  },
-);
 
 futureGenericAcceptanceTest(
   "acceptance: OpenAI root anyOf reaches the provider validator",

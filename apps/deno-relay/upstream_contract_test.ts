@@ -35,7 +35,6 @@ const anthropicShapeOnOpenAiRouteBody =
 
 const nonCanonicalAnthropicAnyOfBody = `{
   "model": "command-code",
-  "max_tokens": 1024,
   "max_tokens": 9223372036854775807,
   "messages": [{"role": "user", "content": "日本語と\\n改行" }, {"role": "user", "content": 9007199254740993 }],
   "tools": [{
@@ -216,6 +215,45 @@ Deno.test({
         `POST body sent exactly once for ${status}`,
       );
     }
+  },
+});
+
+Deno.test({
+  name:
+    "generic /upstream resolves path and credentials for the command-code preset",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const providerApiKey = "provider-api-key";
+    const capture = createFetchCapture();
+    const response = await createHandler(capture)(
+      createGenericRequest("/upstream/command-code/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${providerApiKey}`,
+        },
+        body: openAiSafeAnyOfBody,
+      }),
+    );
+    const upstream = requireCapturedRequest(capture);
+
+    assertEquals(response.status, 200, "generic route response status");
+    assertEquals(
+      upstream.url,
+      "https://api.commandcode.ai/provider/v1/chat/completions",
+      "upstream URL for command-code preset",
+    );
+    assertEquals(
+      upstream.headers.get("authorization"),
+      `Bearer ${providerApiKey}`,
+      "provider Authorization is forwarded",
+    );
+    assertEquals(
+      upstream.headers.get("x-relay-authorization"),
+      null,
+      "relay Authorization is not forwarded",
+    );
+    assertEquals(capture.fetchCalls, 1, "upstream fetch calls");
   },
 });
 
@@ -424,6 +462,42 @@ Deno.test({
 
 Deno.test({
   name:
+    "generic normalization uses a counted reader for a body below the 4 MiB limit",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const body = '{"model":"command-code","messages":[],"tools":[]}';
+    const capture = createFetchCapture();
+    const { body: requestBody, metrics } = createTrackedOneChunkBodyStream(
+      body,
+      () => undefined,
+    );
+    const response = await createHandler(capture)(
+      createGenericRequest("/upstream/command-code/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody,
+      }),
+    );
+    const forwardedBody = await requireCapturedRequest(capture).text();
+
+    assertEquals(response.status, 200, "below-limit response status");
+    assertEquals(capture.fetchCalls, 1, "below-limit upstream fetch calls");
+    assertEquals(forwardedBody, body, "forwarded below-limit body");
+    assertEquals(
+      metrics.pullCount,
+      1,
+      "counted reader should pull the small body once",
+    );
+    assertEquals(
+      metrics.pulledBytes,
+      utf8ByteLength(body),
+      "counted reader should meter pulled bytes",
+    );
+  },
+});
+
+Deno.test({
+  name:
     "OpenAI normalization rejects a valid Content-Length above 4 MiB before reading the body",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
@@ -476,7 +550,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "normalization rejects actual overflow after pulling exactly 4 MiB and cancels the rest",
+    "normalization rejects actual overflow after pulling the overflowing chunk",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
