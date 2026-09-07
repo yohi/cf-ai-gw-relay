@@ -236,6 +236,23 @@ Deno.test("rejects requests when the relay secret is unavailable", async () => {
   assertEquals(fetchCalls, 0, "upstream fetch calls");
 });
 
+Deno.test("rejects requests when the relay secret is whitespace-only", async () => {
+  let fetchCalls = 0;
+  const handler = createRelayHandler({
+    getSecret: () => "   ",
+    fetcher: () => {
+      fetchCalls += 1;
+      return Promise.resolve(new Response());
+    },
+  });
+
+  const response = await handler(createRequest());
+
+  assertEquals(response.status, 503, "whitespace-only relay secret status");
+  assertEquals(await response.text(), "Service unavailable", "response body");
+  assertEquals(fetchCalls, 0, "upstream fetch calls");
+});
+
 Deno.test("rejects every route and method other than POST /v1/responses", async () => {
   let fetchCalls = 0;
   const handler = createRelayHandler({
@@ -452,6 +469,32 @@ Deno.test("does not impose an idle timer on non-SSE responses", async () => {
   assertEquals(await response.text(), "upstream-body", "response body");
   assertEquals(scheduleCalls, 1, "only the header timeout was scheduled");
 });
+Deno.test("imposes an idle timer on SSE responses with mixed-case Content-Type", async () => {
+  let scheduleCalls = 0;
+
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () =>
+      Promise.resolve(
+        new Response("upstream-body", {
+          headers: { "content-type": "Text/Event-Stream; charset=utf-8" },
+        }),
+      ),
+    timer: {
+      schedule: () => ++scheduleCalls,
+      clear: () => undefined,
+    },
+  });
+
+  const response = await handler(createRequest());
+
+  assertEquals(await response.text(), "upstream-body", "response body");
+  assertEquals(
+    scheduleCalls,
+    3,
+    "header timeout + SSE idle timer + reset per body read",
+  );
+});
 
 Deno.test("detaches abort listeners after a non-SSE body completes", async () => {
   const request = createRequest();
@@ -559,6 +602,32 @@ Deno.test("cancels the upstream body when the downstream cancels", async () => {
   assert(upstreamSignalAborted, "upstream fetch aborted");
 });
 
+Deno.test("does not fetch upstream when already aborted before handler", async () => {
+  let fetchCalls = 0;
+  const clientController = new AbortController();
+  clientController.abort("already-cancelled");
+
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () => {
+      fetchCalls += 1;
+      return Promise.resolve(new Response("unexpected"));
+    },
+  });
+
+  const request = new Request("https://relay.example/v1/responses", {
+    method: "POST",
+    headers: { "X-ChatGPT-Relay-Authorization": relayAuthorization },
+    body: "request-body",
+    signal: clientController.signal,
+  });
+
+  const response = await handler(request);
+
+  assertEquals(response.status, 503, "pre-aborted request status");
+  assertEquals(await response.text(), "Service unavailable", "response body");
+  assertEquals(fetchCalls, 0, "upstream fetch calls");
+});
 Deno.test("aborts upstream on late client disconnect", async () => {
   let upstreamSignal: AbortSignal | undefined;
   let upstreamCancelled = false;
