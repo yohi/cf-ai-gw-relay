@@ -285,11 +285,6 @@ export function createRelayHandler(
       once: true,
     });
 
-    if (request.signal.aborted) {
-      detachClientAbortListener();
-      return serviceUnavailable();
-    }
-
     const timeoutId = timer.schedule(() => {
       timedOut = true;
       controller.abort();
