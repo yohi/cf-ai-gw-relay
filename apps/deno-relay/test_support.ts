@@ -110,22 +110,6 @@ export function createSizedJsonBody(byteLength: number): string {
   return `${prefix}${"x".repeat(paddingBytes)}${suffix}`;
 }
 
-export function createOneChunkBodyStream(
-  body: string,
-  onCancel: () => void,
-): ReadableStream<Uint8Array> {
-  const bytes = encoder.encode(body);
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(bytes);
-      controller.close();
-    },
-    cancel() {
-      onCancel();
-    },
-  });
-}
-
 export function createTrackedOneChunkBodyStream(
   body: string,
   onCancel: () => void,
