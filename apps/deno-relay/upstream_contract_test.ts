@@ -7,6 +7,7 @@ import {
   createFetchCapture,
   createGenericRequest,
   createHandler,
+  createLazyTrackedOneChunkBodyStream,
   createSizedJsonBody,
   createTrackedBoundaryOverflowBodyStream,
   createTrackedOneChunkBodyStream,
@@ -20,6 +21,49 @@ const openAiTooLargeBody =
   '{"error":{"message":"Request body exceeds maximum normalization size","type":"invalid_request_error","param":null,"code":"request_body_too_large"}}';
 const anthropicTooLargeBody =
   '{"type":"error","error":{"type":"invalid_request_error","message":"Request body exceeds maximum normalization size"}}';
+
+Deno.test({
+  name: "lazy tracked body stream does not meter an unread body",
+  fn: async () => {
+    const { metrics } = createLazyTrackedOneChunkBodyStream(
+      '{"model":"command-code"}',
+      () => undefined,
+    );
+
+    await Promise.resolve();
+
+    assertEquals(metrics.pullCount, 0, "unread body pull count");
+    assertEquals(metrics.pulledBytes, 0, "unread body byte count");
+  },
+});
+
+Deno.test({
+  name: "lazy tracked body stream meters a body when read",
+  fn: async () => {
+    const body = '{"model":"command-code"}';
+    const { body: requestBody, metrics } = createLazyTrackedOneChunkBodyStream(
+      body,
+      () => undefined,
+    );
+    const reader = requestBody.getReader();
+    const chunk = await reader.read();
+    if (chunk.done) {
+      throw new Error("lazy tracked body stream ended before yielding a chunk");
+    }
+
+    assertEquals(
+      chunk.value.byteLength,
+      utf8ByteLength(body),
+      "read body bytes",
+    );
+    assertEquals(metrics.pullCount, 1, "read body pull count");
+    assertEquals(
+      metrics.pulledBytes,
+      utf8ByteLength(body),
+      "read body byte count",
+    );
+  },
+});
 
 const openAiSafeAnyOfBody =
   '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"anyOf":[{"type":"object","properties":{"query":{"type":"string"}}},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}}]}';
@@ -534,7 +578,7 @@ Deno.test({
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
     let bodyCancelled = false;
-    const { body: requestBody, metrics } = createTrackedOneChunkBodyStream(
+    const { body: requestBody, metrics } = createLazyTrackedOneChunkBodyStream(
       body,
       () => {
         bodyCancelled = true;

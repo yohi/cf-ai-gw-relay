@@ -133,6 +133,29 @@ export function createTrackedOneChunkBodyStream(
   return { body: stream, metrics };
 }
 
+export function createLazyTrackedOneChunkBodyStream(
+  body: string,
+  onCancel: () => void,
+): {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly metrics: PullMetrics;
+} {
+  const bytes = encoder.encode(body);
+  const metrics: PullMetrics = { pullCount: 0, pulledBytes: 0 };
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      metrics.pullCount += 1;
+      metrics.pulledBytes += bytes.byteLength;
+      controller.enqueue(bytes);
+      controller.close();
+    },
+    cancel() {
+      onCancel();
+    },
+  }, { highWaterMark: 0 });
+  return { body: stream, metrics };
+}
+
 export function createBoundaryOverflowBodyStream(
   body: string,
   onCancel: () => void,
