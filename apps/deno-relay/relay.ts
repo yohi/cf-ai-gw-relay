@@ -68,6 +68,7 @@ function mustRemoveRequestHeader(name: string): boolean {
   return (
     requestHeadersToRemove.has(name) ||
     name === relayAuthorizationHeader ||
+    name === "x-relay-authorization" ||
     name.startsWith("cf-aig-") ||
     name.startsWith("cf-") ||
     name.startsWith("x-forwarded-")
