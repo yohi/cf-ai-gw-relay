@@ -114,6 +114,7 @@ export function createOneChunkBodyStream(
   return new ReadableStream<Uint8Array>({
     pull(controller) {
       if (sent) {
+        controller.close();
         return;
       }
       sent = true;
@@ -141,7 +142,9 @@ export function createBoundaryOverflowBodyStream(
       if (offset === MAX_NORMALIZATION_BODY_BYTES) {
         controller.enqueue(bytes.subarray(offset));
         offset = bytes.length;
+        return;
       }
+      controller.close();
     },
     cancel() {
       onCancel();

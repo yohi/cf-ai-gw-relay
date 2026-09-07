@@ -49,7 +49,10 @@ Deno.test({
     const response = await handler(
       createGenericRequest("/upstream/command-code/v1/models", {
         method: "GET",
-        headers: { "If-None-Match": '"models-v1"' },
+        headers: {
+          "If-None-Match": '"models-v1"',
+          "If-Modified-Since": "Wed, 04 Sep 2026 00:00:00 GMT",
+        },
       }),
     );
     const upstream = requireCapturedRequest(capture);
@@ -71,7 +74,12 @@ Deno.test({
     assertEquals(
       upstream.headers.get("if-none-match"),
       '"models-v1"',
-      "conditional request header",
+      "If-None-Match conditional request header",
+    );
+    assertEquals(
+      upstream.headers.get("if-modified-since"),
+      "Wed, 04 Sep 2026 00:00:00 GMT",
+      "If-Modified-Since conditional request header",
     );
     assertEquals(upstream.method, "GET", "upstream method");
     assertEquals(upstream.redirect, "manual", "upstream redirect policy");
@@ -85,43 +93,95 @@ Deno.test({
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const redirectStatuses = [300, 301, 302, 303, 305, 306, 307, 308];
+    const locations = [
+      "https://redirect.example/next",
+      "https://api.commandcode.ai/provider/v2/chat/completions",
+      "/relative/next",
+    ];
     for (const status of redirectStatuses) {
+      for (const location of locations) {
+        const capture = createFetchCapture();
+        const handler = createHandler(
+          capture,
+          () =>
+            new Response("upstream redirect body", {
+              status,
+              headers: {
+                location,
+                "x-upstream-only": "must-not-forward",
+              },
+            }),
+        );
+        const response = await handler(
+          createGenericRequest(
+            "/upstream/command-code/v1/chat/completions",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            },
+          ),
+        );
+
+        assertEquals(response.status, 502, `redirect status ${status}`);
+        assertEquals(
+          await response.text(),
+          redirectErrorBody,
+          "redirect envelope",
+        );
+        assertEquals(
+          response.headers.get("location"),
+          null,
+          `Location header for ${location}`,
+        );
+        assertEquals(
+          response.headers.get("x-upstream-only"),
+          null,
+          "upstream-only response header",
+        );
+        assertEquals(
+          capture.fetchCalls,
+          1,
+          `fetch count for status ${status}`,
+        );
+      }
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "generic /upstream sends the original POST body exactly once on 307/308",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const postBody =
+      '{"model":"command-code","messages":[{"role":"user","content":"hello"}]}';
+    for (const status of [307, 308]) {
       const capture = createFetchCapture();
       const handler = createHandler(
         capture,
         () =>
-          new Response("upstream redirect body", {
+          new Response("redirect", {
             status,
-            headers: {
-              location: "https://redirect.example/next",
-              "x-upstream-only": "must-not-forward",
-            },
+            headers: { location: "https://redirect.example/next" },
           }),
       );
-      const response = await handler(
-        createGenericRequest(
-          "/upstream/command-code/v1/chat/completions",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          },
-        ),
+      await handler(
+        createGenericRequest("/upstream/command-code/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: postBody,
+        }),
       );
+      const upstream = requireCapturedRequest(capture);
 
-      assertEquals(response.status, 502, `redirect status ${status}`);
-      assertEquals(
-        await response.text(),
-        redirectErrorBody,
-        "redirect envelope",
-      );
-      assertEquals(response.headers.get("location"), null, "Location header");
-      assertEquals(
-        response.headers.get("x-upstream-only"),
-        null,
-        "upstream-only response header",
-      );
       assertEquals(capture.fetchCalls, 1, `fetch count for status ${status}`);
+      assertEquals(upstream.method, "POST", `upstream method for ${status}`);
+      assertEquals(
+        await upstream.text(),
+        postBody,
+        `POST body sent exactly once for ${status}`,
+      );
     }
   },
 });
@@ -219,16 +279,20 @@ Deno.test({
 
 Deno.test({
   name:
-    "OpenAI normalization rejects a valid Content-Length above 4 MiB before fetch",
+    "OpenAI normalization rejects a valid Content-Length above 4 MiB before fetch and cancels the body",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
+    let bodyCancelled = false;
     await assertOversizedBodyRejected({
       pathname: "/upstream/command-code/v1/chat/completions",
-      body,
+      body: createOneChunkBodyStream(body, () => {
+        bodyCancelled = true;
+      }),
       expectedBody: openAiTooLargeBody,
       headers: { "Content-Length": String(utf8ByteLength(body)) },
     });
+    assert(bodyCancelled, "early 413 did not cancel the body stream");
   },
 });
 
