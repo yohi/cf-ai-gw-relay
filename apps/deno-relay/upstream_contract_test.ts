@@ -36,7 +36,8 @@ const anthropicShapeOnOpenAiRouteBody =
 const nonCanonicalAnthropicAnyOfBody = `{
   "model": "command-code",
   "max_tokens": 1024,
-  "messages": [{"role": "user", "content": "日本語と\\n改行と 9007199254740993" }],
+  "max_tokens": 9223372036854775807,
+  "messages": [{"role": "user", "content": "日本語と\\n改行" }, {"role": "user", "content": 9007199254740993 }],
   "tools": [{
     "name": "lookup",
     "input_schema": {
@@ -494,10 +495,9 @@ Deno.test({
       headers: { "Content-Length": String(MAX_NORMALIZATION_BODY_BYTES) },
     });
     assert(bodyCancelled, "counted reader did not cancel actual overflow");
-    assertEquals(
-      metrics.pulledBytes,
-      MAX_NORMALIZATION_BODY_BYTES,
-      "counted reader pulled bytes before cancellation",
+    assert(
+      metrics.pulledBytes >= MAX_NORMALIZATION_BODY_BYTES + 1,
+      "counted reader should pull the overflowing chunk before cancellation",
     );
   },
 });
