@@ -135,13 +135,13 @@ normalizer は body member 名から provider policy を推測しません。Ope
 は変更しません。`messages` 等の対象外フィールドと JSON number token は保持します。
 
 root `anyOf` の compatibility flatten は OpenAI の `/v1/chat/completions` にだけ適用します。
-Anthropic の `/v1/messages` では `tools[].input_schema` の root `anyOf` とその branch を
-変更しません。root `anyOf` が存在する対象 schema は、`type: "object"` や
-`properties: {}` の補完を含む正規化全体をスキップして、対象 schema の request body byte
-span を入力のまま保持します。OpenAI route で flatten できない `anyOf` も同じ扱いです。
-同じ body 内にある別の安全な OpenAI 対象 schema の正規化は妨げません。root `anyOf` が
-ない場合、または OpenAI route で安全な flatten に成功した場合だけ、欠落した `type` や
-`properties` を補完します。
+Anthropic の `/v1/messages` では `tools[].input_schema` は root `anyOf` の有無にかかわらず
+変更せず、対象 schema の request body byte span を入力のまま保持します。
+root `anyOf` が存在する対象 schema は、`type: "object"` や `properties: {}` の補完を含む
+正規化全体をスキップします。OpenAI route で flatten できない `anyOf` も同じ扱いです。
+同じ body 内にある別の安全な OpenAI 対象 schema の正規化は妨げません。
+OpenAI route で root `anyOf` がない場合、または安全な flatten に成功した場合だけ、
+欠落した `type` や `properties` を補完します。
 
 認識済み provider-compatible JSON route の正規化 body には、
 `MAX_NORMALIZATION_BODY_BYTES = 4 * 1024 * 1024`（4 MiB）の固定上限があります。

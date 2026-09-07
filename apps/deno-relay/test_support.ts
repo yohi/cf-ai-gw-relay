@@ -115,15 +115,10 @@ export function createOneChunkBodyStream(
   onCancel: () => void,
 ): ReadableStream<Uint8Array> {
   const bytes = encoder.encode(body);
-  let sent = false;
   return new ReadableStream<Uint8Array>({
-    pull(controller) {
-      if (sent) {
-        controller.close();
-        return;
-      }
-      sent = true;
+    start(controller) {
       controller.enqueue(bytes);
+      controller.close();
     },
     cancel() {
       onCancel();
@@ -139,18 +134,13 @@ export function createTrackedOneChunkBodyStream(
   readonly metrics: PullMetrics;
 } {
   const bytes = encoder.encode(body);
-  let sent = false;
   const metrics: PullMetrics = { pullCount: 0, pulledBytes: 0 };
   const stream = new ReadableStream<Uint8Array>({
-    pull(controller) {
+    start(controller) {
       metrics.pullCount += 1;
-      if (sent) {
-        controller.close();
-        return;
-      }
-      sent = true;
       metrics.pulledBytes += bytes.byteLength;
       controller.enqueue(bytes);
+      controller.close();
     },
     cancel() {
       onCancel();

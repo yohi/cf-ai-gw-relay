@@ -38,28 +38,13 @@ const gatewayAcceptanceConfigured = isGatewayAcceptanceConfigured();
 // 汎用 `/upstream/*` handler が実装されるまで true にしない。
 const genericUpstreamHandlerImplemented = false;
 
-type ProtectedAcceptanceTest = (
+type FutureGenericAcceptanceTest = (
   config: GatewayAcceptanceConfig,
 ) => Promise<void>;
 
-// 現状は汎用 acceptance のみが有効化対象。legacy ChatGPT OAuth 経路の実 token 注入が
-// 可能になったら `_protectedAcceptanceTest` を復活させて legacy テストを追加する。
-function _protectedAcceptanceTest(
-  name: string,
-  test: ProtectedAcceptanceTest,
-): void {
-  Deno.test({
-    name,
-    ignore: !gatewayAcceptanceConfigured,
-    fn: async () => {
-      await test(readGatewayAcceptanceConfig());
-    },
-  });
-}
-
 function futureGenericAcceptanceTest(
   name: string,
-  test: ProtectedAcceptanceTest,
+  test: FutureGenericAcceptanceTest,
 ): void {
   Deno.test({
     name,

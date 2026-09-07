@@ -7,7 +7,6 @@ import {
   createFetchCapture,
   createGenericRequest,
   createHandler,
-  createOneChunkBodyStream,
   createSizedJsonBody,
   createTrackedBoundaryOverflowBodyStream,
   createTrackedOneChunkBodyStream,
@@ -381,6 +380,11 @@ Deno.test({
   },
 });
 
+const anthropicNoAnyOfEmptyBody =
+  '{"model":"command-code","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"tools":[{"name":"lookup","input_schema":{}}]}';
+const anthropicNoAnyOfNoTypeBody =
+  '{"model":"command-code","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"tools":[{"name":"lookup","input_schema":{"properties":{"query":{"type":"string"}}}}]}';
+
 Deno.test({
   name:
     "Anthropic messages preserves root anyOf bytes in the forwarded request",
@@ -411,6 +415,33 @@ Deno.test({
       forwardedBody,
       nonCanonicalAnthropicAnyOfBody,
       "forwarded non-canonical Anthropic schema bytes",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "Anthropic messages preserves no-root-anyOf input_schema bytes unchanged",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedEmpty = await captureForwardedBody(
+      "/upstream/command-code/v1/messages",
+      anthropicNoAnyOfEmptyBody,
+    );
+    assertEquals(
+      forwardedEmpty,
+      anthropicNoAnyOfEmptyBody,
+      "forwarded empty Anthropic input_schema bytes",
+    );
+
+    const forwardedNoType = await captureForwardedBody(
+      "/upstream/command-code/v1/messages",
+      anthropicNoAnyOfNoTypeBody,
+    );
+    assertEquals(
+      forwardedNoType,
+      anthropicNoAnyOfNoTypeBody,
+      "forwarded missing-type Anthropic input_schema bytes",
     );
   },
 });
@@ -578,31 +609,54 @@ Deno.test({
 
 Deno.test({
   name:
-    "normalization counts bodies when Content-Length is malformed or duplicated",
+    "normalization rejects bodies when Content-Length is missing, malformed, duplicated, or underestimated",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
     const headerCases = [
-      new Headers({ "Content-Length": "not-a-number" }),
+      {
+        label: "missing",
+        headers: new Headers({ "Content-Type": "application/json" }),
+      },
+      {
+        label: "malformed",
+        headers: new Headers({ "Content-Length": "not-a-number" }),
+      },
       (() => {
         const headers = new Headers();
         headers.append("Content-Length", String(MAX_NORMALIZATION_BODY_BYTES));
         headers.append("Content-Length", String(MAX_NORMALIZATION_BODY_BYTES));
-        return headers;
+        headers.set("Content-Type", "application/json");
+        return { label: "duplicated", headers };
       })(),
+      {
+        label: "underestimated",
+        headers: new Headers({
+          "Content-Length": String(MAX_NORMALIZATION_BODY_BYTES),
+        }),
+      },
     ];
 
-    for (const headers of headerCases) {
+    for (const { label, headers } of headerCases) {
       let bodyCancelled = false;
+      const { body: requestBody, metrics } = createTrackedOneChunkBodyStream(
+        body,
+        () => {
+          bodyCancelled = true;
+        },
+      );
       await assertOversizedBodyRejected({
         pathname: "/upstream/command-code/v1/chat/completions",
-        body: createOneChunkBodyStream(body, () => {
-          bodyCancelled = true;
-        }),
+        body: requestBody,
         expectedBody: openAiTooLargeBody,
         headers,
       });
-      assert(bodyCancelled, "invalid Content-Length was not counted");
+      assert(bodyCancelled, `${label} Content-Length was not counted`);
+      assertEquals(
+        metrics.pulledBytes,
+        utf8ByteLength(body),
+        `${label} Content-Length counted reader pulled bytes`,
+      );
     }
   },
 });
