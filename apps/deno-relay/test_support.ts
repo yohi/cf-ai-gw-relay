@@ -23,6 +23,11 @@ export type OversizedBodyCase =
     readonly headers?: HeadersInit;
   };
 
+export type PullMetrics = {
+  pullCount: number;
+  pulledBytes: number;
+};
+
 export function createFetchCapture(): FetchCapture {
   return { fetchCalls: 0, request: undefined };
 }
@@ -126,6 +131,34 @@ export function createOneChunkBodyStream(
   });
 }
 
+export function createTrackedOneChunkBodyStream(
+  body: string,
+  onCancel: () => void,
+): {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly metrics: PullMetrics;
+} {
+  const bytes = encoder.encode(body);
+  let sent = false;
+  const metrics: PullMetrics = { pullCount: 0, pulledBytes: 0 };
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      metrics.pullCount += 1;
+      if (sent) {
+        controller.close();
+        return;
+      }
+      sent = true;
+      metrics.pulledBytes += bytes.byteLength;
+      controller.enqueue(bytes);
+    },
+    cancel() {
+      onCancel();
+    },
+  });
+  return { body: stream, metrics };
+}
+
 export function createBoundaryOverflowBodyStream(
   body: string,
   onCancel: () => void,
@@ -150,6 +183,40 @@ export function createBoundaryOverflowBodyStream(
       onCancel();
     },
   });
+}
+
+export function createTrackedBoundaryOverflowBodyStream(
+  body: string,
+  onCancel: () => void,
+): {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly metrics: PullMetrics;
+} {
+  const bytes = encoder.encode(body);
+  let offset = 0;
+  const metrics: PullMetrics = { pullCount: 0, pulledBytes: 0 };
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      metrics.pullCount += 1;
+      if (offset === 0) {
+        controller.enqueue(bytes.subarray(0, MAX_NORMALIZATION_BODY_BYTES));
+        offset = MAX_NORMALIZATION_BODY_BYTES;
+        metrics.pulledBytes += MAX_NORMALIZATION_BODY_BYTES;
+        return;
+      }
+      if (offset === MAX_NORMALIZATION_BODY_BYTES) {
+        controller.enqueue(bytes.subarray(offset));
+        offset = bytes.length;
+        metrics.pulledBytes += bytes.byteLength - MAX_NORMALIZATION_BODY_BYTES;
+        return;
+      }
+      controller.close();
+    },
+    cancel() {
+      onCancel();
+    },
+  });
+  return { body: stream, metrics };
 }
 
 function jsonHeaders(source: HeadersInit | undefined): Headers {

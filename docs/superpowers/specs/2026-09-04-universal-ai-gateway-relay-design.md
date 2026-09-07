@@ -659,7 +659,9 @@ route/request shape を混同しない別ケースとして扱う。
 ### 9.5 protected acceptance（release gate）
 
 - 既存 `acceptance_test.ts` の legacy `/v1/responses` 検証と、汎用 `command-code`
-  acceptance は別のテスト群として実装する。後者は実 Cloudflare AI Gateway Custom
+  acceptance は別のテスト群として実装する。汎用 `command-code` acceptance は汎用
+  `/upstream/*` handler が実装されるまで `ignore` または同等の実行ゲートで無効化し、
+  現状の legacy-only runtime では実行しない。後者は実 Cloudflare AI Gateway Custom
   Provider、実 Deno Deploy relay、実 Command Code Provider API を通る手動 workflow
   でのみ実行し、mock の統合テストを代替証拠としない。
 - OpenAI の具体的な property-only root `anyOf` fixture

@@ -9,6 +9,8 @@ import {
   createHandler,
   createOneChunkBodyStream,
   createSizedJsonBody,
+  createTrackedBoundaryOverflowBodyStream,
+  createTrackedOneChunkBodyStream,
   MAX_NORMALIZATION_BODY_BYTES,
   requireCapturedRequest,
   utf8ByteLength,
@@ -45,6 +47,21 @@ const nonCanonicalAnthropicAnyOfBody = `{
     }
   }]
 }`;
+
+const openAiBranchConstraintAnyOfBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"anyOf":[{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}}]}';
+const openAiRootConstraintAnyOfBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"}},"anyOf":[{"type":"object","properties":{"query":{"type":"string"}}},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}}]}';
+const openAiExplicitObjectTypeAnyOfBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","anyOf":[{"type":"object","properties":{"query":{"type":"string"}}},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}}]}';
+const openAiExplicitStringTypeAnyOfBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"string","anyOf":[{"type":"object","properties":{"query":{"type":"string"}}},{"type":"object","properties":{"limit":{"type":"integer"}}}]}}}]}';
+const openAiNoAnyOfEmptyBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{}}}]}';
+const openAiNoAnyOfNoTypeBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"properties":{"query":{"type":"string"}}}}}]}';
+const openAiNoAnyOfCompletedBody =
+  '{"model":"command-code","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"}}}}}]}';
 
 Deno.test({
   name: "generic /upstream passes through 304 with conditional request headers",
@@ -215,6 +232,74 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "OpenAI chat completions does not flatten anyOf with branch-level constraints",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedBody = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiBranchConstraintAnyOfBody,
+    );
+    assertEquals(
+      forwardedBody,
+      openAiBranchConstraintAnyOfBody,
+      "forwarded branch-constrained schema bytes",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "OpenAI chat completions does not flatten anyOf with root-level object constraints",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedBody = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiRootConstraintAnyOfBody,
+    );
+    assertEquals(
+      forwardedBody,
+      openAiRootConstraintAnyOfBody,
+      "forwarded root-constrained schema bytes",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "OpenAI chat completions flattens safe root anyOf when root type is explicitly object",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedBody = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiExplicitObjectTypeAnyOfBody,
+    );
+    assertEquals(
+      forwardedBody,
+      openAiFlattenedBody,
+      "forwarded explicit object type schema",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "OpenAI chat completions does not flatten anyOf when root type is not object",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedBody = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiExplicitStringTypeAnyOfBody,
+    );
+    assertEquals(
+      forwardedBody,
+      openAiExplicitStringTypeAnyOfBody,
+      "forwarded non-object root type schema bytes",
+    );
+  },
+});
+
+Deno.test({
   name: "OpenAI chat completions preserves unflattenable root anyOf bytes",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
@@ -226,6 +311,33 @@ Deno.test({
       forwardedBody,
       openAiUnflattenableBody,
       "forwarded OpenAI unflattenable schema bytes",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "OpenAI chat completions completes missing type and empty properties when no root anyOf",
+  ignore: true, // requires generic /upstream/* handler implementation
+  fn: async () => {
+    const forwardedEmpty = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiNoAnyOfEmptyBody,
+    );
+    assertEquals(
+      forwardedEmpty,
+      openAiNoAnyOfCompletedBody,
+      "forwarded empty parameters completion",
+    );
+
+    const forwardedNoType = await captureForwardedBody(
+      "/upstream/command-code/v1/chat/completions",
+      openAiNoAnyOfNoTypeBody,
+    );
+    assertEquals(
+      forwardedNoType,
+      openAiNoAnyOfCompletedBody,
+      "forwarded missing type completion",
     );
   },
 });
@@ -311,20 +423,26 @@ Deno.test({
 
 Deno.test({
   name:
-    "OpenAI normalization rejects a valid Content-Length above 4 MiB before fetch and cancels the body",
+    "OpenAI normalization rejects a valid Content-Length above 4 MiB before reading the body",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
     let bodyCancelled = false;
+    const { body: requestBody, metrics } = createTrackedOneChunkBodyStream(
+      body,
+      () => {
+        bodyCancelled = true;
+      },
+    );
     await assertOversizedBodyRejected({
       pathname: "/upstream/command-code/v1/chat/completions",
-      body: createOneChunkBodyStream(body, () => {
-        bodyCancelled = true;
-      }),
+      body: requestBody,
       expectedBody: openAiTooLargeBody,
       headers: { "Content-Length": String(utf8ByteLength(body)) },
     });
     assert(bodyCancelled, "early 413 did not cancel the body stream");
+    assertEquals(metrics.pullCount, 0, "early 413 pulled body chunks");
+    assertEquals(metrics.pulledBytes, 0, "early 413 pulled body bytes");
   },
 });
 
@@ -335,9 +453,12 @@ Deno.test({
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
     let bodyCancelled = false;
-    const requestBody = createOneChunkBodyStream(body, () => {
-      bodyCancelled = true;
-    });
+    const { body: requestBody } = createTrackedOneChunkBodyStream(
+      body,
+      () => {
+        bodyCancelled = true;
+      },
+    );
     const request = createGenericRequest("/upstream/command-code/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -354,14 +475,18 @@ Deno.test({
 
 Deno.test({
   name:
-    "normalization rejects actual overflow despite an underestimated Content-Length",
+    "normalization rejects actual overflow after pulling exactly 4 MiB and cancels the rest",
   ignore: true, // requires generic /upstream/* handler implementation
   fn: async () => {
     const body = createSizedJsonBody(MAX_NORMALIZATION_BODY_BYTES + 1);
     let bodyCancelled = false;
-    const requestBody = createBoundaryOverflowBodyStream(body, () => {
-      bodyCancelled = true;
-    });
+    const { body: requestBody, metrics } =
+      createTrackedBoundaryOverflowBodyStream(
+        body,
+        () => {
+          bodyCancelled = true;
+        },
+      );
     await assertOversizedBodyRejected({
       pathname: "/upstream/command-code/v1/chat/completions",
       body: requestBody,
@@ -369,6 +494,11 @@ Deno.test({
       headers: { "Content-Length": String(MAX_NORMALIZATION_BODY_BYTES) },
     });
     assert(bodyCancelled, "counted reader did not cancel actual overflow");
+    assertEquals(
+      metrics.pulledBytes,
+      MAX_NORMALIZATION_BODY_BYTES,
+      "counted reader pulled bytes before cancellation",
+    );
   },
 });
 
