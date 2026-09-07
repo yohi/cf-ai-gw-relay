@@ -17,6 +17,7 @@ const requestHeadersToRemove = new Set([
   "trailer",
   "transfer-encoding",
   "upgrade",
+  "x-relay-authorization",
   "x-real-ip",
 ]);
 const responseHopByHopHeaders = new Set([
@@ -68,7 +69,6 @@ function mustRemoveRequestHeader(name: string): boolean {
   return (
     requestHeadersToRemove.has(name) ||
     name === relayAuthorizationHeader ||
-    name === "x-relay-authorization" ||
     name.startsWith("cf-aig-") ||
     name.startsWith("cf-") ||
     name.startsWith("x-forwarded-")
