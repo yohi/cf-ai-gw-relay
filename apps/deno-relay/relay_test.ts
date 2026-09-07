@@ -402,7 +402,7 @@ Deno.test("errors an SSE stream when the idle timer expires", async () => {
   assert(upstreamAborted, "upstream aborted");
 });
 
-Deno.test("resets the SSE idle timer per chunk", async () => {
+Deno.test("resets the SSE idle timer for mixed-case Content-Type per chunk", async () => {
   let scheduleCalls = 0;
   const clearedIds: number[] = [];
 
@@ -423,7 +423,7 @@ Deno.test("resets the SSE idle timer per chunk", async () => {
       });
       return Promise.resolve(
         new Response(body, {
-          headers: { "content-type": "text/event-stream" },
+          headers: { "content-type": "Text/Event-Stream; charset=utf-8" },
         }),
       );
     },
@@ -468,32 +468,6 @@ Deno.test("does not impose an idle timer on non-SSE responses", async () => {
 
   assertEquals(await response.text(), "upstream-body", "response body");
   assertEquals(scheduleCalls, 1, "only the header timeout was scheduled");
-});
-Deno.test("imposes an idle timer on SSE responses with mixed-case Content-Type", async () => {
-  let scheduleCalls = 0;
-
-  const handler = createRelayHandler({
-    getSecret: () => relayToken,
-    fetcher: () =>
-      Promise.resolve(
-        new Response("upstream-body", {
-          headers: { "content-type": "Text/Event-Stream; charset=utf-8" },
-        }),
-      ),
-    timer: {
-      schedule: () => ++scheduleCalls,
-      clear: () => undefined,
-    },
-  });
-
-  const response = await handler(createRequest());
-
-  assertEquals(await response.text(), "upstream-body", "response body");
-  assertEquals(
-    scheduleCalls,
-    3,
-    "header timeout + SSE idle timer + reset per body read",
-  );
 });
 
 Deno.test("detaches abort listeners after a non-SSE body completes", async () => {
