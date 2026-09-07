@@ -53,6 +53,10 @@ function notFound(): Response {
   return new Response("Not Found", { status: 404 });
 }
 
+function serviceUnavailable(): Response {
+  return new Response("Service unavailable", { status: 503 });
+}
+
 function connectionHeaderNames(headers: Headers): readonly string[] {
   const connection = headers.get("connection");
   if (connection === null) {
@@ -253,12 +257,16 @@ export function createRelayHandler(
     }
 
     const secret = dependencies.getSecret();
-    if (secret === undefined || secret.length === 0) {
-      return new Response("Service unavailable", { status: 503 });
+    if (secret === undefined || secret.trim().length === 0) {
+      return serviceUnavailable();
     }
 
     if (request.headers.get(relayAuthorizationHeader) !== `Bearer ${secret}`) {
       return Response.json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    if (request.signal.aborted) {
+      return serviceUnavailable();
     }
 
     const controller = new AbortController();
@@ -272,9 +280,11 @@ export function createRelayHandler(
       clientAbortListenerDetached = true;
       request.signal.removeEventListener("abort", abortForClientDisconnect);
     };
+
     request.signal.addEventListener("abort", abortForClientDisconnect, {
       once: true,
     });
+
     const timeoutId = timer.schedule(() => {
       timedOut = true;
       controller.abort();
@@ -299,9 +309,10 @@ export function createRelayHandler(
           controller,
           clientSignal: request.signal,
           timer,
-          idleTimeoutMs: contentType.includes(sseContentTypeMarker)
-            ? idleTimeoutMs
-            : undefined,
+          idleTimeoutMs:
+            contentType.toLowerCase().includes(sseContentTypeMarker)
+              ? idleTimeoutMs
+              : undefined,
           onFinished: detachClientAbortListener,
         });
 
