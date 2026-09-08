@@ -1,0 +1,7 @@
+.omo
+.justice
+.worktrees/
+admin.env
+.env
+packages/opencode-plugin/node_modules/
+packages/opencode-plugin/dist/

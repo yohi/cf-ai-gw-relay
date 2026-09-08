@@ -33,7 +33,7 @@ OpenCode built-in ChatGPT OAuth
 | Gateway ID | `CLOUDFLARE_GATEWAY_ID`（必須） | 環境変数のみ |
 | Gateway token | `CLOUDFLARE_API_TOKEN` → `CF_AIG_TOKEN` → プラグイン `apiKey` | ChatGPT Custom Provider 経路では Gateway 内で停止。upstream には到達しません（この保証はビルトイン `cloudflare-ai-gateway` provider の Workers AI 経路には適用されません。同経路は設計上 Cloudflare token を upstream へ転送する場合があります） |
 | Relay token | `CLOUDFLARE_CHATGPT_RELAY_TOKEN` → プラグイン `relayToken` | relay でのみ検証され、ChatGPT には到達しません |
-| Provider slug | `CLOUDFLARE_CHATGPT_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `chatgpt-codex-deno` | Gateway URL のみで使用 |
+| Provider slug | `CLOUDFLARE_CHATGPT_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `relay-chatgpt` | Gateway URL のみで使用 |
 | Log payload 収集 | `CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD`（`true` / `false` のみ） → プラグイン `collectLogPayload`（boolean） → 既定 `true` | `false` はそのまま出力。不正値は一致リクエストの設定エラー |
 | Gateway base URL | 本番 `https://gateway.ai.cloudflare.com`。`CLOUDFLARE_AIG_BASE_URL` は `CLOUDFLARE_AIG_TEST_MODE=true` かつ許可 origin `https://gateway.test.invalid` の場合のみ上書き可 | 上記条件を満たさない場合は一致リクエストの設定エラー |
 
@@ -248,6 +248,44 @@ npm ci --legacy-peer-deps                 # plugin 依存
 npm run typecheck && npm test && npm run build # plugin 型検査・テスト・ビルド
 ```
 
+## GitHub Actions によるインフラ構築
+
+`.github/workflows/provision.yml` は、`master` への relay 関連変更時、または
+GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gateway を
+作成・更新します。リソースが存在する場合は再利用し、削除は行いません。
+
+`production` environment の Variables に次のリソース識別子を登録します。
+
+- Variable `DENO_DEPLOY_APP`: `cf-ai-gw-relay`
+- Variable `CLOUDFLARE_GATEWAY_ID`: `relay-gateway`
+- Variable `CLOUDFLARE_PROVIDER_SLUG`: `relay-chatgpt`
+
+`workflow_dispatch` の入力は任意の上書き値です。未入力の場合は上記 Variables を
+使用します。Variables が未設定の場合、workflow は provisioning 前の検証で停止します。
+
+### GitHub 設定
+
+`production` environment または repository に次の値を登録してください。
+
+- Secret `DENO_DEPLOY_TOKEN`: 対象 organization にスコープした Deno Deploy API token
+- Secret `RELAY_SECRET`: relay と Plugin の両方で使用する共有 bearer secret
+- Secret `CLOUDFLARE_API_TOKEN`: `AI Gateway - Read` と `AI Gateway - Edit` を持つ token
+- Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
+
+Custom Provider は Cloudflare AI Gateway に登録する接続先定義です。ここでは
+`relay-chatgpt` という provider slug と Deno Deploy の production origin を紐付けます。
+Plugin は Gateway URL の `/custom-relay-chatgpt/v1/responses` を使用するため、Gateway
+はそのリクエストを relay へ転送します。Custom Provider は別の実行サービスではなく、
+Gateway 内の設定レコードです。
+
+`RELAY_SECRET` の実値は workflow の出力に表示されません。workflow は Deno Deploy
+v2 API で app secret を更新してから本番 deploy を作成し、Deno Deploy が返した
+production origin を Custom Provider の `base_url` に反映します。Gateway の設定は
+認証・ログ収集を有効化し、cache と rate limiting を無効化します。
+
+GitHub environment protection rules を `production` に設定すると、`master` push
+による provisioning 前に承認を要求できます。
+
 ## 自動リリース
 
 `master` への push で release workflow が起動します。release-please は、
@@ -293,7 +331,6 @@ PAT (classic) を準備してください。
 - OAuth、token refresh、account extraction、model catalog、model rewriting、retry、cache、quota parsing、SSE reconstruction
 - ChatGPT への direct fallback や、プリセット外の provider へ任意の URL を転送する generic proxy 動作
 - `octg` 統合や変更
-- Custom Provider または Deno Deploy provisioning の自動化
 - ChatGPT OAuth traffic に対する OpenCode ビルトイン Cloudflare AI Gateway ネイティブ passthrough の使用
 - ネイティブ custom Codex endpoint 統合（OpenCode が正式に対応する場合に fetch interposer を置き換える可能性がある）
 

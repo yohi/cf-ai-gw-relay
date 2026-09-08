@@ -47,7 +47,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │ Cloudflare AI Gateway (可観測性・統一ログ・キャッシュ)           │
 │ - custom-command-code (base_url: https://<relay>/upstream/command-code)
-│ - chatgpt-codex-deno  (base_url: https://<relay>/v1/responses) │
+│ - relay-chatgpt (base_url: https://<relay>/v1/responses) │
 │ - custom-xxx          (base_url: https://<relay>/upstream/xxx) │
 └──────────────────────────────┬──────────────────────────────┘
                                │

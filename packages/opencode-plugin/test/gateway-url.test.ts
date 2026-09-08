@@ -8,7 +8,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     gatewayId: "gw",
     gatewayToken: "token",
     relayToken: "relay",
-    providerSlug: "chatgpt-codex-deno",
+    providerSlug: "relay-chatgpt",
     collectLogPayload: true,
     gatewayBaseUrl: "https://gateway.ai.cloudflare.com",
     ...overrides,
@@ -18,7 +18,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
 describe("buildGatewayUrl", () => {
   it("maps to the Custom Provider path including /v1/responses", () => {
     expect(buildGatewayUrl(config())).toBe(
-      "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-chatgpt-codex-deno/v1/responses",
+      "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-relay-chatgpt/v1/responses",
     );
   });
 
@@ -28,7 +28,7 @@ describe("buildGatewayUrl", () => {
         config({ gatewayBaseUrl: "https://gateway.test.invalid" }),
       ),
     ).toBe(
-      "https://gateway.test.invalid/v1/acct/gw/custom-chatgpt-codex-deno/v1/responses",
+      "https://gateway.test.invalid/v1/acct/gw/custom-relay-chatgpt/v1/responses",
     );
   });
 

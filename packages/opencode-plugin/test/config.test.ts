@@ -104,10 +104,10 @@ describe("relay token resolution", () => {
 });
 
 describe("provider slug resolution", () => {
-  it("defaults to chatgpt-codex-deno", () => {
+  it("defaults to relay-chatgpt", () => {
     const config = resolveConfig(baseEnv, { apiKey: "gw", relayToken: "relay" });
     expect(config.providerSlug).toBe(DEFAULT_PROVIDER_SLUG);
-    expect(DEFAULT_PROVIDER_SLUG).toBe("chatgpt-codex-deno");
+    expect(DEFAULT_PROVIDER_SLUG).toBe("relay-chatgpt");
   });
 
   it("prefers the environment variable, then the plugin setting", () => {
