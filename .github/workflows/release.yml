@@ -19,6 +19,7 @@ jobs:
   release-please:
     runs-on: ubuntu-slim
     timeout-minutes: 15
+    environment: production
     steps:
       - name: Create release PR or GitHub release
         id: release
@@ -50,15 +51,20 @@ jobs:
       - name: Install plugin dependencies
         if: ${{ steps.release.outputs.releases_created == 'true' }}
         working-directory: packages/opencode-plugin
-        run: npm ci --legacy-peer-deps --ignore-scripts
+        run: npm ci --ignore-scripts
 
-      - name: Verify plugin package
+      - name: Verify plugin package and host compatibility contract
         if: ${{ steps.release.outputs.releases_created == 'true' }}
         working-directory: packages/opencode-plugin
         run: |
+          npm pkg get engines.opencode | grep -Fq '>=1.18.20 <2' || (echo 'engines.opencode must declare the supported range' && exit 1)
+          test "$(npm pkg get peerDependencies.opencode)" = "{}" || (echo 'peerDependencies.opencode must not be declared' && exit 1)
+          test "${OPENCODE_PLUGIN_RELEASE_READY:-}" = "true" || (echo 'Set OPENCODE_PLUGIN_RELEASE_READY=true only after verifying the host capability and fail-closed block behavior' && exit 1)
           npm run typecheck
           npm test
           npm run build
+        env:
+          OPENCODE_PLUGIN_RELEASE_READY: ${{ secrets.OPENCODE_PLUGIN_RELEASE_READY }}
 
       - name: Publish plugin package to GitHub Packages
         if: ${{ steps.release.outputs.releases_created == 'true' }}

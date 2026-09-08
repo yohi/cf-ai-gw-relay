@@ -6,6 +6,7 @@ export {
 export {
   assertSupportedHost,
   resolveHostVersionCapability,
+  resolveHostVersionCapabilityAsync,
   SUPPORTED_OPENCODE_RANGE,
 } from "./host-version.js";
 export {
