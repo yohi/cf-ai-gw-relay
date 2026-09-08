@@ -18,6 +18,6 @@ describe("package metadata consistency", () => {
     expect(pkg.peerDependencies["@opencode-ai/plugin"]).toBe(">=1.18.20");
     expect(pkg.peerDependencies.opencode).toBeUndefined();
     expect(pkg.engines.opencode).toBe(SUPPORTED_OPENCODE_RANGE);
-    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.19.0 <2");
+    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.18.20 <2");
   });
 });

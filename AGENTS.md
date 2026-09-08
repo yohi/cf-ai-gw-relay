@@ -59,7 +59,7 @@ deno lint
 
 # Plugin
 cd packages/opencode-plugin
-npm ci --legacy-peer-deps
+npm ci
 npm run typecheck
 npm test
 npm run build

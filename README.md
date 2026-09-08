@@ -227,8 +227,8 @@ workflowはskipせず失敗します。
 
 ## サポート対象バージョンとフェイルクローズ
 
-- サポート範囲は `packages/opencode-plugin/package.json` の `engines.opencode`（現行 `>=1.19.0 <2`）を正とします。公開リリースのドキュメントも同じ範囲を明記します。
-- プラグインは公式 server plugin API の `input.client.global.health()` からホストバージョンを取得し、応答のバージョンが取得できない場合やヘルスチェックが失敗した場合は activate を拒否します。
+- サポート範囲は `packages/opencode-plugin/package.json` の `engines.opencode`（現行 `>=1.18.20 <2`）を正とします。公開リリースのドキュメントも同じ範囲を明記します。
+- プラグインは公式 server plugin API の `input.serverUrl` にある `/global/health` endpoint からホストバージョンを取得し、応答のバージョンが取得できない場合やヘルスチェックが失敗した場合は activate を拒否します。
 - OpenCode がホストバージョン能力を公開していない場合、プラグインは activate を拒否し、interposer を導入しません。該当 Codex リクエストはフェイルクローズし、直接 ChatGPT へ迂回することはありません。
 - activate の拒否は設定エラーであり、ChatGPT へ直接送信する許可ではありません。拒否だけでは interposer 未導入時の一致 Codex リクエストを防げないため、この保証には activate 拒否時に一致する Codex traffic をホスト側が block する能力が必要です。
 - 必須設定がない場合も、対象 endpoint のリクエストだけがエラーになり、直接 ChatGPT へ迂回することはありません。
@@ -301,9 +301,10 @@ release PR を作成または更新します。`apps/deno-relay` のみの変更
 作成されません。release PR のマージ後に GitHub Release 作成と GitHub
 Packages への公開を行い、公開には workflow 権限の `GITHUB_TOKEN` を使用します。
 
-plugin の初回 `0.1.0` 公開は、下記チェックリストの手順に従います。GitHub
-Packages の npm registry を利用する場合は、次の手順で利用者用の GitHub
-PAT (classic) を準備してください。
+plugin の公開は、ホスト能力の検証済みを示す
+`OPENCODE_PLUGIN_RELEASE_READY=true` が設定されるまで workflow の readiness
+gate で停止します。GitHub Packages の npm registry を利用する場合は、次の
+手順で利用者用の GitHub PAT (classic) を準備してください。
 
 1. GitHub の **Settings > Developer settings > Personal access tokens >
    Tokens (classic)** から PAT (classic) を作成し、パッケージのインストールには
@@ -323,7 +324,7 @@ PAT (classic) を準備してください。
 
 ## リリースチェックリスト（GitHub Packages）
 
-1. [ ] OpenCode の server plugin `input.client.global.health()` がホストバージョンを返すリリースが出ていること。さらに activate 拒否時にホスト側が一致する Codex リクエストを block できること（拒否だけでは direct request を防げない）。
+1. [ ] OpenCode の server plugin `input.serverUrl` から `/global/health` を取得できるリリースが出ていること。さらに activate 拒否時にホスト側が一致する Codex リクエストを block できること（拒否だけでは direct request を防げない）。
 2. [ ] `SUPPORTED_OPENCODE_RANGE` と `engines.opencode` を実際の能力提供バージョンに更新し、`test/package-consistency.test.ts` を通すこと。
 3. [ ] 保護付き acceptance suite（実 Cloudflare / Deno Deploy / ChatGPT OAuth / Command Code 認証情報）を `protected-acceptance` 環境で実行し、legacy の 200 SSE、tool call、reasoning、token refresh、代表エラー、両ログペイロードモードを確認すること。さらに、将来の汎用 `/upstream/*` relay 実装時には、固定の safe root `anyOf` fixture を使った generic `command-code` の OpenAI/Anthropic/models path、provider-compatible error envelope、header injection、Gateway log 作成、パスマッピング、`MAX_NORMALIZATION_BODY_BYTES` の上限超過契約も実装テストで確認し、必須値が未設定の場合は skip せず fail させること。
 4. [ ] README のサポート範囲表記を更新すること。

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertSupportedHost,
   resolveHostVersionCapability,
@@ -6,6 +6,12 @@ import {
   SUPPORTED_OPENCODE_RANGE,
 } from "../src/host-version.js";
 import { UnsupportedOpenCodeVersionError } from "../src/errors.js";
+
+const SERVER_URL = new URL("https://opencode.test");
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("resolveHostVersionCapability", () => {
   it("reads input.opencode.version", () => {
@@ -37,7 +43,7 @@ describe("resolveHostVersionCapability", () => {
     const input = {
       client: {
         global: {
-          health: async () => ({ data: { version: "1.19.0" } }),
+          health: async () => ({ data: { healthy: true, version: "1.19.0" } }),
         },
       },
     };
@@ -46,6 +52,32 @@ describe("resolveHostVersionCapability", () => {
       available: true,
       version: "1.19.0",
     });
+  });
+
+  it("reads the host version from the official server health endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ healthy: true, version: "1.18.29" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    await expect(
+      resolveHostVersionCapabilityAsync({ serverUrl: SERVER_URL }),
+    ).resolves.toEqual({
+      available: true,
+      version: "1.18.29",
+    });
+  });
+
+  it("does not use legacy version fields without the official health capability", async () => {
+    await expect(
+      resolveHostVersionCapabilityAsync({
+        opencode: { version: "1.18.29" },
+      }),
+    ).resolves.toEqual({ available: false });
   });
 
   it("reports absent when no candidate holds a valid semver string", () => {
@@ -62,7 +94,7 @@ describe("resolveHostVersionCapability", () => {
     const input = {
       client: {
         global: {
-          health: async () => ({ data: { version: "not-semver" } }),
+          health: async () => ({ data: { healthy: true, version: "not-semver" } }),
         },
       },
     };
@@ -91,7 +123,7 @@ describe("assertSupportedHost", () => {
 
   it("accepts boundary versions of the range", () => {
     expect(() =>
-      assertSupportedHost({ available: true, version: "1.19.0" }),
+      assertSupportedHost({ available: true, version: "1.18.20" }),
     ).not.toThrow();
     expect(() =>
       assertSupportedHost({ available: true, version: "1.99.9" }),
@@ -99,6 +131,6 @@ describe("assertSupportedHost", () => {
   });
 
   it("keeps the range constant in sync with the documented value", () => {
-    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.19.0 <2");
+    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.18.20 <2");
   });
 });

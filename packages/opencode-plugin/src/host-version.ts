@@ -1,7 +1,7 @@
 import { satisfies, valid } from "semver";
 import { UnsupportedOpenCodeVersionError } from "./errors.js";
 
-export const SUPPORTED_OPENCODE_RANGE = ">=1.19.0 <2";
+export const SUPPORTED_OPENCODE_RANGE = ">=1.18.20 <2";
 
 export type HostVersionCapability =
   | { readonly available: true; readonly version: string }
@@ -37,16 +37,32 @@ function isHealthClient(value: unknown): value is HealthClient {
   return typeof value.global.health === "function";
 }
 
+function healthVersion(response: unknown): string | undefined {
+  const data =
+    isRecord(response) && isRecord(response.data) ? response.data : response;
+  if (!isRecord(data) || data.healthy !== true) {
+    return undefined;
+  }
+  return firstValidSemver([data.version]);
+}
+
 function resolveHealthVersion(client: HealthClient): Promise<string | undefined> {
   return Promise.resolve()
     .then(() => client.global.health())
-    .then(
-      (response) => {
-        const data = isRecord(response) ? response.data : undefined;
-        return firstValidSemver([isRecord(data) ? data.version : undefined]);
-      },
-      () => undefined,
-    );
+    .then((response) => healthVersion(response))
+    .then((version) => version, () => undefined);
+}
+
+function resolveServerHealthVersion(serverUrl: URL): Promise<string | undefined> {
+  return Promise.resolve()
+    .then(() => fetch(new URL("/global/health", serverUrl)))
+    .then(async (response) => {
+      if (!response.ok) {
+        return undefined;
+      }
+      return healthVersion(await response.json());
+    })
+    .then((version) => version, () => undefined);
 }
 
 export function resolveHostVersionCapability(
@@ -77,7 +93,14 @@ export function resolveHostVersionCapabilityAsync(
         : { available: true, version },
     );
   }
-  return Promise.resolve(resolveHostVersionCapability(input));
+  if (source.serverUrl instanceof URL) {
+    return resolveServerHealthVersion(source.serverUrl).then((version) =>
+      version === undefined
+        ? { available: false }
+        : { available: true, version },
+    );
+  }
+  return Promise.resolve({ available: false });
 }
 
 export function assertSupportedHost(capability: HostVersionCapability): void {
