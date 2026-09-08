@@ -13,10 +13,14 @@ describe("package metadata consistency", () => {
         "@opencode-ai/plugin": string;
         opencode?: string;
       };
+      devDependencies: {
+        "@opencode-ai/plugin": string;
+      };
       engines: { opencode: string };
     };
     expect(pkg.peerDependencies["@opencode-ai/plugin"]).toBe(">=1.18.20");
     expect(pkg.peerDependencies.opencode).toBeUndefined();
+    expect(pkg.devDependencies["@opencode-ai/plugin"]).toBe("^1.18.29");
     expect(pkg.engines.opencode).toBe(SUPPORTED_OPENCODE_RANGE);
     expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.18.20 <2");
   });
