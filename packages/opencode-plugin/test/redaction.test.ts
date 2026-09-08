@@ -16,9 +16,9 @@ describe("diagnostics redaction", () => {
     try {
       resolveConfig(
         {
-          CLOUDFLARE_ACCOUNT_ID: "acct",
-          CLOUDFLARE_GATEWAY_ID: "gw",
-          CLOUDFLARE_API_TOKEN: sentinelGateway,
+          RELAY_CF_ACCOUNT_ID: "acct",
+          RELAY_CF_GATEWAY_ID: "gw",
+          RELAY_CF_AIG_TOKEN: sentinelGateway,
         },
         {},
       );
@@ -31,9 +31,9 @@ describe("diagnostics redaction", () => {
     try {
       resolveConfig(
         {
-          CLOUDFLARE_ACCOUNT_ID: "acct",
-          CLOUDFLARE_GATEWAY_ID: "gw",
-          CLOUDFLARE_CHATGPT_RELAY_TOKEN: sentinelRelay,
+          RELAY_CF_ACCOUNT_ID: "acct",
+          RELAY_CF_GATEWAY_ID: "gw",
+          RELAY_SECRET: sentinelRelay,
         },
         {},
       );
@@ -48,11 +48,11 @@ describe("diagnostics redaction", () => {
     try {
       resolveConfig(
         {
-          CLOUDFLARE_ACCOUNT_ID: "acct",
-          CLOUDFLARE_GATEWAY_ID: "gw",
-          CLOUDFLARE_API_TOKEN: sentinelGateway,
-          CLOUDFLARE_CHATGPT_RELAY_TOKEN: sentinelRelay,
-          CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD: "yes",
+          RELAY_CF_ACCOUNT_ID: "acct",
+          RELAY_CF_GATEWAY_ID: "gw",
+          RELAY_CF_AIG_TOKEN: sentinelGateway,
+          RELAY_SECRET: sentinelRelay,
+          RELAY_CF_AIG_COLLECT_LOG_PAYLOAD: "yes",
         },
         {},
       );

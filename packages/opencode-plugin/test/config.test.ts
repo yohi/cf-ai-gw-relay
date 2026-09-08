@@ -7,52 +7,40 @@ import {
 import { PluginConfigurationError } from "../src/errors.js";
 
 const baseEnv = {
-  CLOUDFLARE_ACCOUNT_ID: "acct",
-  CLOUDFLARE_GATEWAY_ID: "gw",
+  RELAY_CF_ACCOUNT_ID: "acct",
+  RELAY_CF_GATEWAY_ID: "gw",
 };
 
 describe("required identifiers", () => {
-  it("throws when CLOUDFLARE_ACCOUNT_ID is missing", () => {
+  it("throws when RELAY_CF_ACCOUNT_ID is missing", () => {
     expect(() =>
-      resolveConfig({ CLOUDFLARE_GATEWAY_ID: "gw" }),
+      resolveConfig({ RELAY_CF_GATEWAY_ID: "gw" }),
     ).toThrow(PluginConfigurationError);
   });
 
-  it("throws when CLOUDFLARE_GATEWAY_ID is missing", () => {
+  it("throws when RELAY_CF_GATEWAY_ID is missing", () => {
     expect(() =>
-      resolveConfig({ CLOUDFLARE_ACCOUNT_ID: "acct" }),
+      resolveConfig({ RELAY_CF_ACCOUNT_ID: "acct" }),
     ).toThrow(PluginConfigurationError);
   });
 
   it("treats empty-string env values as unset", () => {
     expect(() =>
-      resolveConfig({ ...baseEnv, CLOUDFLARE_ACCOUNT_ID: "" }),
+      resolveConfig({ ...baseEnv, RELAY_CF_ACCOUNT_ID: "" }),
     ).toThrow(PluginConfigurationError);
   });
 });
 
 describe("gateway token resolution", () => {
-  it("prefers CLOUDFLARE_API_TOKEN over CF_AIG_TOKEN and apiKey", () => {
+  it("prefers RELAY_CF_AIG_TOKEN over apiKey", () => {
     const config = resolveConfig(
       {
         ...baseEnv,
-        CLOUDFLARE_API_TOKEN: "from-api-token-env",
-        CF_AIG_TOKEN: "from-cf-aig-env",
+        RELAY_CF_AIG_TOKEN: "from-env",
       },
       { apiKey: "from-option", relayToken: "relay" },
     );
-    expect(config.gatewayToken).toBe("from-api-token-env");
-  });
-
-  it("falls back to CF_AIG_TOKEN", () => {
-    const config = resolveConfig(
-      {
-        ...baseEnv,
-        CF_AIG_TOKEN: "from-cf-aig-env",
-      },
-      { apiKey: "from-option", relayToken: "relay" },
-    );
-    expect(config.gatewayToken).toBe("from-cf-aig-env");
+    expect(config.gatewayToken).toBe("from-env");
   });
 
   it("falls back to the apiKey plugin setting", () => {
@@ -61,6 +49,19 @@ describe("gateway token resolution", () => {
       relayToken: "relay",
     });
     expect(config.gatewayToken).toBe("from-option");
+  });
+
+  it("does not use legacy gateway token environment variables", () => {
+    expect(() =>
+      resolveConfig(
+        {
+          ...baseEnv,
+          CLOUDFLARE_API_TOKEN: "legacy-api-token",
+          CF_AIG_TOKEN: "legacy-cf-aig-token",
+        },
+        { relayToken: "relay" },
+      ),
+    ).toThrow(PluginConfigurationError);
   });
 
   it("throws when no gateway token source exists", () => {
@@ -77,7 +78,7 @@ describe("gateway token resolution", () => {
 });
 
 describe("relay token resolution", () => {
-  it("prefers the environment variable over the plugin setting", () => {
+  it("uses the plugin setting when RELAY_SECRET is unset", () => {
     const config = resolveConfig(baseEnv, {
       relayToken: "from-option",
       apiKey: "gw-token",
@@ -85,11 +86,11 @@ describe("relay token resolution", () => {
     expect(config.relayToken).toBe("from-option");
   });
 
-  it("uses CLOUDFLARE_CHATGPT_RELAY_TOKEN first", () => {
+  it("uses RELAY_SECRET first", () => {
     const config = resolveConfig(
       {
         ...baseEnv,
-        CLOUDFLARE_CHATGPT_RELAY_TOKEN: "from-env",
+        RELAY_SECRET: "from-env",
       },
       { relayToken: "from-option", apiKey: "gw-token" },
     );
@@ -121,7 +122,7 @@ describe("provider slug resolution", () => {
     const fromEnv = resolveConfig(
       {
         ...baseEnv,
-        CLOUDFLARE_CHATGPT_PROVIDER_SLUG: "env-slug",
+        RELAY_CF_PROVIDER_SLUG: "env-slug",
       },
       { providerSlug: "custom-slug", apiKey: "gw", relayToken: "relay" },
     );
@@ -141,16 +142,16 @@ describe("collectLogPayload resolution", () => {
 
   it("accepts exact lowercase true and false from the environment", () => {
     expect(
-      full({ CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD: "true" }).collectLogPayload,
+      full({ RELAY_CF_AIG_COLLECT_LOG_PAYLOAD: "true" }).collectLogPayload,
     ).toBe(true);
     expect(
-      full({ CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD: "false" }).collectLogPayload,
+      full({ RELAY_CF_AIG_COLLECT_LOG_PAYLOAD: "false" }).collectLogPayload,
     ).toBe(false);
   });
 
   it("rejects invalid environment values without echoing them", () => {
     try {
-      full({ CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD: "TRUE" });
+      full({ RELAY_CF_AIG_COLLECT_LOG_PAYLOAD: "TRUE" });
       throw new Error("expected PluginConfigurationError");
     } catch (error) {
       expect(error).toBeInstanceOf(PluginConfigurationError);
@@ -201,32 +202,32 @@ describe("gateway base URL resolution", () => {
 
   it("accepts the override only in allowlisted test mode", () => {
     const config = full({
-      CLOUDFLARE_AIG_TEST_MODE: "true",
-      CLOUDFLARE_AIG_BASE_URL: "https://gateway.test.invalid",
+      RELAY_CF_AIG_TEST_MODE: "true",
+      RELAY_CF_AIG_BASE_URL: "https://gateway.test.invalid",
     });
     expect(config.gatewayBaseUrl).toBe("https://gateway.test.invalid");
   });
 
   it("rejects overrides outside test mode or off the allowlist", () => {
     expect(() =>
-      full({ CLOUDFLARE_AIG_BASE_URL: "https://gateway.test.invalid" }),
+      full({ RELAY_CF_AIG_BASE_URL: "https://gateway.test.invalid" }),
     ).toThrow(PluginConfigurationError);
     expect(() =>
       full({
-        CLOUDFLARE_AIG_TEST_MODE: "true",
-        CLOUDFLARE_AIG_BASE_URL: "https://evil.example",
+        RELAY_CF_AIG_TEST_MODE: "true",
+        RELAY_CF_AIG_BASE_URL: "https://evil.example",
       }),
     ).toThrow(PluginConfigurationError);
     expect(() =>
       full({
-        CLOUDFLARE_AIG_TEST_MODE: "true",
-        CLOUDFLARE_AIG_BASE_URL: "http://gateway.test.invalid",
+        RELAY_CF_AIG_TEST_MODE: "true",
+        RELAY_CF_AIG_BASE_URL: "http://gateway.test.invalid",
       }),
     ).toThrow(PluginConfigurationError);
     expect(() =>
       full({
-        CLOUDFLARE_AIG_TEST_MODE: "true",
-        CLOUDFLARE_AIG_BASE_URL: "not-a-url",
+        RELAY_CF_AIG_TEST_MODE: "true",
+        RELAY_CF_AIG_BASE_URL: "not-a-url",
       }),
     ).toThrow(PluginConfigurationError);
   });
