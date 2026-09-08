@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertSupportedHost,
+  OPENCODE_SERVER_HEALTH_PATHNAME,
   resolveHostVersionCapability,
   resolveHostVersionCapabilityAsync,
   SUPPORTED_OPENCODE_RANGE,
@@ -55,6 +56,7 @@ describe("resolveHostVersionCapability", () => {
       available: true,
       version: "1.18.29",
     });
+    expect(OPENCODE_SERVER_HEALTH_PATHNAME).toBe("/global/health");
   });
 
   it("rejects a non-HTTP server URL before fetching", async () => {
