@@ -52,7 +52,7 @@ function resolveCollectLogPayload(
   env: EnvSource,
   options: PluginOptions,
 ): boolean {
-  const raw = envValue(env, "CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD");
+  const raw = envValue(env, "RELAY_CF_AIG_COLLECT_LOG_PAYLOAD");
   if (raw !== undefined) {
     if (raw === "true") {
       return true;
@@ -61,7 +61,7 @@ function resolveCollectLogPayload(
       return false;
     }
     throw new PluginConfigurationError(
-      "cloudflare-ai-gateway-chatgpt: CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD" +
+      "cloudflare-ai-gateway-chatgpt: RELAY_CF_AIG_COLLECT_LOG_PAYLOAD" +
         ' must be exactly "true" or "false".',
     );
   }
@@ -78,7 +78,7 @@ function resolveCollectLogPayload(
 }
 
 function resolveGatewayBaseUrl(env: EnvSource): string {
-  const override = envValue(env, "CLOUDFLARE_AIG_BASE_URL");
+  const override = envValue(env, "RELAY_CF_AIG_BASE_URL");
   if (override === undefined) {
     return PRODUCTION_GATEWAY_BASE_URL;
   }
@@ -87,16 +87,16 @@ function resolveGatewayBaseUrl(env: EnvSource): string {
     parsed = new URL(override);
   } catch {
     throw new PluginConfigurationError(
-      "cloudflare-ai-gateway-chatgpt: CLOUDFLARE_AIG_BASE_URL is not a valid URL.",
+      "cloudflare-ai-gateway-chatgpt: RELAY_CF_AIG_BASE_URL is not a valid URL.",
     );
   }
-  const testMode = envValue(env, "CLOUDFLARE_AIG_TEST_MODE") === "true";
+  const testMode = envValue(env, "RELAY_CF_AIG_TEST_MODE") === "true";
   if (testMode && parsed.origin === TEST_GATEWAY_BASE_ORIGIN) {
     return parsed.origin;
   }
   throw new PluginConfigurationError(
-    "cloudflare-ai-gateway-chatgpt: CLOUDFLARE_AIG_BASE_URL override" +
-      " requires CLOUDFLARE_AIG_TEST_MODE=true and the allowlisted test" +
+    "cloudflare-ai-gateway-chatgpt: RELAY_CF_AIG_BASE_URL override" +
+      " requires RELAY_CF_AIG_TEST_MODE=true and the allowlisted test" +
       " origin.",
   );
 }
@@ -105,7 +105,7 @@ function resolveProviderSlug(
   env: EnvSource,
   options: PluginOptions,
 ): string {
-  const fromEnv = envValue(env, "CLOUDFLARE_CHATGPT_PROVIDER_SLUG");
+  const fromEnv = envValue(env, "RELAY_CF_PROVIDER_SLUG");
   if (fromEnv !== undefined) {
     return fromEnv;
   }
@@ -128,16 +128,15 @@ export function resolveConfig(
   options: PluginOptions = {},
 ): ResolvedConfig {
   const gatewayToken =
-    envValue(env, "CLOUDFLARE_API_TOKEN") ??
-    envValue(env, "CF_AIG_TOKEN") ??
+    envValue(env, "RELAY_CF_AIG_TOKEN") ??
     requireSecret(options.apiKey, "Gateway token (plugin setting apiKey)");
   const relayToken =
-    envValue(env, "CLOUDFLARE_CHATGPT_RELAY_TOKEN") ??
+    envValue(env, "RELAY_SECRET") ??
     requireSecret(options.relayToken, "Relay token (plugin setting relayToken)");
 
   return {
-    accountId: requireEnv(env, "CLOUDFLARE_ACCOUNT_ID"),
-    gatewayId: requireEnv(env, "CLOUDFLARE_GATEWAY_ID"),
+    accountId: requireEnv(env, "RELAY_CF_ACCOUNT_ID"),
+    gatewayId: requireEnv(env, "RELAY_CF_GATEWAY_ID"),
     gatewayToken,
     relayToken,
     providerSlug: resolveProviderSlug(env, options),

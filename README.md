@@ -29,13 +29,16 @@ OpenCode built-in ChatGPT OAuth
 
 | 設定項目 | 解決順序 | 備考 |
 | -------- | -------- | ---- |
-| Account ID | `CLOUDFLARE_ACCOUNT_ID`（必須） | 環境変数のみ |
-| Gateway ID | `CLOUDFLARE_GATEWAY_ID`（必須） | 環境変数のみ |
-| Gateway token | `CLOUDFLARE_API_TOKEN` → `CF_AIG_TOKEN` → プラグイン `apiKey` | ChatGPT Custom Provider 経路では Gateway 内で停止。upstream には到達しません（この保証はビルトイン `cloudflare-ai-gateway` provider の Workers AI 経路には適用されません。同経路は設計上 Cloudflare token を upstream へ転送する場合があります） |
-| Relay token | `CLOUDFLARE_CHATGPT_RELAY_TOKEN` → プラグイン `relayToken` | relay でのみ検証され、ChatGPT には到達しません |
-| Provider slug | `CLOUDFLARE_CHATGPT_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `relay-chatgpt` | Gateway URL のみで使用 |
-| Log payload 収集 | `CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD`（`true` / `false` のみ） → プラグイン `collectLogPayload`（boolean） → 既定 `true` | `false` はそのまま出力。不正値は一致リクエストの設定エラー |
-| Gateway base URL | 本番 `https://gateway.ai.cloudflare.com`。`CLOUDFLARE_AIG_BASE_URL` は `CLOUDFLARE_AIG_TEST_MODE=true` かつ許可 origin `https://gateway.test.invalid` の場合のみ上書き可 | 上記条件を満たさない場合は一致リクエストの設定エラー |
+| Account ID | `RELAY_CF_ACCOUNT_ID`（必須） | OpenCode runtime の環境変数のみ |
+| Gateway ID | `RELAY_CF_GATEWAY_ID`（必須） | OpenCode runtime の環境変数のみ |
+| Gateway token | `RELAY_CF_AIG_TOKEN` → プラグイン `apiKey` | ChatGPT Custom Provider 経路では Gateway 内で停止。upstream には到達しません（この保証はビルトイン `cloudflare-ai-gateway` provider の Workers AI 経路には適用されません。同経路は設計上 Cloudflare token を upstream へ転送する場合があります） |
+| Relay token | `RELAY_SECRET` → プラグイン `relayToken` | relay でのみ検証され、ChatGPT には到達しません |
+| Provider slug | `RELAY_CF_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `relay-chatgpt` | Gateway URL のみで使用 |
+| Log payload 収集 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD`（`true` / `false` のみ） → プラグイン `collectLogPayload`（boolean） → 既定 `true` | `false` はそのまま出力。不正値は一致リクエストの設定エラー |
+| Gateway base URL | 本番 `https://gateway.ai.cloudflare.com`。`RELAY_CF_AIG_BASE_URL` は `RELAY_CF_AIG_TEST_MODE=true` かつ許可 origin `https://gateway.test.invalid` の場合のみ上書き可 | 上記条件を満たさない場合は一致リクエストの設定エラー |
+
+上記の `RELAY_*` は OpenCode plugin の runtime 設定です。GitHub Actions による
+provisioning の `CLOUDFLARE_*` 変数・secret は別用途のため変更しません。
 
 プラグイン設定は `opencode.json` の `plugin` 配列でオブジェクト形式（`["パッケージ名", { オプション }]`）で渡します。
 
