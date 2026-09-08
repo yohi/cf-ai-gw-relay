@@ -52,10 +52,11 @@ jobs:
         working-directory: packages/opencode-plugin
         run: npm ci --legacy-peer-deps --ignore-scripts
 
-      - name: Verify plugin package
+      - name: Verify plugin package and host compatibility contract
         if: ${{ steps.release.outputs.releases_created == 'true' }}
         working-directory: packages/opencode-plugin
         run: |
+          npm pkg get engines.opencode | grep -q -- '>=' || (echo 'engines.opencode must be set' && exit 1)
           npm run typecheck
           npm test
           npm run build

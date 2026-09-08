@@ -28,7 +28,7 @@
   "dependencies": {
     "semver": "^7.7.1"
   },
-  "peerDependencies": {
+  "engines": {
     "opencode": ">=1.19.0 <2"
   },
   "devDependencies": {

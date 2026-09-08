@@ -227,7 +227,7 @@ workflowはskipせず失敗します。
 
 ## サポート対象バージョンとフェイルクローズ
 
-- サポート範囲は `packages/opencode-plugin/package.json` の `peerDependencies.opencode`（現行 `>=1.19.0 <2`）を正とします。公開リリースのドキュメントも同じ範囲を明記します。
+- サポート範囲は `packages/opencode-plugin/package.json` の `engines.opencode`（現行 `>=1.19.0 <2`）を正とします。公開リリースのドキュメントも同じ範囲を明記します。
 - OpenCode がホストバージョン能力を公開していない場合、プラグインは activate を拒否し、interposer を導入しません。該当 Codex リクエストはフェイルクローズし、直接 ChatGPT へ迂回することはありません。
 - activate の拒否は設定エラーであり、ChatGPT へ直接送信する許可ではありません。拒否だけでは interposer 未導入時の一致 Codex リクエストを防げないため、この保証には activate 拒否時に一致する Codex traffic をホスト側が block する能力が必要です。
 - 必須設定がない場合も、対象 endpoint のリクエストだけがエラーになり、直接 ChatGPT へ迂回することはありません。
@@ -322,13 +322,12 @@ PAT (classic) を準備してください。
 ## リリースチェックリスト（GitHub Packages）
 
 1. [ ] OpenCode が `PluginInput` でホストバージョン能力を公開したリリースが出ていること。さらに activate 拒否時にホスト側が一致する Codex リクエストを block できること（拒否だけでは direct request を防げない）。
-2. [ ] `SUPPORTED_OPENCODE_RANGE` と `peerDependencies.opencode` を実際の能力提供バージョンに更新し、`test/package-consistency.test.ts` を通すこと。
+2. [ ] `SUPPORTED_OPENCODE_RANGE` と `engines.opencode` を実際の能力提供バージョンに更新し、`test/package-consistency.test.ts` を通すこと。
 3. [ ] 保護付き acceptance suite（実 Cloudflare / Deno Deploy / ChatGPT OAuth / Command Code 認証情報）を `protected-acceptance` 環境で実行し、legacy の 200 SSE、tool call、reasoning、token refresh、代表エラー、両ログペイロードモードを確認すること。さらに、将来の汎用 `/upstream/*` relay 実装時には、固定の safe root `anyOf` fixture を使った generic `command-code` の OpenAI/Anthropic/models path、provider-compatible error envelope、header injection、Gateway log 作成、パスマッピング、`MAX_NORMALIZATION_BODY_BYTES` の上限超過契約も実装テストで確認し、必須値が未設定の場合は skip せず fail させること。
 4. [ ] README のサポート範囲表記を更新すること。
 5. [ ] 初回の手動公開前に、`write:packages` 権限を持つ GitHub PAT
    (classic) で GitHub Packages registry に認証すること。その後、
    `packages/opencode-plugin` で `npm publish --ignore-scripts` を実行すること。
-
 ## スコープ外
 
 - OAuth、token refresh、account extraction、model catalog、model rewriting、retry、cache、quota parsing、SSE reconstruction
