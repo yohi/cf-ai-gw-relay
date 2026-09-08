@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/yohi/cf-ai-gw-relay/compare/v0.2.1...v0.3.0) (2026-09-08)
+
+
+### Features
+
+* runtime環境変数をRELAY_CFへ統一 ([bd93c04](https://github.com/yohi/cf-ai-gw-relay/commit/bd93c04cf66cbda3b254d404204dd13c6de3c90f))
+* runtime環境変数をRELAY_CFへ統一 ([43c4d8d](https://github.com/yohi/cf-ai-gw-relay/commit/43c4d8d8ed8499bf231937b49352e157d783d787))
+
 ## [0.2.1](https://github.com/yohi/opencode-cloudflare-ai-gateway-chatgpt/compare/v0.2.0...v0.2.1) (2026-09-08)
 
 
