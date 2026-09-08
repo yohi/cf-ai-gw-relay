@@ -254,13 +254,14 @@ npm run typecheck && npm test && npm run build # plugin 型検査・テスト・
 GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gateway を
 作成・更新します。リソースが存在する場合は再利用し、削除は行いません。
 
-既定のリソース名は次のとおりです。
+`production` environment の Variables に次のリソース識別子を登録します。
 
-- Deno Deploy app: `cf-ai-gw-relay`
-- Cloudflare AI Gateway ID: `relay-gateway`
-- Cloudflare Custom Provider slug: `chatgpt-codex-deno`
+- Variable `DENO_DEPLOY_APP`: `cf-ai-gw-relay`
+- Variable `CLOUDFLARE_GATEWAY_ID`: `relay-gateway`
+- Variable `CLOUDFLARE_PROVIDER_SLUG`: `chatgpt-codex-deno`
 
-workflow_dispatch ではこれらの名前を入力で上書きできます。
+`workflow_dispatch` の入力は任意の上書き値です。未入力の場合は上記 Variables を
+使用します。Variables が未設定の場合、workflow は provisioning 前の検証で停止します。
 
 ### GitHub 設定
 
@@ -270,6 +271,12 @@ workflow_dispatch ではこれらの名前を入力で上書きできます。
 - Secret `RELAY_SECRET`: relay と Plugin の両方で使用する共有 bearer secret
 - Secret `CLOUDFLARE_API_TOKEN`: `AI Gateway - Read` と `AI Gateway - Edit` を持つ token
 - Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
+
+Custom Provider は Cloudflare AI Gateway に登録する接続先定義です。ここでは
+`chatgpt-codex-deno` という provider slug と Deno Deploy の production origin を紐付けます。
+Plugin は Gateway URL の `/custom-chatgpt-codex-deno/v1/responses` を使用するため、Gateway
+はそのリクエストを relay へ転送します。Custom Provider は別の実行サービスではなく、
+Gateway 内の設定レコードです。
 
 `RELAY_SECRET` の実値は workflow の出力に表示されません。workflow は Deno Deploy
 v2 API で app secret を更新してから本番 deploy を作成し、Deno Deploy が返した

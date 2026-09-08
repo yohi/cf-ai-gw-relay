@@ -11,17 +11,14 @@ on:
   workflow_dispatch:
     inputs:
       deno_app:
-        description: "Deno Deploy app slug"
-        required: true
-        default: "cf-ai-gw-relay"
+        description: "Optional Deno Deploy app slug override"
+        required: false
       gateway_id:
-        description: "Cloudflare AI Gateway ID"
-        required: true
-        default: "relay-gateway"
+        description: "Optional Cloudflare AI Gateway ID override"
+        required: false
       provider_slug:
-        description: "Cloudflare Custom Provider slug"
-        required: true
-        default: "chatgpt-codex-deno"
+        description: "Optional Custom Provider slug override"
+        required: false
 
 permissions:
   contents: read
@@ -36,10 +33,10 @@ jobs:
     timeout-minutes: 15
     environment: production
     env:
-      DENO_DEPLOY_APP: ${{ inputs.deno_app || 'cf-ai-gw-relay' }}
+      DENO_DEPLOY_APP: ${{ inputs.deno_app || vars.DENO_DEPLOY_APP }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_GATEWAY_ID: ${{ inputs.gateway_id || 'relay-gateway' }}
-      CLOUDFLARE_PROVIDER_SLUG: ${{ inputs.provider_slug || 'chatgpt-codex-deno' }}
+      CLOUDFLARE_GATEWAY_ID: ${{ inputs.gateway_id || vars.CLOUDFLARE_GATEWAY_ID }}
+      CLOUDFLARE_PROVIDER_SLUG: ${{ inputs.provider_slug || vars.CLOUDFLARE_PROVIDER_SLUG }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
