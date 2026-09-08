@@ -7,12 +7,13 @@ import {
   requiredString,
 } from "./provision-http.ts";
 import {
+  ASSET_PATHS,
   createAppPayload,
   DenoProvisioningError,
   type DeployAssets,
 } from "./provision-deno-helpers.ts";
 
-const DEPLOY_API_ORIGIN = "https://api.deno.com";
+export const DEPLOY_API_ORIGIN = "https://api.deno.com";
 
 type AppEnvironmentVariable = {
   readonly id: string;
@@ -128,12 +129,7 @@ export async function ensureDenoApp(options: {
 
 export async function readDeployAssets(): Promise<DeployAssets> {
   const assets: Record<string, JsonObject> = {};
-  for (
-    const assetPath of [
-      "apps/deno-relay/main.ts",
-      "apps/deno-relay/relay.ts",
-    ] as const
-  ) {
+  for (const assetPath of ASSET_PATHS) {
     const content = await Deno.readTextFile(
       new URL(`../../${assetPath}`, import.meta.url),
     );

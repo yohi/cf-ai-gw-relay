@@ -12,11 +12,10 @@ import {
 } from "./provision-deno-helpers.ts";
 import {
   type DenoDeployClientOptions,
+  DEPLOY_API_ORIGIN,
   ensureDenoApp,
   readDeployAssets,
 } from "./deno-deploy-client.ts";
-
-const DEPLOY_API_ORIGIN = "https://api.deno.com";
 const REVISION_POLL_INTERVAL_MS = 2_000;
 const REVISION_POLL_ATTEMPTS = 180;
 const REVISION_STATUSES = [

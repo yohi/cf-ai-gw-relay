@@ -62,10 +62,10 @@ Deno.test("builds an observability gateway payload", () => {
 
 Deno.test("maps the relay origin to the Custom Provider payload", () => {
   assertEquals(
-    createProviderPayload("chatgpt-codex-deno", "https://relay.example.test"),
+    createProviderPayload("relay-chatgpt", "https://relay.example.test"),
     {
       name: "ChatGPT Codex Deno Relay",
-      slug: "chatgpt-codex-deno",
+      slug: "relay-chatgpt",
       base_url: "https://relay.example.test",
       description: "Fixed-upstream relay for ChatGPT Codex traffic.",
       enable: true,
