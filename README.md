@@ -248,6 +248,37 @@ npm ci --legacy-peer-deps                 # plugin 依存
 npm run typecheck && npm test && npm run build # plugin 型検査・テスト・ビルド
 ```
 
+## GitHub Actions によるインフラ構築
+
+`.github/workflows/provision.yml` は、`master` への relay 関連変更時、または
+GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gateway を
+作成・更新します。リソースが存在する場合は再利用し、削除は行いません。
+
+既定のリソース名は次のとおりです。
+
+- Deno Deploy app: `cf-ai-gw-relay`
+- Cloudflare AI Gateway ID: `relay-gateway`
+- Cloudflare Custom Provider slug: `chatgpt-codex-deno`
+
+workflow_dispatch ではこれらの名前を入力で上書きできます。
+
+### GitHub 設定
+
+`production` environment または repository に次の値を登録してください。
+
+- Secret `DENO_DEPLOY_TOKEN`: 対象 organization にスコープした Deno Deploy API token
+- Secret `RELAY_SECRET`: relay と Plugin の両方で使用する共有 bearer secret
+- Secret `CLOUDFLARE_API_TOKEN`: `AI Gateway - Read` と `AI Gateway - Edit` を持つ token
+- Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
+
+`RELAY_SECRET` の実値は workflow の出力に表示されません。workflow は Deno Deploy
+v2 API で app secret を更新してから本番 deploy を作成し、Deno Deploy が返した
+production origin を Custom Provider の `base_url` に反映します。Gateway の設定は
+認証・ログ収集を有効化し、cache と rate limiting を無効化します。
+
+GitHub environment protection rules を `production` に設定すると、`master` push
+による provisioning 前に承認を要求できます。
+
 ## 自動リリース
 
 `master` への push で release workflow が起動します。release-please は、
@@ -293,7 +324,6 @@ PAT (classic) を準備してください。
 - OAuth、token refresh、account extraction、model catalog、model rewriting、retry、cache、quota parsing、SSE reconstruction
 - ChatGPT への direct fallback や、プリセット外の provider へ任意の URL を転送する generic proxy 動作
 - `octg` 統合や変更
-- Custom Provider または Deno Deploy provisioning の自動化
 - ChatGPT OAuth traffic に対する OpenCode ビルトイン Cloudflare AI Gateway ネイティブ passthrough の使用
 - ネイティブ custom Codex endpoint 統合（OpenCode が正式に対応する場合に fetch interposer を置き換える可能性がある）
 

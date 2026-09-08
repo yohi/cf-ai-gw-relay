@@ -1,0 +1,113 @@
+name: Provision infrastructure
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/provision.yml"
+      - "apps/deno-relay/**"
+      - "deno.json"
+  workflow_dispatch:
+    inputs:
+      deno_app:
+        description: "Deno Deploy app slug"
+        required: true
+        default: "cf-ai-gw-relay"
+      gateway_id:
+        description: "Cloudflare AI Gateway ID"
+        required: true
+        default: "relay-gateway"
+      provider_slug:
+        description: "Cloudflare Custom Provider slug"
+        required: true
+        default: "chatgpt-codex-deno"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-infrastructure
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      DENO_DEPLOY_APP: ${{ inputs.deno_app || 'cf-ai-gw-relay' }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_GATEWAY_ID: ${{ inputs.gateway_id || 'relay-gateway' }}
+      CLOUDFLARE_PROVIDER_SLUG: ${{ inputs.provider_slug || 'chatgpt-codex-deno' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      - name: Validate provisioning configuration
+        run: |
+          set -eu
+          missing=0
+          for name in \
+            DENO_DEPLOY_APP \
+            CLOUDFLARE_ACCOUNT_ID \
+            CLOUDFLARE_GATEWAY_ID \
+            CLOUDFLARE_PROVIDER_SLUG
+          do
+            if [ -z "${!name:-}" ]; then
+              printf '%s is not configured\n' "$name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Verify relay and provisioning helpers
+        run: |
+          deno fmt --check
+          deno lint
+          deno test apps/deno-relay .github/scripts
+
+      - name: Provision Deno Deploy relay
+        id: deno
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          RELAY_SECRET: ${{ secrets.RELAY_SECRET }}
+        run: >-
+          deno run
+          --allow-env=DENO_DEPLOY_APP,DENO_DEPLOY_TOKEN,RELAY_SECRET,GITHUB_OUTPUT
+          --allow-net=api.deno.com
+          --allow-read=apps/deno-relay
+          --allow-write="$GITHUB_OUTPUT"
+          .github/scripts/provision-deno.ts
+
+      - name: Reconcile Cloudflare AI Gateway
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RELAY_ORIGIN: ${{ steps.deno.outputs.relay_origin }}
+        run: >-
+          deno run
+          --allow-env=CLOUDFLARE_ACCOUNT_ID,CLOUDFLARE_API_TOKEN,CLOUDFLARE_GATEWAY_ID,CLOUDFLARE_PROVIDER_SLUG,RELAY_ORIGIN,GITHUB_OUTPUT
+          --allow-net=api.cloudflare.com
+          --allow-write="$GITHUB_OUTPUT"
+          .github/scripts/provision-cloudflare.ts
+
+      - name: Write deployment summary
+        env:
+          RELAY_ORIGIN: ${{ steps.deno.outputs.relay_origin }}
+          GATEWAY_ID: ${{ steps.cloudflare.outputs.gateway_id }}
+          PROVIDER_SLUG: ${{ steps.cloudflare.outputs.provider_slug }}
+        run: |
+          {
+            printf '%s\n\n' '## Provisioned infrastructure'
+            printf '%s\n' "- Deno Deploy production origin: \`$RELAY_ORIGIN\`"
+            printf '%s\n' "- Cloudflare AI Gateway: \`$GATEWAY_ID\`"
+            printf '%s\n' "- Cloudflare Custom Provider: \`$PROVIDER_SLUG\`"
+          } >> "$GITHUB_STEP_SUMMARY"

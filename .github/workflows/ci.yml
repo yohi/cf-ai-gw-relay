@@ -23,7 +23,7 @@ jobs:
           deno-version: v2.x
       - run: deno fmt --check
       - run: deno lint
-      - run: deno test apps/deno-relay
+      - run: deno test apps/deno-relay .github/scripts
 
   plugin:
     runs-on: ubuntu-latest
