@@ -187,6 +187,110 @@ Deno.test("forwards only authenticated requests and sanitizes hop headers", asyn
   );
 });
 
+Deno.test("forwards legacy requests with a manual redirect policy", async () => {
+  let upstreamRequest: Request | undefined;
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: (input, init) => {
+      upstreamRequest = new Request(input, init);
+      return Promise.resolve(new Response("upstream-body"));
+    },
+  });
+
+  await handler(createRequest());
+
+  if (upstreamRequest === undefined) {
+    throw new Error("upstream request was not made");
+  }
+  assertEquals(upstreamRequest.redirect, "manual", "upstream redirect policy");
+});
+
+Deno.test("passes through legacy 302 and 307 responses without following redirects", async () => {
+  for (const status of [302, 307]) {
+    let fetchCalls = 0;
+    const handler = createRelayHandler({
+      getSecret: () => relayToken,
+      fetcher: () => {
+        fetchCalls += 1;
+        return Promise.resolve(
+          new Response("upstream redirect body", {
+            status,
+            headers: {
+              connection: "X-Response-Internal",
+              "X-Response-Internal": "private",
+              location: "/redirect-target",
+            },
+          }),
+        );
+      },
+    });
+
+    const response = await handler(createRequest());
+
+    assertEquals(response.status, status, `redirect status ${status}`);
+    assertEquals(
+      response.headers.get("location"),
+      "/redirect-target",
+      `Location header for ${status}`,
+    );
+    assertEquals(
+      response.headers.get("x-response-internal"),
+      null,
+      `connection-nominated response header for ${status}`,
+    );
+    assertEquals(
+      await response.text(),
+      "upstream redirect body",
+      `response body for ${status}`,
+    );
+    assertEquals(fetchCalls, 1, `upstream fetch calls for ${status}`);
+  }
+});
+
+Deno.test("rejects standard Authorization as legacy relay credentials", async () => {
+  let fetchCalls = 0;
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () => {
+      fetchCalls += 1;
+      return Promise.resolve(new Response());
+    },
+  });
+
+  const response = await handler(
+    new Request("https://relay.example/v1/responses", {
+      method: "POST",
+      headers: { Authorization: relayAuthorization },
+      body: "request-body",
+    }),
+  );
+
+  assertEquals(response.status, 401, "standard Authorization status");
+  assertEquals(fetchCalls, 0, "upstream fetch calls");
+});
+
+Deno.test("rejects generic relay authorization as legacy relay credentials", async () => {
+  let fetchCalls = 0;
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () => {
+      fetchCalls += 1;
+      return Promise.resolve(new Response());
+    },
+  });
+
+  const response = await handler(
+    new Request("https://relay.example/v1/responses", {
+      method: "POST",
+      headers: { "X-Relay-Authorization": relayAuthorization },
+      body: "request-body",
+    }),
+  );
+
+  assertEquals(response.status, 401, "generic relay authorization status");
+  assertEquals(fetchCalls, 0, "upstream fetch calls");
+});
+
 Deno.test("rejects missing or invalid relay credentials before fetching upstream", async () => {
   let fetchCalls = 0;
   const handler = createRelayHandler({

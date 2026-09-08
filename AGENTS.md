@@ -1,25 +1,41 @@
 # AGENTS.md
 
-This repository ships two independently deployable deliverables that route
-OpenCode's ChatGPT Codex traffic through Cloudflare AI Gateway with fail-closed
-semantics:
+Routes OpenCode ChatGPT Codex traffic through Cloudflare AI Gateway with
+fail-closed semantics.
 
+## Architecture & Monorepo Structure
+
+- `apps/deno-relay`: Deno Deploy fixed-upstream egress relay (zero runtime
+  dependencies). Entrypoint: `apps/deno-relay/main.ts`.
 - `packages/opencode-plugin`: npm package `@yohi/cloudflare-ai-gateway-chatgpt`
-- `apps/deno-relay`: Deno Deploy fixed-upstream egress relay
+  (NodeNext ESM, runtime dependency limited to `semver`).
 
-For architecture, security semantics, configuration resolution, relay behavior,
-and the release checklist, see `README.md` (Japanese).
+The two deliverables share no runtime code. Their coupling is a documented HTTP
+contract.
 
-For package-level usage notes, see `packages/opencode-plugin/README.md`.
+### Authoritative Documentation (Progressive Disclosure)
 
-## Verify changes
+Do not duplicate deep contracts here; read authoritative specs on demand:
 
-Run these before claiming work is complete:
+- `README.md`: Architecture overview, routing topology, configuration
+  resolution, header denylist, security semantics, release checklist (Japanese).
+- `REQUIREMENTS_AI_GATEWAY_RELAY.md`: Future generic relay
+  (`/upstream/<provider-slug>/*`) contract, schema normalization rules, bounded
+  buffering (4 MiB), and acceptance criteria.
+- `packages/opencode-plugin/README.md`: Plugin-specific usage and configuration
+  notes.
+
+## Verification & Commands
+
+Run these exact commands before claiming work is complete:
 
 ```bash
+# apps/deno-relay (Deno workspace)
 deno test apps/deno-relay
 deno fmt --check
 deno lint
+
+# packages/opencode-plugin (npm package)
 cd packages/opencode-plugin
 npm ci --legacy-peer-deps
 npm run typecheck
@@ -27,18 +43,18 @@ npm test
 npm run build
 ```
 
-## Working in this repo
+## Critical Rules & Invariants
 
-- Use `deno` commands for `apps/deno-relay` and `npm` commands inside
-  `packages/opencode-plugin`.
-- Keep changes minimal. Never introduce direct ChatGPT fallbacks, retry loops,
-  caching, or payload persistence outside the existing contracts.
-- Do not add runtime dependencies to `apps/deno-relay` (zero by design). The
-  plugin may only depend on `semver`.
-- All design-level contracts (interceptor scope, control headers, header
-  denylist, timeout semantics) are documented in `README.md`. Update `README.md`
-  if those contracts change.
-- Follow existing TypeScript conventions in each package. The plugin uses
-  NodeNext ESM with `verbatimModuleSyntax`.
-- Tests live next to source code: `apps/deno-relay/*_test.ts` and
-  `packages/opencode-plugin/test/*.test.ts`.
+- **Package Managers**: Use `deno` commands at root for `apps/deno-relay`. Use
+  `npm` commands inside `packages/opencode-plugin`.
+- **Zero Fallback**: Never introduce direct ChatGPT fallbacks, retry loops,
+  caching, or payload persistence outside documented contracts.
+- **Dependencies**: Zero runtime dependencies for `apps/deno-relay`.
+  `packages/opencode-plugin` may only depend on `semver`.
+- **Contracts Alignment**: Keep `README.md` and
+  `REQUIREMENTS_AI_GATEWAY_RELAY.md` synchronized whenever design contracts
+  change.
+- **Linting & Code Style**: Rely on automated linters (`deno lint`, `deno fmt`,
+  TypeScript compiler) rather than manual style guidelines.
+- **Tests Location**: Tests live next to implementation:
+  `apps/deno-relay/*_test.ts` and `packages/opencode-plugin/test/*.test.ts`.
