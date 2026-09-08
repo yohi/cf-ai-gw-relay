@@ -243,7 +243,7 @@ workflowはskipせず失敗します。
 ## 開発
 
 ```bash
-deno test apps/deno-relay               # relay のテスト
+deno test apps/deno-relay .github/scripts  # relay と provisioning helper のテスト
 deno lint                                # lint
 deno fmt --check                         # フォーマット検査
 cd packages/opencode-plugin
