@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1](https://github.com/yohi/cf-ai-gw-relay/compare/v0.3.0...v0.3.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **opencode-plugin:** health検証を公式endpointに限定 ([4b80d2c](https://github.com/yohi/cf-ai-gw-relay/commit/4b80d2c91904cccd5a1410cc2ceaf298ac516b6c))
+* **opencode-plugin:** OpenCode互換性宣言をpeerDependenciesからengines.opencodeへ移行 ([645eeaf](https://github.com/yohi/cf-ai-gw-relay/commit/645eeafebfae815088af8e85bd7b6ed59512c91d))
+* **opencode-plugin:** ホスト能力検証と公開依存を整合 ([0a68810](https://github.com/yohi/cf-ai-gw-relay/commit/0a68810448085a119935936a119a34a5458f5852))
+* **opencode-plugin:** 公式health endpointで対応範囲を検証 ([99728a0](https://github.com/yohi/cf-ai-gw-relay/commit/99728a021a1f655bbbd1959904cd51ceae2d1fb0))
+* OpenCode互換性宣言とホスト検証を修正 ([ed3c8e5](https://github.com/yohi/cf-ai-gw-relay/commit/ed3c8e5b444c415906659f00c4f37d8727433efd))
+
 ## [0.3.0](https://github.com/yohi/cf-ai-gw-relay/compare/v0.2.1...v0.3.0) (2026-09-08)
 
 
