@@ -10,8 +10,8 @@ Custom Provider from GitHub Actions.
 create or update the app, store `RELAY_SECRET` as an app secret, deploy the two
 relay runtime files, and return the production hostname. A second Deno
 TypeScript helper calls the Cloudflare API to reconcile the Gateway and
-`chatgpt-codex-deno` Custom Provider. The workflow invokes both helpers after
-local relay verification and passes only non-secret outputs between steps.
+`relay-chatgpt` Custom Provider. The workflow invokes both helpers after local
+relay verification and passes only non-secret outputs between steps.
 
 **Tech Stack:** GitHub Actions, Deno 2.x, Deno Deploy v2 REST API, Cloudflare AI
 Gateway REST API, TypeScript, Deno test.
@@ -133,7 +133,7 @@ Gateway REST API, TypeScript, Deno test.
 **Interfaces:**
 
 - Workflow inputs default to Gateway `relay-gateway`, Deno app `cf-ai-gw-relay`,
-  and provider slug `chatgpt-codex-deno`.
+  and provider slug `relay-chatgpt`.
 - Required credentials are `CLOUDFLARE_API_TOKEN`, `DENO_DEPLOY_TOKEN`, and
   `RELAY_SECRET`; account ID may be a repository variable or secret.
 - Workflow summary exposes only the relay origin, Gateway ID, and provider slug.

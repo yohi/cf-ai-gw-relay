@@ -19,7 +19,7 @@ export type ResolvedConfig = {
   readonly gatewayBaseUrl: string;
 };
 
-export const DEFAULT_PROVIDER_SLUG = "chatgpt-codex-deno";
+export const DEFAULT_PROVIDER_SLUG = "relay-chatgpt";
 export const PRODUCTION_GATEWAY_BASE_URL = "https://gateway.ai.cloudflare.com";
 
 const TEST_GATEWAY_BASE_ORIGIN = "https://gateway.test.invalid";

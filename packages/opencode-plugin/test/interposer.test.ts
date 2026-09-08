@@ -39,13 +39,13 @@ const config: ResolvedConfig = {
   gatewayId: "gw",
   gatewayToken: "sentinel-gw-token",
   relayToken: "sentinel-relay-token",
-  providerSlug: "chatgpt-codex-deno",
+  providerSlug: "relay-chatgpt",
   collectLogPayload: true,
   gatewayBaseUrl: "https://gateway.ai.cloudflare.com",
 };
 
 const gatewayUrl =
-  "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-chatgpt-codex-deno/v1/responses";
+  "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-relay-chatgpt/v1/responses";
 const codexUrl = "https://chatgpt.com/backend-api/codex/responses";
 
 afterEach(() => {

@@ -33,7 +33,7 @@ OpenCode built-in ChatGPT OAuth
 | Gateway ID | `CLOUDFLARE_GATEWAY_ID`（必須） | 環境変数のみ |
 | Gateway token | `CLOUDFLARE_API_TOKEN` → `CF_AIG_TOKEN` → プラグイン `apiKey` | ChatGPT Custom Provider 経路では Gateway 内で停止。upstream には到達しません（この保証はビルトイン `cloudflare-ai-gateway` provider の Workers AI 経路には適用されません。同経路は設計上 Cloudflare token を upstream へ転送する場合があります） |
 | Relay token | `CLOUDFLARE_CHATGPT_RELAY_TOKEN` → プラグイン `relayToken` | relay でのみ検証され、ChatGPT には到達しません |
-| Provider slug | `CLOUDFLARE_CHATGPT_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `chatgpt-codex-deno` | Gateway URL のみで使用 |
+| Provider slug | `CLOUDFLARE_CHATGPT_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `relay-chatgpt` | Gateway URL のみで使用 |
 | Log payload 収集 | `CLOUDFLARE_AIG_COLLECT_LOG_PAYLOAD`（`true` / `false` のみ） → プラグイン `collectLogPayload`（boolean） → 既定 `true` | `false` はそのまま出力。不正値は一致リクエストの設定エラー |
 | Gateway base URL | 本番 `https://gateway.ai.cloudflare.com`。`CLOUDFLARE_AIG_BASE_URL` は `CLOUDFLARE_AIG_TEST_MODE=true` かつ許可 origin `https://gateway.test.invalid` の場合のみ上書き可 | 上記条件を満たさない場合は一致リクエストの設定エラー |
 
@@ -258,7 +258,7 @@ GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gatew
 
 - Variable `DENO_DEPLOY_APP`: `cf-ai-gw-relay`
 - Variable `CLOUDFLARE_GATEWAY_ID`: `relay-gateway`
-- Variable `CLOUDFLARE_PROVIDER_SLUG`: `chatgpt-codex-deno`
+- Variable `CLOUDFLARE_PROVIDER_SLUG`: `relay-chatgpt`
 
 `workflow_dispatch` の入力は任意の上書き値です。未入力の場合は上記 Variables を
 使用します。Variables が未設定の場合、workflow は provisioning 前の検証で停止します。
@@ -273,8 +273,8 @@ GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gatew
 - Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
 
 Custom Provider は Cloudflare AI Gateway に登録する接続先定義です。ここでは
-`chatgpt-codex-deno` という provider slug と Deno Deploy の production origin を紐付けます。
-Plugin は Gateway URL の `/custom-chatgpt-codex-deno/v1/responses` を使用するため、Gateway
+`relay-chatgpt` という provider slug と Deno Deploy の production origin を紐付けます。
+Plugin は Gateway URL の `/custom-relay-chatgpt/v1/responses` を使用するため、Gateway
 はそのリクエストを relay へ転送します。Custom Provider は別の実行サービスではなく、
 Gateway 内の設定レコードです。
 
