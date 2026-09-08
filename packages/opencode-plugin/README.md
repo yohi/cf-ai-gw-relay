@@ -4,5 +4,9 @@ OpenCode plugin that routes ChatGPT Codex requests through Cloudflare AI Gateway
 and a fixed-upstream Deno Deploy relay. Requests fail closed; they never bypass
 the gateway.
 
-See the repository root README for configuration, path mapping, supported
-versions, and the release checklist.
+Supported OpenCode range: `>=1.19.0 <2`, declared in `engines.opencode`.
+The plugin verifies the host version through `input.client.global.health()` and
+fails closed when that capability is unavailable.
+
+See the repository root README for configuration, path mapping, and the release
+checklist.

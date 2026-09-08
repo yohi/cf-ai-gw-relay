@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertSupportedHost,
   resolveHostVersionCapability,
+  resolveHostVersionCapabilityAsync,
   SUPPORTED_OPENCODE_RANGE,
 } from "../src/host-version.js";
 import { UnsupportedOpenCodeVersionError } from "../src/errors.js";
@@ -32,12 +33,43 @@ describe("resolveHostVersionCapability", () => {
     });
   });
 
+  it("reads the host version from client.global.health", async () => {
+    const input = {
+      client: {
+        global: {
+          health: async () => ({ data: { version: "1.19.0" } }),
+        },
+      },
+    };
+
+    await expect(resolveHostVersionCapabilityAsync(input)).resolves.toEqual({
+      available: true,
+      version: "1.19.0",
+    });
+  });
+
   it("reports absent when no candidate holds a valid semver string", () => {
     expect(resolveHostVersionCapability({})).toEqual({ available: false });
     expect(resolveHostVersionCapability({ opencode: { version: "not-semver" } })).toEqual({
       available: false,
     });
-    expect(resolveHostVersionCapability(undefined)).toEqual({ available: false });
+    expect(resolveHostVersionCapability(undefined)).toEqual({
+      available: false,
+    });
+  });
+
+  it("reports absent when the health response has no valid version", async () => {
+    const input = {
+      client: {
+        global: {
+          health: async () => ({ data: { version: "not-semver" } }),
+        },
+      },
+    };
+
+    await expect(resolveHostVersionCapabilityAsync(input)).resolves.toEqual({
+      available: false,
+    });
   });
 });
 

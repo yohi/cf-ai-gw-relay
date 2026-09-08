@@ -28,11 +28,14 @@
   "dependencies": {
     "semver": "^7.7.1"
   },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.20"
+  },
   "engines": {
     "opencode": ">=1.19.0 <2"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.18.20",
+    "@opencode-ai/plugin": "^1.18.29",
     "@types/node": "^22.15.0",
     "@types/semver": "^7.5.8",
     "typescript": "^5.8.0",

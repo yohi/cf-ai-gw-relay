@@ -46,6 +46,43 @@ describe("CloudflareAiGatewayChatgpt", () => {
     expect(globalThis.fetch).not.toBe(originalFetch);
   });
 
+  it("reads the supported host version through the official health API", async () => {
+    vi.stubEnv("RELAY_CF_ACCOUNT_ID", "acct");
+    vi.stubEnv("RELAY_CF_GATEWAY_ID", "gw");
+    vi.stubEnv("RELAY_SECRET", "sentinel-relay-token");
+
+    const hooks = await CloudflareAiGatewayChatgpt(
+      {
+        client: {
+          global: {
+            health: async () => ({ data: { version: "1.19.0" } }),
+          },
+        },
+      } as never,
+      { apiKey: "sentinel-gw-token" },
+    );
+
+    expect(hooks).toEqual({});
+    expect(globalThis.fetch).not.toBe(originalFetch);
+  });
+
+  it("rejects activation when the health API cannot verify the host", async () => {
+    await expect(
+      CloudflareAiGatewayChatgpt(
+        {
+          client: {
+            global: {
+              health: async () => {
+                throw new Error("health unavailable");
+              },
+            },
+          },
+        } as never,
+      ),
+    ).rejects.toThrow(/could not verify host version capability/i);
+    expect(globalThis.fetch).toBe(originalFetch);
+  });
+
   it("fails closed with a configuration error", async () => {
     vi.stubEnv("RELAY_CF_ACCOUNT_ID", "acct");
     vi.stubEnv("RELAY_CF_GATEWAY_ID", "gw");
