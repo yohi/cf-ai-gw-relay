@@ -96,6 +96,14 @@ metadata は固定の 3 項目のみを出力します。agent、session、accou
 
 `/upstream/<provider-slug>/*` はまだ実装されていない、将来の汎用 relay に関する文書化契約です。以下では、その将来実装が満たすべき仕様を記載します。将来の汎用経路では `X-Relay-Authorization: Bearer <RELAY_SECRET>` を使用し、標準 `Authorization` は provider credential として扱います。
 
+汎用 relay の詳細な設計・受入契約の正本は
+`REQUIREMENTS_AI_GATEWAY_RELAY.md` です。特に raw request-target を使う fail-closed
+な path containment、normalization slot による同時実行制御と request body timeout、
+OpenAI `anyOf` flatten の安全条件と semantic narrowing、provider-compatible な
+`400` / `413` envelope、および protected acceptance と性能 SLO は同書に従います。
+この README は既存実装と将来の汎用経路の概要を示すものであり、汎用 relay 契約に矛盾が
+ある場合は要件定義書を優先します。
+
 現在実装されている legacy 経路、および将来実装される汎用経路の契約では、relay は Deno Deploy secret から設定された正確な bearer 値を要求し、認証情報の欠落または不正があれば `401` を upstream fetch の前に返します。ただし、relay secret 自体が未設定の場合は `503` を返します。
 
 認証後、現在実装されている既存互換経路は固定 upstream へリクエストを転送します。
