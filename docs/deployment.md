@@ -128,7 +128,7 @@ workflow:
 
 1. checks out the released tag;
 2. sets up Node.js 22 and the GitHub Packages npm registry;
-3. runs `npm ci --legacy-peer-deps --ignore-scripts`;
+3. runs `npm ci --ignore-scripts`;
 4. runs plugin typecheck, tests, and build;
 5. publishes the npm package to GitHub Packages with the workflow
    `GITHUB_TOKEN`;
