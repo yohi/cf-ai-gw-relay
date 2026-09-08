@@ -208,11 +208,18 @@ If the secret is missing, empty, or whitespace-only, the relay MUST return:
 503 Service unavailable
 ```
 
-The request MUST contain exactly:
+The request MUST include the following header, whose value MUST match
+`Bearer <RELAY_SECRET>` exactly:
 
 ```text
 x-chatgpt-relay-authorization: Bearer <RELAY_SECRET>
 ```
+
+Additional relay or Gateway authorization headers MAY be present. They MUST NOT
+be used for relay authentication and MUST be removed before the upstream fetch,
+as specified in §5.4. The standard upstream `Authorization` header is separate
+from relay authentication and MUST remain available to authenticate the ChatGPT
+Codex upstream.
 
 An incorrect or missing authorization value MUST return HTTP `401` with:
 
