@@ -1,55 +1,67 @@
 # AGENTS.md
 
-Routes OpenCode ChatGPT Codex traffic through Cloudflare AI Gateway with
-fail-closed semantics.
+`cf-ai-gw-relay` routes OpenCode ChatGPT Codex traffic through Cloudflare AI
+Gateway with fail-closed semantics.
 
 ## Repository Map
 
 This is a monorepo with two runtime deliverables that share no runtime code:
 
-- `apps/deno-relay`: Deno Deploy egress relay. Zero runtime dependencies.
-- `packages/opencode-plugin`: npm package `@yohi/cloudflare-ai-gateway-chatgpt`.
-  Runtime dependency is limited to `semver`.
+- `apps/deno-relay` — Deno Deploy egress relay; zero runtime dependencies.
+- `packages/opencode-plugin` — npm package
+  `@yohi/cloudflare-ai-gateway-chatgpt`; runtime dependency currently limited to
+  `semver`.
 
-Supporting infrastructure (not a runtime deliverable):
+Supporting infrastructure:
 
-- `.github/scripts`: Deno-based infrastructure provisioning helpers.
+- `.github/scripts` — Deno-based infrastructure provisioning helpers.
 
-The two runtime deliverables are coupled by a documented HTTP contract, not a
+The runtime deliverables are coupled by the HTTP contract in `SPEC.md`, not by a
 shared library.
 
 ## Read on Demand
 
-Keep this file small. Read only the documentation relevant to the task:
+Keep this file small and do not duplicate deep contracts.
 
-- `README.md`: current architecture, routing, configuration, security semantics,
-  provisioning, development commands, and release process.
-- `REQUIREMENTS_AI_GATEWAY_RELAY.md`: authoritative contract for the future
-  generic `/upstream/<provider-slug>/*` relay, including normalization,
-  buffering, error semantics, and acceptance criteria.
-- `packages/opencode-plugin/README.md`: plugin-specific usage and configuration.
+Read the canonical document for the task:
 
-Treat completed implementation plans under `docs/superpowers` as disposable
-working artifacts, not sources of truth. Before deleting one, preserve any
-enduring behavior that is not already captured in the authoritative documents.
+- `README.md` — project entry point, status, Quick Start, and documentation
+  routing.
+- `SPEC.md` — normative architecture, HTTP contracts, invariants, compatibility,
+  security, and current-vs-planned behavior.
+- `docs/configuration.md` — human-facing complete configuration reference.
+- `docs/deployment.md` — provisioning, deployment, GitHub Actions, and release
+  workflow.
+- `docs/operations.md` — monitoring, failure handling, protected acceptance, and
+  rollback.
+- `packages/opencode-plugin/CHANGELOG.md` — plugin release history.
+
+`REQUIREMENTS_AI_GATEWAY_RELAY.md` is a compatibility pointer, not a normative
+source.
 
 ## Working Rules
 
 - Use Deno from the repository root for `apps/deno-relay` and `.github/scripts`.
 - Use npm inside `packages/opencode-plugin`.
-- Preserve fail-closed behavior: do not add direct ChatGPT fallback, retry
-  loops, caching, or payload persistence unless an authoritative contract
-  explicitly requires it.
-- Keep `apps/deno-relay` free of runtime dependencies and keep the plugin
-  runtime dependency set limited to `semver`.
-- Do not duplicate deep contracts here. Update the authoritative documentation
-  when behavior or design contracts change.
-- Let deterministic tooling enforce style; do not encode formatter or linter
-  rules in this file.
+- Preserve fail-closed behavior. Do not add direct ChatGPT fallback.
+- Do not add retry loops, caching, or payload persistence unless `SPEC.md` is
+  deliberately changed to require them.
+- Keep `apps/deno-relay` free of external runtime dependencies.
+- Keep the plugin runtime dependency set constrained to the package contract.
+- Do not present the planned generic `/upstream/*` contract as implemented
+  behavior.
+- Do not duplicate complete HTTP contracts, environment-variable catalogs,
+  deployment runbooks, or release history in README files or this file.
+- When behavior changes, update the canonical document that owns that behavior
+  and its tests.
+- Let deterministic tooling enforce formatter and linter style instead of
+  encoding style rules here.
+- Never expose credentials or request payloads in diagnostics, examples,
+  fixtures intended for publication, or logs.
 
 ## Verification
 
-Run the checks for every area you changed before claiming completion:
+Run checks for every area you changed before claiming completion.
 
 ```bash
 # Relay and provisioning helpers
@@ -59,8 +71,14 @@ deno lint
 
 # Plugin
 cd packages/opencode-plugin
-npm ci
+npm ci --ignore-scripts
 npm run typecheck
 npm test
 npm run build
 ```
+
+When a change affects production routing, authentication, streaming, or future
+generic relay behavior, also identify the relevant protected-acceptance impact.
+
+Do not claim supported production readiness while the host-capability release
+gate in `SPEC.md` remains unsatisfied.

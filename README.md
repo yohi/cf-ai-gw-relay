@@ -1,350 +1,151 @@
-# opencode-cloudflare-ai-gateway-chatgpt
+# cf-ai-gw-relay
 
-OpenCode の ChatGPT Codex 通信を Cloudflare AI Gateway 経由で観測可能にするリポジトリ。
+[日本語](README.ja.md)
 
-## 構成
+Route OpenCode ChatGPT Codex traffic through Cloudflare AI Gateway and a fixed-upstream Deno Deploy relay without direct fallback.
 
-- `packages/opencode-plugin`: npm パッケージ `@yohi/cloudflare-ai-gateway-chatgpt`
-- `apps/deno-relay`: Deno Deploy 固定アップストリーム egress relay
+`cf-ai-gw-relay` contains an OpenCode plugin and a small Deno Deploy relay. Together they let ChatGPT subscription traffic use Cloudflare AI Gateway as the observability and policy boundary while preserving the Codex request and response stream.
 
-二者は実行時ライブラリを共有しません。結合は文書化された HTTP contract です。既存の ChatGPT Custom Provider は `X-ChatGPT-Relay-Authorization` ヘッダー付きで、現在実装されている relay の `POST /v1/responses` に到達します。汎用 provider 向けの `/upstream/<provider-slug>/*` は、将来の汎用 relay 実装に向けた文書化契約です。実行時依存は、plugin 側が `semver` のみ、relay 側がゼロです。
+> [!WARNING]
+> **Supported production use is currently blocked.** The plugin declares OpenCode `>=1.18.20 <2`, and fail-closed activation also depends on OpenCode exposing the host-version and request-blocking capabilities required by this project. Release artifacts may exist, but do not treat them as supported for production use until those capabilities are available and the protected acceptance suite passes.
 
-Deno Deploy の application directory はリポジトリルートです。entrypoint はルート `deno.json` の `deploy.runtime.entrypoint` で `./apps/deno-relay/main.ts` に固定し、Deno Deploy dashboard の自動推測に依存しません。
+## What This Repository Contains
 
-## 経路
+- `packages/opencode-plugin` — npm package `@yohi/cloudflare-ai-gateway-chatgpt`
+- `apps/deno-relay` — fixed-upstream Deno Deploy egress relay
+- `.github/scripts` — infrastructure provisioning helpers
+
+The two runtime deliverables share no runtime code. Their integration boundary is the HTTP contract defined in [SPEC.md](SPEC.md).
+
+## Quick Start
+
+Because supported end-user use is currently blocked, the minimum supported path is repository validation.
+
+### Requirements
+
+- Deno 2.x
+- Node.js 22 and npm
+
+### Validate the relay and provisioning helpers
+
+```bash
+deno test apps/deno-relay .github/scripts
+deno fmt --check
+deno lint
+```
+
+### Validate the OpenCode plugin
+
+```bash
+cd packages/opencode-plugin
+npm ci --legacy-peer-deps
+npm run typecheck
+npm test
+npm run build
+```
+
+Success means all tests, type checks, formatting checks, lint checks, and the package build complete without errors.
+
+## Features
+
+- Intercepts only the ChatGPT Codex Responses request used by OpenCode.
+- Routes that request through a Cloudflare AI Gateway Custom Provider.
+- Preserves the original Codex authorization, account, residency, body stream, and abort signal.
+- Uses distinct Gateway and relay credentials.
+- Fails closed: the project does not intentionally fall back directly to ChatGPT.
+- Keeps the Deno relay stateless and free of runtime dependencies.
+- Delegates request observability to Cloudflare AI Gateway instead of persisting payloads in the relay.
+- Defines a future fixed-provider `/upstream/*` relay contract separately from the currently implemented legacy path.
+
+## Architecture Overview
 
 ```text
 OpenCode built-in ChatGPT OAuth
-  -> plugin fetch interposer
+  -> OpenCode plugin fetch interposer
   -> Cloudflare AI Gateway Custom Provider
   -> Deno Deploy relay
   -> https://chatgpt.com/backend-api/codex/responses
 ```
 
-プラグインはルーティングと Gateway ヘッダー層です。Cloudflare AI Gateway が唯一の可観測性平面（observability plane）です。relay は極小の egress トランスポートです。Gateway または relay が失敗しても、どの経路も ChatGPT に直接 fallback しません。
+The plugin is the routing and Gateway-control-header layer. Cloudflare AI Gateway is the observability plane. The relay is a minimal egress transport with a fixed ChatGPT upstream for the currently implemented path.
 
-ビルトインの OpenCode `cloudflare-ai-gateway` provider はこの経路の外です。そのネイティブな `openai/*` / `anthropic/*` passthrough は Cloudflare API token および Unified Billing / BYOK traffic 用であり、ChatGPT OAuth Codex transport は再利用しません。ChatGPT subscription traffic はビルトイン `openai` provider と本プラグインの最終リクエスト interposer によってのみルーティングされ、`cloudflare-ai-gateway` を選択したり、純粋な Codex model ID を `openai/*` / `anthropic/*` に書き換えたりしてはなりません。
+The built-in OpenCode `cloudflare-ai-gateway` provider is outside this path. This project does not convert ChatGPT subscription traffic into Cloudflare native `openai/*` or `anthropic/*` passthrough traffic.
 
-## プラグイン設定
+## Current Request Path
 
-| 設定項目 | 解決順序 | 備考 |
-| -------- | -------- | ---- |
-| Account ID | `RELAY_CF_ACCOUNT_ID`（必須） | OpenCode runtime の環境変数のみ |
-| Gateway ID | `RELAY_CF_GATEWAY_ID`（必須） | OpenCode runtime の環境変数のみ |
-| Gateway token | `RELAY_CF_AIG_TOKEN` → プラグイン `apiKey` | ChatGPT Custom Provider 経路では Gateway 内で停止。upstream には到達しません（この保証はビルトイン `cloudflare-ai-gateway` provider の Workers AI 経路には適用されません。同経路は設計上 Cloudflare token を upstream へ転送する場合があります） |
-| Relay token | `RELAY_SECRET` → プラグイン `relayToken` | relay でのみ検証され、ChatGPT には到達しません |
-| Provider slug | `RELAY_CF_PROVIDER_SLUG` → プラグイン `providerSlug` → 既定 `relay-chatgpt` | Gateway URL のみで使用 |
-| Log payload 収集 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD`（`true` / `false` のみ） → プラグイン `collectLogPayload`（boolean） → 既定 `true` | `false` はそのまま出力。不正値は一致リクエストの設定エラー |
-| Gateway base URL | 本番 `https://gateway.ai.cloudflare.com`。`RELAY_CF_AIG_BASE_URL` は `RELAY_CF_AIG_TEST_MODE=true` かつ許可 origin `https://gateway.test.invalid` の場合のみ上書き可 | 上記条件を満たさない場合は一致リクエストの設定エラー |
-
-上記の `RELAY_*` は OpenCode plugin の runtime 設定です。GitHub Actions による
-provisioning の `CLOUDFLARE_*` 変数・secret は別用途のため変更しません。
-
-プラグイン設定は `opencode.json` の `plugin` 配列でオブジェクト形式（`["パッケージ名", { オプション }]`）で渡します。
-
-Log payload 収集の既定 `true` は payload 保持を有効化する、プライバシーに関わる明示的なデフォルトです。プラグイン設定 `collectLogPayload` は boolean 値であり、任意の文字列から強制変換してはなりません。不正値は credential や request payload を含まない形で報告されます。
-
-## パスマッピング
-
-Custom Provider の `base_url` には relay の origin のみを指定します（`/v1` を含めません）。Gateway URL は次の形式で、relay の `POST /v1/responses` に対応します。
-
-```text
-{base}/v1/{account}/{gateway}/custom-{slug}/v1/responses
-```
-
-汎用 provider の Custom Provider については、将来の汎用 relay 実装が使用する固定 route の契約として、provider の base URL を次のように向けます。`command-code` の例では次の形式です。
-
-```text
-https://<relay-domain>.deno.dev/upstream/command-code/
-```
-
-OpenAI SDK は `/v1/chat/completions`、Anthropic SDK は `/v1/messages` をこの route
-suffix として送信する想定です。将来の汎用 relay は suffix を `command-code` の固定 upstream
-`https://api.commandcode.ai/provider/` 配下へ path data として付加し、任意の origin
-へ解決しません。
-
-## プラグインのリクエスト処理
-
-interposer は OpenCode バージョン判定に成功した後にプロセスごとに 1 回だけ導入され、導入時点で有効だった fetch 関数へ委譲します。次の正確なリクエストのみを intercept します。
+The plugin intercepts exactly:
 
 ```text
 POST https://chatgpt.com/backend-api/codex/responses
 ```
 
-`auth.openai.com`、`api.openai.com`、その他の `chatgpt.com` traffic、および ChatGPT OAuth login/refresh traffic は無変更で通過します。
+and rewrites the destination to:
 
-一致したリクエストに対して、プラグインは以下を行います。
+```text
+https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}/v1/responses
+```
 
-1. 必須の Gateway と relay 設定を検証
-2. URL のみを次の Gateway URL に書き換え（7 つの制御ヘッダーを付与）
-3. `Authorization`、`ChatGPT-Account-Id`、residency header、その他 Codex ヘッダーを維持
-4. 制御ヘッダー追加:
-   - `cf-aig-authorization: Bearer <Gateway token>`
-   - `X-ChatGPT-Relay-Authorization: Bearer <relay token>`
-   - `cf-aig-collect-log: true`
-   - `cf-aig-collect-log-payload: <true|false>`
-   - `cf-aig-metadata: {"source":"opencode","auth_type":"chatgpt_subscription","plugin":"cloudflare-ai-gateway-chatgpt"}`
-   - `cf-aig-skip-cache: true`
-   - `cf-aig-max-attempts: 1`
-5. オリジナルの method、body stream、abort signal でオリジナルの fetch を呼び出し（body を読み取らず、シリアライズもしない）
-6. 結果の `Response` を無変更で返却（SSE も解析・バッファリング・再構築しない）
+The current relay accepts:
 
-body は純粋な model ID、`store`、`stream`、`input`、tool 定義、その他 OpenCode 生成コンテンツを変更なしに維持します。
+```text
+POST /v1/responses
+```
 
-metadata は固定の 3 項目のみを出力します。agent、session、account ID、OAuth credential、relay credential、prompt、response 内容は一切 metadata に追加されません。
-
-## Relay のリクエスト処理
-
-現在の relay が実装している経路は、既存互換の `POST /v1/responses` のみです。`X-ChatGPT-Relay-Authorization: Bearer <RELAY_SECRET>` を使用し、その他の route は `404` を返します。
-
-`/upstream/<provider-slug>/*` はまだ実装されていない、将来の汎用 relay に関する文書化契約です。以下では、その将来実装が満たすべき仕様を記載します。将来の汎用経路では `X-Relay-Authorization: Bearer <RELAY_SECRET>` を使用し、標準 `Authorization` は provider credential として扱います。
-
-汎用 relay の詳細な設計・受入契約の正本は
-`REQUIREMENTS_AI_GATEWAY_RELAY.md` です。特に raw request-target を使う fail-closed
-な path containment、normalization slot による同時実行制御と request body timeout、
-OpenAI `anyOf` flatten の安全条件と semantic narrowing、provider-compatible な
-`400` / `413` envelope、および protected acceptance と性能 SLO は同書に従います。
-この README は既存実装と将来の汎用経路の概要を示すものであり、汎用 relay 契約に矛盾が
-ある場合は要件定義書を優先します。
-
-現在実装されている legacy 経路、および将来実装される汎用経路の契約では、relay は Deno Deploy secret から設定された正確な bearer 値を要求し、認証情報の欠落または不正があれば `401` を upstream fetch の前に返します。ただし、relay secret 自体が未設定の場合は `503` を返します。
-
-認証後、現在実装されている既存互換経路は固定 upstream へリクエストを転送します。
+and forwards to the fixed upstream:
 
 ```text
 https://chatgpt.com/backend-api/codex/responses
 ```
 
-現在実装されている legacy 経路では、リクエスト body stream は解析・バッファリングせずそのまま転送します。OAuth `Authorization`、`ChatGPT-Account-Id`、residency、その他 Codex protocol ヘッダーを保持します。転送前に次のヘッダーを除去します。将来の汎用 relay も、この denylist と hop-by-hop header 処理を契約として適用します。
+Other relay routes return `404`.
 
-- `cf-aig-*`
-- `cf-*`
-- `x-forwarded-*`
-- `forwarded`
-- `x-real-ip`
-- `X-Relay-Authorization`
-- `X-ChatGPT-Relay-Authorization`
-- `host`
-- `content-length`
-- `connection`
-- `keep-alive`
-- `proxy-authenticate`
-- `proxy-authorization`
-- `te`
-- `trailer`
-- `transfer-encoding`
-- `upgrade`
+The generic `/upstream/<provider-slug>/*` relay is **planned and not implemented**. Its normative contract is documented in [SPEC.md](SPEC.md).
 
-さらに、リクエストの `Connection` ヘッダーを case-insensitive な comma-separated token list として解析し、そのリストに挙げられた各ヘッダーも除去します。応答ヘッダーについても同様に `Connection` とその token に挙げられた名前、および標準 hop-by-hop ヘッダーを除去します。残りの upstream 応答ヘッダー、status、body stream は保持されます。
+## Important Configuration
 
-将来の汎用 relay 契約では、provider preset が provider-compatible route として定義した route policy に
-解決した `POST` かつ `Content-Type` の media type が `application/json` の場合に限り、body
-の raw/token-preserving scan で route policy に対応する tool schema を正規化します。
-normalizer は body member 名から provider policy を推測しません。OpenAI の
-`/v1/chat/completions` では `tools[].function.parameters`、Anthropic の
-`/v1/messages` では `tools[].input_schema` のみを対象とし、別の route/request shape
-は変更しません。`messages` 等の対象外フィールドと JSON number token は保持します。
+| Setting | Purpose |
+| --- | --- |
+| `RELAY_CF_ACCOUNT_ID` | Cloudflare account ID; required by the plugin |
+| `RELAY_CF_GATEWAY_ID` | AI Gateway ID; required by the plugin |
+| `RELAY_CF_AIG_TOKEN` | Gateway authentication token |
+| `RELAY_SECRET` | Shared relay bearer secret |
+| `RELAY_CF_PROVIDER_SLUG` | Custom Provider slug; defaults to `relay-chatgpt` |
+| `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | Payload logging control; `true` or `false`, default `true` |
 
-root `anyOf` の compatibility flatten は OpenAI の `/v1/chat/completions` にだけ適用します。
-Anthropic の `/v1/messages` では `tools[].input_schema` は root `anyOf` の有無にかかわらず
-変更せず、対象 schema の request body byte span を入力のまま保持します。
-root `anyOf` が存在する対象 schema は、`type: "object"` や `properties: {}` の補完を含む
-正規化全体をスキップします。OpenAI route で flatten できない `anyOf` も同じ扱いです。
-同じ body 内にある別の安全な OpenAI 対象 schema の正規化は妨げません。
-OpenAI route で root `anyOf` がない場合、または安全な flatten に成功した場合だけ、
-欠落した `type` や `properties` を補完します。
+See [Configuration](docs/configuration.md) for precedence, defaults, test-only settings, provisioning values, and acceptance configuration.
 
-認識済み provider-compatible JSON route の正規化 body には、
-`MAX_NORMALIZATION_BODY_BYTES = 4 * 1024 * 1024`（4 MiB）の固定上限があります。
-正しい `Content-Length` が上限を超える場合だけ body を読み切らず、その他の認識済み body は
-`Content-Length` の有無・妥当性にかかわらず counted reader で読みます。実 body が上限を
-超えた時点で reader を cancel し、route-specific な `413` JSON error を返します。部分 body
-を upstream へ送ることはありません。legacy `/v1/responses`、未知 route/method、normalization
-policy 未定義の route はこの buffering 上限の対象外で、従来どおり raw streaming されます。
+## Documentation
 
-認識済み route の JSON object 内に同一 scope での `tools`、`tools[].function`、
-`tools[].function.parameters`、`tools[].input_schema` の重複 member がある場合は、
-effective member を推測せず route-specific な provider-compatible `400` envelope
-（OpenAI は `error.code: "duplicate_json_member"`、Anthropic は nested `error.code: "duplicate_json_member"`）
-を返して upstream fetch と正規化を行いません。
+- [SPEC.md](SPEC.md) — normative architecture, HTTP contracts, invariants, security semantics, compatibility requirements, and planned generic relay contract
+- [Configuration](docs/configuration.md) — complete human-facing configuration reference
+- [Deployment](docs/deployment.md) — Deno Deploy, Cloudflare AI Gateway, provisioning, and release workflow
+- [Operations](docs/operations.md) — monitoring, failures, protected acceptance, and rollback
+- [AGENTS.md](AGENTS.md) — repository-specific instructions for AI coding agents
+- [Plugin changelog](packages/opencode-plugin/CHANGELOG.md) — plugin release history
 
-provider preset が malformed JSON の envelope を定義した既知 route では、`POST` かつ
-`Content-Type` の media type が `application/json` の body を解析できない場合、route-specific
-な provider-compatible `400` envelope を upstream fetch 前に返します。`/v1/chat/completions` は OpenAI shape
-`{"error":{"message":"Invalid JSON request body","type":"invalid_request_error","param":null,"code":null}}`、
-`/v1/messages` は Anthropic shape
-`{"type":"error","error":{"type":"invalid_request_error","message":"Invalid JSON request body"}}`
-です。空 body も同じ扱いとし、universal な `{"error":"invalid_json_body"}` は返しません。
-未知の pathname、method、または malformed JSON envelope が未定義の route では、relay は
-JSON parse を行わず body を raw forward します。その route を provider-compatible endpoint として
-公開するには、provider preset に route と envelope を先に定義する必要があります。
-既存の `/v1/responses` はこの解析を行いません。
+`REQUIREMENTS_AI_GATEWAY_RELAY.md` is retained as a compatibility pointer for older links. `SPEC.md` is the canonical technical source of truth.
 
-将来の汎用 relay 契約では、upstream `401`、`403`、`429`、`5xx` および通常の response は pass-through
-します。upstream の `304 Not Modified` も redirect ではないため、status とサニタイズ後の
-response headers を pass-through し、downstream body は空にします。`If-None-Match` と `If-Modified-Since` は denylist
-に含めず、upstream へ保持・転送します。`304` 以外の `3xx`（`300`、`301`、`302`、`303`、
-`305`、`306`、`307`、`308`）は、absolute cross-origin、absolute same-provider、relative
-な `Location` を問わず `502 {"error":"upstream_redirect_not_allowed"}` に変換し、
-`Location`、upstream headers/body、追加 fetch を downstream へ返しません。既存
-`/v1/responses` は後方互換のため、従来どおり 3xx の status、サニタイズ後の headers
-（`Location` を含む）、body を pass-through します。relay には retry loop、cache、
-payload persistence、または credential/payload のアプリケーションログはありません。
+## Development
 
-### タイムアウトとキャンセル（将来の汎用 relay 契約）
+Repository layout:
 
-`/upstream/*` の将来実装は、次のタイムアウトとキャンセル契約に従います。
-
-- **30 秒の connect-and-response-header タイムアウト**: upstream `fetch` の直前に開始し、DNS、TCP/TLS connection、および完全な upstream 応答ヘッダーの受信をカバーします。期限切れの場合、upstream request を abort し、正確な JSON body `{"error":"upstream_connect_or_header_timeout"}` で `504` を返します。
-- **120 秒の SSE idle タイマー**: upstream ヘッダー受信後に開始し、upstream body chunk を受信するたびにリセットします。総時間ではありません。期限切れの場合、upstream request を abort し、`upstream_sse_idle_timeout` stream error で downstream stream を終了します。応答ヘッダーは既に送信済みのため、2 番目の HTTP status や body に置き換えることはありません。非 SSE 応答には relay による総時間制限はありません。
-- **inbound abort signal**: inbound request の abort signal を upstream fetch signal に連結します。OpenCode client が upstream ヘッダー到達前に切断/キャンセルした場合、upstream fetch を abort し応答を送信しません。ストリーム開始後に切断した場合、upstream response body をキャンセルし downstream stream を閉じます。これらのキャンセル経路は fallback や retry を一切引き起こしません。
-- **timeout env validation**: `UPSTREAM_HEADER_TIMEOUT_MS` と `SSE_IDLE_TIMEOUT_MS` は起動時に検証します。未設定時はそれぞれ `30000` / `120000`、空文字列や `0`、負数、非数値、小数、上限超過値は設定エラーです。有効値は前後の ASCII whitespace を除去した 1 以上 `3_600_000` 以下の整数 milliseconds とし、不正値では default に戻らず `Deno.serve` を開始しない fail-closed 起動失敗とします。
-
-### Protected acceptance
-
-`.github/workflows/acceptance.yml` の `protected-acceptance` environment から、実 Cloudflare
-AI Gateway Custom Provider、実 Deno Deploy relay、実 Command Code Provider API を通る
-acceptance を手動実行します。将来的な汎用 relay `/upstream/*` 実装時に確認する項目も含み、必須値は次のとおりです。
-
-- `RELAY_ACCEPTANCE_ORIGIN`: legacy relay の直接検証先
-- `RELAY_ACCEPTANCE_RELAY_SECRET`: legacy direct acceptance の認証にだけ使用する protected
-  acceptance secret。runtime 用の `RELAY_SECRET` とは管理・注入経路を分離し、workflow の
-  ログや request body に出力しません
-- `RELAY_ACCEPTANCE_GATEWAY_BASE_URL`: `https://gateway.ai.cloudflare.com/v1/{account}/{gateway}`
-  形式の Gateway base URL
-- `RELAY_ACCEPTANCE_MODEL`: Command Code の検証用 model ID
-- `RELAY_ACCEPTANCE_GATEWAY_TOKEN`: Gateway token secret
-- `RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY`: Command Code API key secret
-
-acceptance は `tools[].function.parameters` に次の property-only root `anyOf` を含む OpenAI
-`/v1/chat/completions` request と、同じ schema を `tools[].input_schema` に含む Anthropic
-`/v1/messages` request を実providerへ送信します。OpenAI route と Anthropic route が
-providerに受け入れられることを確認します。Anthropic root `anyOf` がrelay転送後も保持
-されたことは2xx responseだけでは証明できないため、downstream payload captureまたは
-relay統合テストで検証します。両 route の malformed/empty JSON envelope、`/v1/models`、
-path mapping、credential separation も確認します。必要な変数またはsecretが未設定の場合、
-workflowはskipせず失敗します。
-
-## サポート対象バージョンとフェイルクローズ
-
-- サポート範囲は `packages/opencode-plugin/package.json` の `engines.opencode`（現行 `>=1.18.20 <2`）を正とします。公開リリースのドキュメントも同じ範囲を明記します。
-- プラグインは公式 server plugin API の `input.serverUrl` にある `/global/health` endpoint からホストバージョンを取得し、応答のバージョンが取得できない場合やヘルスチェックが失敗した場合は activate を拒否します。
-- OpenCode がホストバージョン能力を公開していない場合、プラグインは activate を拒否し、interposer を導入しません。該当 Codex リクエストはフェイルクローズし、直接 ChatGPT へ迂回することはありません。
-- activate の拒否は設定エラーであり、ChatGPT へ直接送信する許可ではありません。拒否だけでは interposer 未導入時の一致 Codex リクエストを防げないため、この保証には activate 拒否時に一致する Codex traffic をホスト側が block する能力が必要です。
-- 必須設定がない場合も、対象 endpoint のリクエストだけがエラーになり、直接 ChatGPT へ迂回することはありません。
-- npm 公開は、activate 拒否時に一致する Codex traffic をホスト側が block する能力（およびホストバージョン能力）が OpenCode 側で提供されるまで blocked です。
-
-## セキュリティと失敗セマンティクス
-
-- Refresh token は OpenCode から一切離れません。本リポジトリのどちらの deliverable も OAuth credential を実装・保存しません。
-- Access token は Gateway と relay を通過して upstream 認証としてのみ使用されますが、ログ、保存、metadata、エラーメッセージには含まれません。設定エラーを含む診断メッセージに、credential や request payload は一切含まれません。
-- Gateway token と relay token は異なる credential です。プラグインの ChatGPT Custom Provider 経路では、Gateway token は Cloudflare で停止し、relay token は relay で停止します。relay は転送前に `cf-aig-*` と `cf-*` ヘッダーを除去します。
-- Gateway 失敗、relay 失敗、DNS/connection 失敗、タイムアウト、およびすべての ChatGPT upstream エラーは OpenCode に返却されます。direct fallback は試みられません。
-
-## 開発
-
-```bash
-deno test apps/deno-relay .github/scripts  # relay と provisioning helper のテスト
-deno lint                                # lint
-deno fmt --check                         # フォーマット検査
-cd packages/opencode-plugin
-npm ci                                    # plugin 依存
-npm run typecheck && npm test && npm run build # plugin 型検査・テスト・ビルド
+```text
+apps/deno-relay/             Deno Deploy relay
+packages/opencode-plugin/    OpenCode plugin package
+.github/scripts/             infrastructure provisioning helpers
 ```
 
-## GitHub Actions によるインフラ構築
+Use Deno from the repository root for `apps/deno-relay` and `.github/scripts`. Use npm inside `packages/opencode-plugin`.
 
-`.github/workflows/provision.yml` は、`master` への relay 関連変更時、または
-GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gateway を
-作成・更新します。リソースが存在する場合は再利用し、削除は行いません。
+For repository-specific implementation constraints and verification requirements, follow [AGENTS.md](AGENTS.md).
 
-`production` environment の Variables に次のリソース識別子を登録します。
+## Deployment and Operations
 
-- Variable `DENO_DEPLOY_APP`: `cf-ai-gw-relay`
-- Variable `CLOUDFLARE_GATEWAY_ID`: `relay-gateway`
-- Variable `CLOUDFLARE_PROVIDER_SLUG`: `relay-chatgpt`
+Deployment and operational procedures are intentionally not duplicated here:
 
-`workflow_dispatch` の入力は任意の上書き値です。未入力の場合は上記 Variables を
-使用します。Variables が未設定の場合、workflow は provisioning 前の検証で停止します。
+- [Deployment guide](docs/deployment.md)
+- [Operations guide](docs/operations.md)
 
-### GitHub 設定
+## License
 
-`production` environment または repository に次の値を登録してください。
-
-- Secret `DENO_DEPLOY_TOKEN`: 対象 organization にスコープした Deno Deploy API token
-- Secret `RELAY_SECRET`: relay と Plugin の両方で使用する共有 bearer secret
-- Secret `CLOUDFLARE_API_TOKEN`: `AI Gateway - Read` と `AI Gateway - Edit` を持つ token
-- Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
-- Secret `OPENCODE_PLUGIN_RELEASE_READY`（`production` environment）: ホストの health capability と activate 拒否時の fail-closed block 動作を検証済みの場合だけ `true`
-
-Custom Provider は Cloudflare AI Gateway に登録する接続先定義です。ここでは
-`relay-chatgpt` という provider slug と Deno Deploy の production origin を紐付けます。
-Plugin は Gateway URL の `/custom-relay-chatgpt/v1/responses` を使用するため、Gateway
-はそのリクエストを relay へ転送します。Custom Provider は別の実行サービスではなく、
-Gateway 内の設定レコードです。
-
-`RELAY_SECRET` の実値は workflow の出力に表示されません。workflow は Deno Deploy
-v2 API で app secret を更新してから本番 deploy を作成し、Deno Deploy が返した
-production origin を Custom Provider の `base_url` に反映します。Gateway の設定は
-認証・ログ収集を有効化し、cache と rate limiting を無効化します。
-
-GitHub environment protection rules を `production` に設定すると、`master` push
-による provisioning 前に承認を要求できます。
-
-## 自動リリース
-
-`master` への push で release workflow が起動します。release-please は、
-`packages/opencode-plugin` に影響する releasable な Conventional Commit
-（`feat`、`fix`、`deps`、破壊的変更など）がある場合にのみ、plugin の
-release PR を作成または更新します。`apps/deno-relay` のみの変更や、既定で
-リリース対象外のコミット（`chore`、`build` など）では plugin release PR は
-作成されません。release PR のマージ後に GitHub Release 作成と GitHub
-Packages への公開を行い、公開には workflow 権限の `GITHUB_TOKEN` を使用します。
-
-plugin の公開は、ホスト能力の検証済みを示す
-`OPENCODE_PLUGIN_RELEASE_READY=true` が設定されるまで workflow の readiness
-gate で停止します。GitHub Packages の npm registry を利用する場合は、次の
-手順で利用者用の GitHub PAT (classic) を準備してください。
-
-1. GitHub の **Settings > Developer settings > Personal access tokens >
-   Tokens (classic)** から PAT (classic) を作成し、パッケージのインストールには
-   `read:packages` 権限を付与します。
-2. 実トークンをリポジトリへ保存せず、環境変数
-   `GITHUB_PACKAGES_TOKEN` に設定します。
-3. 利用者の `~/.npmrc` またはローカルの `.npmrc` に、トークン値を
-   含めない次の設定を追加します。
-
-   ```ini
-   @yohi:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
-   ```
-
-この手順は利用者向けの認証設定です。`.npmrc` やその他のファイルに PAT の実値を
-保存したり、リポジトリへコミットしたりしないでください。
-
-## リリースチェックリスト（GitHub Packages）
-
-1. [ ] OpenCode の server plugin `input.serverUrl` から `/global/health` を取得できるリリースが出ていること。さらに activate 拒否時にホスト側が一致する Codex リクエストを block できること（拒否だけでは direct request を防げない）。
-2. [ ] `SUPPORTED_OPENCODE_RANGE` と `engines.opencode` を実際の能力提供バージョンに更新し、`test/package-consistency.test.ts` を通すこと。
-3. [ ] 保護付き acceptance suite（実 Cloudflare / Deno Deploy / ChatGPT OAuth / Command Code 認証情報）を `protected-acceptance` 環境で実行し、legacy の 200 SSE、tool call、reasoning、token refresh、代表エラー、両ログペイロードモードを確認すること。さらに、将来の汎用 `/upstream/*` relay 実装時には、固定の safe root `anyOf` fixture を使った generic `command-code` の OpenAI/Anthropic/models path、provider-compatible error envelope、header injection、Gateway log 作成、パスマッピング、`MAX_NORMALIZATION_BODY_BYTES` の上限超過契約も実装テストで確認し、必須値が未設定の場合は skip せず fail させること。
-4. [ ] README のサポート範囲表記を更新すること。
-5. [ ] 初回の手動公開前に、`write:packages` 権限を持つ GitHub PAT
-   (classic) で GitHub Packages registry に認証すること。その後、
-   `packages/opencode-plugin` で `npm publish --ignore-scripts` を実行すること。
-## スコープ外
-
-- OAuth、token refresh、account extraction、model catalog、model rewriting、retry、cache、quota parsing、SSE reconstruction
-- ChatGPT への direct fallback や、プリセット外の provider へ任意の URL を転送する generic proxy 動作
-- `octg` 統合や変更
-- ChatGPT OAuth traffic に対する OpenCode ビルトイン Cloudflare AI Gateway ネイティブ passthrough の使用
-- ネイティブ custom Codex endpoint 統合（OpenCode が正式に対応する場合に fetch interposer を置き換える可能性がある）
-
-## 将来の拡張性（Roadmap）
-
-汎用リレー（`/upstream/*`）に関連する将来の拡張検討項目です。
-
-1. **プロバイダ別パラメータ相互変換**: OpenAI 互換 API 間の細かなパラメータ名差異（`max_tokens` ↔ `max_completion_tokens`、`thinking` パラメータ等）の透過的書き換え。
-2. **モデル名エイリアシング**: Gateway 上で指定されたモデル名を上流プロバイダの正確な識別子へマッピングする機能。
-3. **環境変数ベースのプロバイダ追加**: 動的にプロバイダ設定（`UPSTREAM_<SLUG>_URL` 等）を追加・上書きできる仕組みの検討。
-4. **レスポンス側の正規化**: 上流プロバイダのレスポンス形式を OpenAI 互換に変換する必要が生じた場合の検討。
-5. **追加プリセットプロバイダ**: 新しい OpenAI 互換プロバイダのプリセットマッピング追加。
+MIT. See [LICENSE](LICENSE).
