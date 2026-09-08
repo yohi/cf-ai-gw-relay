@@ -1,10 +1,10 @@
 {
   "workspace": ["apps/deno-relay"],
   "fmt": {
-    "exclude": ["packages", "docs", "README.md", ".omo", ".justice"]
+    "exclude": ["packages", "README.md", ".omo", ".justice", ".nexus"]
   },
   "lint": {
-    "exclude": ["packages", "docs", ".omo", ".justice"]
+    "exclude": ["packages", ".omo", ".justice", ".nexus"]
   },
   "deploy": {
     "runtime": {

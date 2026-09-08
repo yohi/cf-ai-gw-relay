@@ -151,6 +151,12 @@ OpenAI route で root `anyOf` がない場合、または安全な flatten に�
 を upstream へ送ることはありません。legacy `/v1/responses`、未知 route/method、normalization
 policy 未定義の route はこの buffering 上限の対象外で、従来どおり raw streaming されます。
 
+認識済み route の JSON object 内に同一 scope での `tools`、`tools[].function`、
+`tools[].function.parameters`、`tools[].input_schema` の重複 member がある場合は、
+effective member を推測せず route-specific な provider-compatible `400` envelope
+（OpenAI は `error.code: "duplicate_json_member"`、Anthropic は nested `error.code: "duplicate_json_member"`）
+を返して upstream fetch と正規化を行いません。
+
 provider preset が malformed JSON の envelope を定義した既知 route では、`POST` かつ
 `Content-Type` の media type が `application/json` の body を解析できない場合、route-specific
 な provider-compatible `400` envelope を upstream fetch 前に返します。`/v1/chat/completions` は OpenAI shape
@@ -282,3 +288,13 @@ PAT (classic) を準備してください。
 - Custom Provider または Deno Deploy provisioning の自動化
 - ChatGPT OAuth traffic に対する OpenCode ビルトイン Cloudflare AI Gateway ネイティブ passthrough の使用
 - ネイティブ custom Codex endpoint 統合（OpenCode が正式に対応する場合に fetch interposer を置き換える可能性がある）
+
+## 将来の拡張性（Roadmap）
+
+汎用リレー（`/upstream/*`）に関連する将来の拡張検討項目です。
+
+1. **プロバイダ別パラメータ相互変換**: OpenAI 互換 API 間の細かなパラメータ名差異（`max_tokens` ↔ `max_completion_tokens`、`thinking` パラメータ等）の透過的書き換え。
+2. **モデル名エイリアシング**: Gateway 上で指定されたモデル名を上流プロバイダの正確な識別子へマッピングする機能。
+3. **環境変数ベースのプロバイダ追加**: 動的にプロバイダ設定（`UPSTREAM_<SLUG>_URL` 等）を追加・上書きできる仕組みの検討。
+4. **レスポンス側の正規化**: 上流プロバイダのレスポンス形式を OpenAI 互換に変換する必要が生じた場合の検討。
+5. **追加プリセットプロバイダ**: 新しい OpenAI 互換プロバイダのプリセットマッピング追加。
