@@ -39,21 +39,6 @@ describe("resolveHostVersionCapability", () => {
     });
   });
 
-  it("reads the host version from client.global.health", async () => {
-    const input = {
-      client: {
-        global: {
-          health: async () => ({ data: { healthy: true, version: "1.19.0" } }),
-        },
-      },
-    };
-
-    await expect(resolveHostVersionCapabilityAsync(input)).resolves.toEqual({
-      available: true,
-      version: "1.19.0",
-    });
-  });
-
   it("reads the host version from the official server health endpoint", async () => {
     vi.stubGlobal(
       "fetch",
@@ -70,6 +55,32 @@ describe("resolveHostVersionCapability", () => {
       available: true,
       version: "1.18.29",
     });
+  });
+
+  it("rejects a non-HTTP server URL before fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resolveHostVersionCapabilityAsync({ serverUrl: new URL("file:///tmp/opencode") }),
+    ).resolves.toEqual({ available: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses a timeout and rejects redirects for the health request", async () => {
+    let requestInit: RequestInit | undefined;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestInit = init;
+      return new Response(JSON.stringify({ healthy: true, version: "1.18.29" }), {
+        status: 200,
+      });
+    });
+
+    await expect(
+      resolveHostVersionCapabilityAsync({ serverUrl: SERVER_URL }),
+    ).resolves.toEqual({ available: true, version: "1.18.29" });
+    expect(requestInit?.redirect).toBe("error");
+    expect(requestInit?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("does not use legacy version fields without the official health capability", async () => {
@@ -91,15 +102,17 @@ describe("resolveHostVersionCapability", () => {
   });
 
   it("reports absent when the health response has no valid version", async () => {
-    const input = {
-      client: {
-        global: {
-          health: async () => ({ data: { healthy: true, version: "not-semver" } }),
-        },
-      },
-    };
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ healthy: true, version: "not-semver" }), {
+          status: 200,
+        }),
+    );
 
-    await expect(resolveHostVersionCapabilityAsync(input)).resolves.toEqual({
+    await expect(
+      resolveHostVersionCapabilityAsync({ serverUrl: SERVER_URL }),
+    ).resolves.toEqual({
       available: false,
     });
   });

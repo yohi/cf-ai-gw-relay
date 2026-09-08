@@ -275,7 +275,7 @@ GitHub Actions の **Run workflow** から、Deno Deploy と Cloudflare AI Gatew
 - Secret `RELAY_SECRET`: relay と Plugin の両方で使用する共有 bearer secret
 - Secret `CLOUDFLARE_API_TOKEN`: `AI Gateway - Read` と `AI Gateway - Edit` を持つ token
 - Variable または Secret `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID
-- Variable `OPENCODE_PLUGIN_RELEASE_READY`: ホストの health capability と activate 拒否時の fail-closed block 動作を検証済みの場合だけ `true`
+- Secret `OPENCODE_PLUGIN_RELEASE_READY`（`production` environment）: ホストの health capability と activate 拒否時の fail-closed block 動作を検証済みの場合だけ `true`
 
 Custom Provider は Cloudflare AI Gateway に登録する接続先定義です。ここでは
 `relay-chatgpt` という provider slug と Deno Deploy の production origin を紐付けます。

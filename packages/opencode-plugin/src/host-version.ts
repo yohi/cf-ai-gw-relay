@@ -24,19 +24,6 @@ function firstValidSemver(values: readonly unknown[]): string | undefined {
   return undefined;
 }
 
-type HealthClient = {
-  readonly global: {
-    readonly health: () => Promise<unknown>;
-  };
-};
-
-function isHealthClient(value: unknown): value is HealthClient {
-  if (!isRecord(value) || !isRecord(value.global)) {
-    return false;
-  }
-  return typeof value.global.health === "function";
-}
-
 function healthVersion(response: unknown): string | undefined {
   const data =
     isRecord(response) && isRecord(response.data) ? response.data : response;
@@ -46,16 +33,14 @@ function healthVersion(response: unknown): string | undefined {
   return firstValidSemver([data.version]);
 }
 
-function resolveHealthVersion(client: HealthClient): Promise<string | undefined> {
-  return Promise.resolve()
-    .then(() => client.global.health())
-    .then((response) => healthVersion(response))
-    .then((version) => version, () => undefined);
-}
-
 function resolveServerHealthVersion(serverUrl: URL): Promise<string | undefined> {
   return Promise.resolve()
-    .then(() => fetch(new URL("/global/health", serverUrl)))
+    .then(() =>
+      fetch(new URL("/global/health", serverUrl), {
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000),
+      }),
+    )
     .then(async (response) => {
       if (!response.ok) {
         return undefined;
@@ -86,14 +71,10 @@ export function resolveHostVersionCapabilityAsync(
   input: unknown,
 ): Promise<HostVersionCapability> {
   const source = isRecord(input) ? input : {};
-  if (isHealthClient(source.client)) {
-    return resolveHealthVersion(source.client).then((version) =>
-      version === undefined
-        ? { available: false }
-        : { available: true, version },
-    );
-  }
-  if (source.serverUrl instanceof URL) {
+  if (
+    source.serverUrl instanceof URL &&
+    (source.serverUrl.protocol === "http:" || source.serverUrl.protocol === "https:")
+  ) {
     return resolveServerHealthVersion(source.serverUrl).then((version) =>
       version === undefined
         ? { available: false }
