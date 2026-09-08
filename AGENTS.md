@@ -8,9 +8,8 @@ fail-closed semantics.
 This is a monorepo with two runtime deliverables that share no runtime code:
 
 - `apps/deno-relay`: Deno Deploy egress relay. Zero runtime dependencies.
-- `packages/opencode-plugin`: npm package
-  `@yohi/cloudflare-ai-gateway-chatgpt`. Runtime dependency is limited to
-  `semver`.
+- `packages/opencode-plugin`: npm package `@yohi/cloudflare-ai-gateway-chatgpt`.
+  Runtime dependency is limited to `semver`.
 - `.github/scripts`: Deno-based infrastructure provisioning helpers.
 
 Their coupling is a documented HTTP contract, not a shared library.
@@ -34,11 +33,11 @@ enduring behavior that is not already captured in the authoritative documents.
 
 - Use Deno from the repository root for `apps/deno-relay` and `.github/scripts`.
 - Use npm inside `packages/opencode-plugin`.
-- Preserve fail-closed behavior: do not add direct ChatGPT fallback, retry loops,
-  caching, or payload persistence unless an authoritative contract explicitly
-  requires it.
-- Keep `apps/deno-relay` free of runtime dependencies and keep the plugin runtime
-  dependency set limited to `semver`.
+- Preserve fail-closed behavior: do not add direct ChatGPT fallback, retry
+  loops, caching, or payload persistence unless an authoritative contract
+  explicitly requires it.
+- Keep `apps/deno-relay` free of runtime dependencies and keep the plugin
+  runtime dependency set limited to `semver`.
 - Do not duplicate deep contracts here. Update the authoritative documentation
   when behavior or design contracts change.
 - Let deterministic tooling enforce style; do not encode formatter or linter
