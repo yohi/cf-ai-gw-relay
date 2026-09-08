@@ -83,17 +83,25 @@ export async function ensureDenoApp(options: {
   readonly appSlug: string;
   readonly relaySecret: string;
 }): Promise<void> {
-  const existingApp = await getApp(options.client, options.appSlug);
+  let existingApp = await getApp(options.client, options.appSlug);
   if (existingApp === null) {
-    await requestJson({
-      baseUrl: DEPLOY_API_ORIGIN,
-      fetcher: options.client.fetcher,
-      token: options.client.token,
-      method: "POST",
-      path: "/v2/apps",
-      body: createAppPayload(options.appSlug, options.relaySecret),
-    });
-    return;
+    try {
+      await requestJson({
+        baseUrl: DEPLOY_API_ORIGIN,
+        fetcher: options.client.fetcher,
+        token: options.client.token,
+        method: "POST",
+        path: "/v2/apps",
+        body: createAppPayload(options.appSlug, options.relaySecret),
+      });
+      return;
+    } catch (error) {
+      if (!(error instanceof HttpStatusError) || error.status !== 409) {
+        throw error;
+      }
+      existingApp = await getApp(options.client, options.appSlug);
+      if (existingApp === null) throw error;
+    }
   }
 
   const existingSecret = existingApp.envVars.find(

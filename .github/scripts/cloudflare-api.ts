@@ -158,23 +158,44 @@ async function reconcileProvider(options: {
   readonly providerSlug: string;
   readonly relayOrigin: string;
 }): Promise<void> {
+  const providerSearchPath = accountPath(
+    options.accountId,
+    `/custom-providers?per_page=100&search=${
+      encodeURIComponent(options.providerSlug)
+    }`,
+  );
   const list = await requestCloudflare({
     ...options.client,
     method: "GET",
-    path: accountPath(options.accountId, "/custom-providers?per_page=100"),
+    path: providerSearchPath,
   });
-  const existing = parseProviders(list).find(
+  let existing = parseProviders(list).find(
     (provider) => provider.slug === options.providerSlug,
   );
   const body = createProviderPayload(options.providerSlug, options.relayOrigin);
   if (existing === undefined) {
-    await requestCloudflare({
-      ...options.client,
-      method: "POST",
-      path: accountPath(options.accountId, "/custom-providers"),
-      body,
-    });
-    return;
+    try {
+      await requestCloudflare({
+        ...options.client,
+        method: "POST",
+        path: accountPath(options.accountId, "/custom-providers"),
+        body,
+      });
+      return;
+    } catch (error) {
+      if (!(error instanceof HttpStatusError) || error.status !== 409) {
+        throw error;
+      }
+      const refreshedList = await requestCloudflare({
+        ...options.client,
+        method: "GET",
+        path: providerSearchPath,
+      });
+      existing = parseProviders(refreshedList).find(
+        (provider) => provider.slug === options.providerSlug,
+      );
+      if (existing === undefined) throw error;
+    }
   }
   await requestCloudflare({
     ...options.client,
