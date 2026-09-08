@@ -9,7 +9,6 @@ import {
 import {
   ASSET_PATHS,
   createAppPayload,
-  DenoProvisioningError,
   type DeployAssets,
 } from "./provision-deno-helpers.ts";
 
@@ -129,13 +128,16 @@ export async function ensureDenoApp(options: {
 
 export async function readDeployAssets(): Promise<DeployAssets> {
   const assets: Record<string, JsonObject> = {};
-  for (const assetPath of ASSET_PATHS) {
-    const content = await Deno.readTextFile(
-      new URL(`../../${assetPath}`, import.meta.url),
-    );
+  const loadedAssets = await Promise.all(
+    ASSET_PATHS.map(async (assetPath) => ({
+      assetPath,
+      content: await Deno.readTextFile(
+        new URL(`../../${assetPath}`, import.meta.url),
+      ),
+    })),
+  );
+  for (const { assetPath, content } of loadedAssets) {
     assets[assetPath] = { kind: "file", encoding: "utf-8", content };
   }
   return assets;
 }
-
-export { DenoProvisioningError };

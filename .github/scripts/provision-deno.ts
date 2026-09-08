@@ -1,4 +1,5 @@
 import { provisionRelay } from "./provision-deno-api.ts";
+import { writeGithubOutput } from "./github-actions.ts";
 import {
   DenoProvisioningError,
   normalizeAppSlug,
@@ -22,12 +23,6 @@ function requiredEnv(name: string): string {
     throw new DenoProvisioningError(`${name} is not configured`);
   }
   return value;
-}
-
-async function writeGithubOutput(name: string, value: string): Promise<void> {
-  const outputPath = Deno.env.get("GITHUB_OUTPUT");
-  if (outputPath === undefined || outputPath.length === 0) return;
-  await Deno.writeTextFile(outputPath, `${name}=${value}\n`, { append: true });
 }
 
 async function main(): Promise<void> {

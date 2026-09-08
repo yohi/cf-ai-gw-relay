@@ -1,4 +1,5 @@
 import { reconcileCloudflare } from "./cloudflare-api.ts";
+import { writeGithubOutput } from "./github-actions.ts";
 import {
   CloudflareProvisioningError,
   normalizeGatewayId,
@@ -20,12 +21,6 @@ function requiredEnv(name: string): string {
     throw new CloudflareProvisioningError(`${name} is not configured`);
   }
   return value;
-}
-
-async function writeGithubOutput(name: string, value: string): Promise<void> {
-  const outputPath = Deno.env.get("GITHUB_OUTPUT");
-  if (outputPath === undefined || outputPath.length === 0) return;
-  await Deno.writeTextFile(outputPath, `${name}=${value}\n`, { append: true });
 }
 
 async function main(): Promise<void> {
