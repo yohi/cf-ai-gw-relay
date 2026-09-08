@@ -10,9 +10,13 @@ This is a monorepo with two runtime deliverables that share no runtime code:
 - `apps/deno-relay`: Deno Deploy egress relay. Zero runtime dependencies.
 - `packages/opencode-plugin`: npm package `@yohi/cloudflare-ai-gateway-chatgpt`.
   Runtime dependency is limited to `semver`.
+
+Supporting infrastructure (not a runtime deliverable):
+
 - `.github/scripts`: Deno-based infrastructure provisioning helpers.
 
-Their coupling is a documented HTTP contract, not a shared library.
+The two runtime deliverables are coupled by a documented HTTP contract, not a
+shared library.
 
 ## Read on Demand
 
