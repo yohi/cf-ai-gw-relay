@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/yohi/opencode-cloudflare-ai-gateway-chatgpt/compare/v0.2.0...v0.2.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* Custom Provider slugをrelay-chatgptに統一 ([148c83f](https://github.com/yohi/opencode-cloudflare-ai-gateway-chatgpt/commit/148c83ffd339d7de886931d24d3f920667d4e8d7))
+
 ## [0.2.0](https://github.com/yohi/opencode-cloudflare-ai-gateway-chatgpt/compare/v0.1.0...v0.2.0) (2026-08-25)
 
 
