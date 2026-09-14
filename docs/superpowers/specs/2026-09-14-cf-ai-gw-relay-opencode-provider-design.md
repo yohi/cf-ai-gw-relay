@@ -3,11 +3,8 @@
 ## Status
 
 Draft — pending §7.1 OAuth client availability gate and the §6.2 compatibility
-spike. This revision addresses SRG-012, SRG-015, SRG-016, SRG-017, SRG-018, and
-SRG-019 from the latest review. Blocked until both gates are resolved and the
-design is re-approved. spike. This revision addresses SRG-012, SRG-015, SRG-016,
-and SRG-017 from the latest review. Blocked until both gates are resolved and
-the design is re-approved.
+spike. This revision addresses SRG-002, SRG-013, SRG-018, SRG-019, and SRG-020.
+Blocked until both gates are resolved and the design is re-approved.
 
 ## 1. Summary
 
@@ -170,7 +167,7 @@ the spike in §6.2.
   these fields.
 
 - Exact request schema sent to Codex: determined by the compatibility spike. The
-  relay applies the exact outcome recorded in item 15 below: either the body is
+  relay applies the exact outcome recorded in item 17 below: either the body is
   forwarded unchanged, or the recorded minimum transformation is applied.
 - Success response handling: pass-through streaming `Response` unchanged.
 - SSE framing: pass-through unchanged.
@@ -192,21 +189,24 @@ model-name list for future Codex capability additions).
    peerDependency range; these must match the real supported range validated by
    a compatibility test.
 5. OpenCode config model definition.
-6. Custom `fetch` observed method and URL.
-7. Custom `fetch` observed top-level request body keys.
-8. Confirmation that Responses conversation data is generated as `input`, not
-   `messages`.
-9. Tool-call wire shape when tools are present.
-10. `stream` value for streaming vs non-streaming requests.
-11. Exact native Codex model ID accepted by
+6. Exact configured provider `baseURL` passed to `createOpenAI()`.
+7. AI-SDK-generated final Gateway URL observed by the custom `fetch` (must be
+   produced from the configured `baseURL` without URL rewriting).
+8. Custom `fetch` observed method.
+9. Custom `fetch` observed top-level request body keys.
+10. Confirmation that Responses conversation data is generated as `input`, not
+    `messages`.
+11. Tool-call wire shape when tools are present.
+12. `stream` value for streaming vs non-streaming requests.
+13. Exact native Codex model ID accepted by
     `https://chatgpt.com/backend-api/codex/responses`.
-12. Observed AI SDK model ID passed to the runtime (must equal the native Codex
+14. Observed AI SDK model ID passed to the runtime (must equal the native Codex
     model ID, without the `openai/` user-visible prefix).
-13. OpenCode-visible model ID and the exact public config/API field or
+15. OpenCode-visible model ID and the exact public config/API field or
     model-mapping mechanism that maps `cf-ai-gw-relay/openai/<model>` to the
     native ID `<model>`.
-14. At least one confirmed SSE success response.
-15. Determination of whether protocol transformation is required.
+16. At least one confirmed SSE success response.
+17. Determination of whether protocol transformation is required.
 
     - If no transformation is required:
       - record evidence that the exact generated request and response/SSE
@@ -523,7 +523,10 @@ fetch.
   §6.2 confirms that the AI SDK-generated representation is accepted without
   transformation, the relay forwards the body unchanged; otherwise the relay
   applies the transformation the spike identifies.
-- Streaming: forward the upstream response body stream unchanged.
+- Streaming / response body: if §6.2 confirms no response/SSE transformation is
+  required, forward the upstream response body stream unchanged; if §6.2
+  determines that response/SSE transformation is required, the relay applies the
+  exact transformation recorded in §6.2 before returning it to the Gateway.
 - Abort: propagate the inbound abort signal to the upstream `fetch`.
 - Timeouts: preserve the existing connect/header timeout and SSE idle timeout
   behavior.
@@ -721,8 +724,9 @@ Before declaring the new provider model production-ready, verify:
   - unsupported-upstream detection,
   - OAuth PKCE/state/callback/token-exchange helpers,
   - callback server bind-before-return and cleanup paths,
-  - custom `fetch` URL/header rewrite,
-  - secret-free error messages.
+  - custom `fetch` URL validation and header replacement/application,
+  - custom `fetch` does not change the request pathname,
+  - custom `fetch` rejects a URL that does not match the expected Gateway shape,
 - Integration tests use minimal stubs for public OpenCode plugin interfaces
   only. A real-package compatibility test against the chosen minimum OpenCode
   version is included. A second real-package test against a current/reference
@@ -789,9 +793,9 @@ Before declaring the new provider model production-ready, verify:
     - a malformed JSON candidate body is passed through untouched,
     - an oversized candidate body (> 8 KiB) causes the probe to stop/cancel and
       the original response body to remain fully readable,
-    - a probe read failure results in pass-through (not translation) with a
-      secret-free synthetic error if the runtime cannot return the original
-      body,
+    - a probe read failure is treated as a non-match and the original response
+      is returned completely untouched; no synthetic translated error is
+      created,
     - an exact documented Relay-origin body is translated to a synthetic
       `Response`; the original body is not returned,
     - success/SSE responses are never cloned or read by the probe.
