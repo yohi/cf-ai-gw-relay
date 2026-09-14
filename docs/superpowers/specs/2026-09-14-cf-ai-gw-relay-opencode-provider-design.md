@@ -3,7 +3,8 @@
 ## Status
 
 Draft — pending §7.1 OAuth client availability gate and the §6.2 compatibility
-spike. This revision addresses SRG-002, SRG-013, SRG-018, SRG-019, and SRG-020.
+spike. This revision addresses SRG-002, SRG-013, SRG-016, SRG-017, SRG-018,
+SRG-019, and SRG-020.
 Blocked until both gates are resolved and the design is re-approved.
 
 ## 1. Summary
@@ -81,13 +82,13 @@ intercept, or rewrite `openai/*` traffic.
   the spike proves the model is unavailable, the spike must fail the gate and
   this design must be re-approved before planning.
 - The OpenCode-visible model ID and the upstream/native Codex model ID are not
-  assumed to be the same string. The design uses public OpenCode plugin APIs
-  and/ or the AI SDK provider model definition to map
-  `cf-ai-gw-relay/openai/<model>` (user-visible) to `<model>` (native). The
-  exact mapping mechanism is fixed by the compatibility spike in §6.2. Because
-  the custom `fetch` must not parse or rewrite the request body, any required
-  model-ID normalization must happen before the body reaches the transport
-  layer.
+  assumed to be the same string. The exact public OpenCode plugin API field or
+  AI SDK provider model definition that maps `cf-ai-gw-relay/openai/<model>`
+  (user-visible) to `<model>` (native) is fixed by the compatibility spike in
+  §6.2 and recorded there as a concrete value, not as a list of candidate
+  mechanisms. Because the custom `fetch` must not parse or rewrite the request
+  body, any required model-ID normalization must happen before the body reaches
+  the transport layer.
 - The namespace is kept extensible for future `anthropic`, `google`, etc.,
   providers without a breaking change, but no placeholder or dummy models for
   unsupported upstreams are registered.
@@ -124,11 +125,13 @@ it.
 - npm package: `@ai-sdk/openai`.
 - Provider factory API: `createOpenAI({ baseURL, apiKey, fetch })` from
   `@ai-sdk/openai`, configured so the runtime targets the OpenAI Responses API.
-- Model factory API mode: responses mode. The exact factory call / model
-  construction path used by the selected OpenCode / AI SDK version is recorded
-  as spike evidence; any example call in this section is illustrative only until
-  the spike confirms the actual public API path. The runtime produces an
-  OpenAI-compatible chat/model call routed through the configured `baseURL`.
+- Model factory API mode: responses mode. The spike records the exact complete
+  path from the OpenCode-visible provider/model selection through the public
+  OpenCode / AI SDK APIs to the native Codex model ID used in the wire body, e.g.
+  `OpenCode config -> selected provider -> exact AI SDK constructor / model
+  method -> native model ID`. Any example call in this section is illustrative
+  only until the spike confirms the actual public API path. The runtime produces
+  an OpenAI-compatible chat/model call routed through the configured `baseURL`.
 
 **Exact request contract for the initial model:**
 
@@ -169,8 +172,11 @@ the spike in §6.2.
 - Exact request schema sent to Codex: determined by the compatibility spike. The
   relay applies the exact outcome recorded in item 17 below: either the body is
   forwarded unchanged, or the recorded minimum transformation is applied.
-- Success response handling: pass-through streaming `Response` unchanged.
-- SSE framing: pass-through unchanged.
+- Success response handling and SSE framing are determined by evidence item 17
+  in this section. If no response/SSE transformation is required, the upstream
+  streaming `Response` and its SSE framing are passed through unchanged. If
+  transformation is required, this bullet MUST be replaced with the exact
+  measured response/SSE transformation before the compatibility gate closes.
 - Abort handling: propagate the inbound `AbortSignal` to the upstream `fetch`.
 - Error response handling: see §11.
 
@@ -867,10 +873,15 @@ Before declaring the new provider model production-ready, verify:
     downstream delivery,
   - tests and logs do not emit the secret values used in headers.
 - Supported OpenCode version boundary tests (added per SRG-017):
-  - the minimum supported OpenCode version passes provider registration, auth
-    loader registration, and one mocked request through the real
-    `@opencode-ai/plugin` package;
-  - the current/reference OpenCode version passes the same contract;
+  - the minimum supported OpenCode version passes the full lifecycle through the
+    real `@opencode-ai/plugin` package: plugin initializes, the `config` hook
+    injects the `cf-ai-gw-relay` provider and models, OAuth authentication
+    completes and auth is persisted, the plugin/client lifecycle reinitializes
+    as OpenCode normally requires, the `cf-ai-gw-relay` provider and model remain
+    discoverable/selectable, `auth.loader()` is invoked with persisted OAuth
+    auth, and one request reaches the mocked custom `fetch`;
+  - the current/reference OpenCode version passes the same full lifecycle
+    contract;
   - unsupported versions are handled according to the existing host-version
     policy (activation rejection), not by this provider.
 
