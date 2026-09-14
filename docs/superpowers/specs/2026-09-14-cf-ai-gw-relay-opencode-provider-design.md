@@ -3,7 +3,9 @@
 ## Status
 
 Draft — pending §7.1 OAuth client availability gate and the §6.2 compatibility
-spike. Blocked until both gates are resolved and the design is re-approved.
+spike. This revision addresses SRG-012, SRG-015, SRG-016, and SRG-017 from the
+latest review. Blocked until both gates are resolved and the design is
+re-approved.
 
 ## 1. Summary
 
@@ -79,6 +81,14 @@ intercept, or rewrite `openai/*` traffic.
   model ID is fixed by the compatibility spike in §6.2 and recorded there. If
   the spike proves the model is unavailable, the spike must fail the gate and
   this design must be re-approved before planning.
+- The OpenCode-visible model ID and the upstream/native Codex model ID are not
+  assumed to be the same string. The design uses public OpenCode plugin APIs
+  and/ or the AI SDK provider model definition to map
+  `cf-ai-gw-relay/openai/<model>` (user-visible) to `<model>` (native). The
+  exact mapping mechanism is fixed by the compatibility spike in §6.2. Because
+  the custom `fetch` must not parse or rewrite the request body, any required
+  model-ID normalization must happen before the body reaches the transport
+  layer.
 - The namespace is kept extensible for future `anthropic`, `google`, etc.,
   providers without a breaking change, but no placeholder or dummy models for
   unsupported upstreams are registered.
@@ -91,7 +101,9 @@ intercept, or rewrite `openai/*` traffic.
 
 - `config` hook (primary): inject and merge `provider.cf-ai-gw-relay` into the
   user's configuration. Provide the standard models. Merge user-defined models,
-  with user settings winning on conflict.
+  with user settings winning on conflict. User-defined models whose visible key
+  is `openai/<model>` are mapped to the native Codex model ID `<model>` using
+  the same public mapping mechanism fixed by the compatibility spike in §6.2.
 - `auth` hook: provide the ChatGPT OAuth login flow for the `cf-ai-gw-relay`
   provider. Return provider options (including a custom `fetch`) from
   `auth.loader()` so that the OpenCode / AI SDK runtime uses the relay
@@ -138,15 +150,15 @@ the spike in §6.2.
   schema. The body is produced by `@ai-sdk/openai` in responses mode and
   contains, at minimum, the following top-level fields when a request is made:
 
-  | Field         | Presence | Notes                                                                      |
-  | ------------- | -------- | -------------------------------------------------------------------------- |
-  | `model`       | required | Set to the spike-confirmed Codex model ID by OpenCode / the model factory. |
-  | `input`       | required | Conversation input in OpenAI Responses API shape.                          |
-  | `stream`      | optional | `true` when streaming is requested; omitted or `false` otherwise.          |
-  | `tools`       | optional | Codex tool definitions, when supplied by OpenCode.                         |
-  | `tool_choice` | optional | Tool selection policy.                                                     |
-  | `metadata`    | optional | Request metadata object.                                                   |
-  | `truncation`  | optional | Token management strategy.                                                 |
+  | Field         | Presence | Notes                                                                                                                                                             |
+  | ------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `model`       | required | Set to the spike-confirmed native Codex model ID by the OpenCode / AI SDK model mapping layer; the `openai/` user-visible prefix is NOT present in the wire body. |
+  | `input`       | required | Conversation input in OpenAI Responses API shape.                                                                                                                 |
+  | `stream`      | optional | `true` when streaming is requested; omitted or `false` otherwise.                                                                                                 |
+  | `tools`       | optional | Codex tool definitions, when supplied by OpenCode.                                                                                                                |
+  | `tool_choice` | optional | Tool selection policy.                                                                                                                                            |
+  | `metadata`    | optional | Request metadata object.                                                                                                                                          |
+  | `truncation`  | optional | Token management strategy.                                                                                                                                        |
 
   Additional optional fields (`temperature`, `max_output_tokens`, `top_p`,
   `presence_penalty`, `frequency_penalty`, `reasoning`, `store`, `user`, etc.)
@@ -172,17 +184,27 @@ model-name list for future Codex capability additions).
 
 1. OpenCode version used.
 2. `@ai-sdk/openai` version used.
-3. OpenCode config model definition.
-4. Custom `fetch` observed method and URL.
-5. Custom `fetch` observed top-level request body keys.
-6. Confirmation that Responses conversation data is generated as `input`, not
+3. Minimum supported OpenCode version and the exact `@opencode-ai/plugin` public
+   API version required by the provider hooks used in this design.
+4. Intended `engines.opencode` range and intended `@opencode-ai/plugin`
+   peerDependency range; these must match the real supported range validated by
+   a compatibility test.
+5. OpenCode config model definition.
+6. Custom `fetch` observed method and URL.
+7. Custom `fetch` observed top-level request body keys.
+8. Confirmation that Responses conversation data is generated as `input`, not
    `messages`.
-7. Tool-call wire shape when tools are present.
-8. `stream` value for streaming vs non-streaming requests.
-9. Exact Codex model ID accepted by
-   `https://chatgpt.com/backend-api/codex/responses`.
-10. At least one confirmed SSE success response.
-11. Evidence that no request body transformation is required.
+9. Tool-call wire shape when tools are present.
+10. `stream` value for streaming vs non-streaming requests.
+11. Exact native Codex model ID accepted by
+    `https://chatgpt.com/backend-api/codex/responses`.
+12. Observed AI SDK model ID passed to the runtime (must equal the native Codex
+    model ID, without the `openai/` user-visible prefix).
+13. OpenCode-visible model ID and the exact public config/API field or
+    model-mapping mechanism that maps `cf-ai-gw-relay/openai/<model>` to the
+    native ID `<model>`.
+14. At least one confirmed SSE success response.
+15. Evidence that no request body transformation is required.
 
 Until all items above are recorded here, §6.2 remains a blocking gate.
 
@@ -447,10 +469,48 @@ fetch.
   returned in the error body.
 - Upstream destination: `https://chatgpt.com/backend-api/codex/responses`.
 - Upstream fetch: the relay MUST use `redirect: "manual"`. It MUST NOT follow
-  automatic redirects. Any 3xx response from Codex is passed through with a
-  sanitized `Location` header (if present) and an empty body, because the client
-  can re-issue the credentialed request itself. The relay MUST NOT re-send OAuth
-  Authorization or other relay-only headers to a redirect destination.
+  automatic redirects. The relay performs exactly one fetch per request. The
+  following upstream status handling applies before the response is returned to
+  the Gateway, so no network layer between the relay and OpenCode can issue a
+  redirected second fetch that bypasses Gateway/Relay:
+  - `304 Not Modified` is passed through with an empty body; conditional request
+    headers (`If-None-Match`, `If-Modified-Since`) remain available to the
+    upstream.
+  - All other 3xx responses (`300`, `301`, `302`, `303`, `305`, `306`, `307`,
+    `308`) are converted to a Relay-origin `502` with a JSON error body. The
+    upstream `Location`, headers, and body are NOT returned. This prevents any
+    client, Gateway, or transport layer from following the redirect and sending
+    credentials to a destination outside the fixed Gateway/Relay/Codex path.
+  - No second upstream fetch is performed for any redirect response.
+- Request header sanitization (before the upstream Codex fetch): remove the
+  relay-only, Gateway-only, hop-by-hop, and forwarding headers. The denylist is:
+  - `connection`
+  - `content-length`
+  - `forwarded`
+  - `host`
+  - `keep-alive`
+  - `proxy-authenticate`
+  - `proxy-authorization`
+  - `te`
+  - `trailer`
+  - `transfer-encoding`
+  - `upgrade`
+  - `x-chatgpt-relay-authorization`
+  - `x-relay-authorization`
+  - `x-real-ip`
+  - all `cf-aig-*` headers
+  - all `cf-*` headers
+  - all `x-forwarded-*` headers
+  - every header named by the comma-separated `Connection` header tokens. The
+    standard upstream `Authorization` header is NOT removed; it carries the
+    current ChatGPT OAuth token and must remain available to Codex. The
+    `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` headers from
+    §7.4 are also preserved. The relay secret MUST terminate at the relay.
+- Response header sanitization: before returning any upstream or synthetic
+  response to the Gateway, remove hop-by-hop response headers and every header
+  named by the comma-separated `Connection` header tokens. This applies to
+  success responses, `304 Not Modified`, Relay-origin errors, and converted
+  `502 upstream_redirect_not_allowed` responses.
 - Body: forward the request body as received. **If** the compatibility spike in
   §6.2 confirms that the AI SDK-generated representation is accepted without
   transformation, the relay forwards the body unchanged; otherwise the relay
@@ -461,14 +521,14 @@ fetch.
   behavior.
 - Rejection table (all before upstream fetch):
 
-  | Condition                                                         | HTTP status | Relay-origin error code | Notes                                                        |
-  | ----------------------------------------------------------------- | ----------- | ----------------------- | ------------------------------------------------------------ |
-  | `RELAY_SECRET` missing, empty, or whitespace-only at request time | `503`       | `relay_not_configured`  | Distinguish from incorrect request credential (`401`).       |
-  | Missing or incorrect `x-relay-authorization`                      | `401`       | `unauthorized`          | See §11.                                                     |
-  | Method other than `POST`                                          | `405`       | `unsupported_method`    | Includes `GET`, `PUT`, `DELETE`, etc.                        |
-  | Path not exactly `/upstream/openai/v1/responses`                  | `404`       | `unsupported_path`      | Any suffix other than `v1/responses`.                        |
-  | Upstream slug other than `openai`                                 | `404`       | `unsupported_upstream`  | Future providers use their own presets; no generic proxying. |
-
+  | Condition                                                         | HTTP status | Relay-origin error code         | Notes                                                                                     |
+  | ----------------------------------------------------------------- | ----------- | ------------------------------- | ----------------------------------------------------------------------------------------- |
+  | `RELAY_SECRET` missing, empty, or whitespace-only at request time | `503`       | `relay_not_configured`          | Distinguish from incorrect request credential (`401`).                                    |
+  | Missing or incorrect `x-relay-authorization`                      | `401`       | `unauthorized`                  | See §11.                                                                                  |
+  | Method other than `POST`                                          | `405`       | `unsupported_method`            | Includes `GET`, `PUT`, `DELETE`, etc.                                                     |
+  | Path not exactly `/upstream/openai/v1/responses`                  | `404`       | `unsupported_path`              | Any suffix other than `v1/responses`.                                                     |
+  | Upstream slug other than `openai`                                 | `404`       | `unsupported_upstream`          | Future providers use their own presets; no generic proxying.                              |
+  | Upstream redirect other than `304 Not Modified`                   | `502`       | `upstream_redirect_not_allowed` | Converted from Codex 3xx before pass-through; no second fetch; `Location` is not exposed. |
 - The legacy `POST /v1/responses` route is removed with no backward
   compatibility.
 
@@ -537,13 +597,14 @@ Under `provider.cf-ai-gw-relay.options`:
 
   Documented Relay-origin error codes and their HTTP statuses:
 
-  | `error` code           | HTTP status | Produced when                                                         |
-  | ---------------------- | ----------- | --------------------------------------------------------------------- |
-  | `unauthorized`         | `401`       | Missing or incorrect `x-relay-authorization`.                         |
-  | `relay_not_configured` | `503`       | `RELAY_SECRET` is missing, empty, or whitespace-only at request time. |
-  | `unsupported_method`   | `405`       | Method is not `POST`.                                                 |
-  | `unsupported_path`     | `404`       | Path is not exactly `/upstream/openai/v1/responses`.                  |
-  | `unsupported_upstream` | `404`       | Upstream slug is not `openai`.                                        |
+  | `error` code                    | HTTP status | Produced when                                                         |
+  | ------------------------------- | ----------- | --------------------------------------------------------------------- |
+  | `unauthorized`                  | `401`       | Missing or incorrect `x-relay-authorization`.                         |
+  | `relay_not_configured`          | `503`       | `RELAY_SECRET` is missing, empty, or whitespace-only at request time. |
+  | `unsupported_method`            | `405`       | Method is not `POST`.                                                 |
+  | `unsupported_path`              | `404`       | Path is not exactly `/upstream/openai/v1/responses`.                  |
+  | `unsupported_upstream`          | `404`       | Upstream slug is not `openai`.                                        |
+  | `upstream_redirect_not_allowed` | `502`       | Codex returned a 3xx other than `304 Not Modified`.                   |
 
   For these responses the plugin may read up to 8 KiB of the response body,
   translate the documented code into an actionable, secret-free OpenCode user
@@ -572,6 +633,10 @@ Under `provider.cf-ai-gw-relay.options`:
   - Cloudflare Gateway token (`cf-aig-authorization`),
   - relay secret,
   - ChatGPT account ID and residency values,
+- `relaySecret` / `x-relay-authorization` MUST terminate at the relay and MUST
+  NOT reach ChatGPT Codex or any other upstream.
+- Gateway-only control headers (`cf-aig-*`) and Cloudflare-internal headers
+  (`cf-*`, `x-forwarded-*`) MUST NOT reach ChatGPT Codex.
   - decoded token claims,
   - request and response payloads.
 - `collectLogPayload=true` controls Cloudflare AI Gateway-side payload logging.
@@ -599,12 +664,19 @@ Before declaring the new provider model production-ready, verify:
 - Relay configuration failure (`RELAY_SECRET` absent/empty/whitespace) returns
   `503` before any upstream fetch and is distinguishable from client
   authentication failure (`401`).
-- Upstream redirect policy: `redirect: "manual"`, no automatic follow, 3xx
-  passed through with sanitized `Location` and no relay-only headers re-sent.
+- Upstream redirect policy: `redirect: "manual"`; the relay performs exactly one
+  fetch per request. `304 Not Modified` is passed through with an empty body.
+  All other Codex 3xx responses are converted to Relay-origin `502`
+  `upstream_redirect_not_allowed` before pass-through; the upstream `Location`,
+  headers, and body are not exposed; no second fetch occurs at any network
+  layer.
 - Gateway URL ownership is the AI SDK runtime's configured `baseURL`; the custom
   `fetch` does not rewrite the URL.
 - Supported OpenCode version boundary validated by an integration test using the
-  real `@opencode-ai/plugin` package.
+  real `@opencode-ai/plugin` package. The chosen minimum OpenCode version, the
+  intended `engines.opencode` range, and the intended `@opencode-ai/plugin`
+  peerDependency range are recorded in §6.2 and are identical across the design,
+  package metadata, and test target.
 
 ## 14. Testing Strategy
 
@@ -622,7 +694,8 @@ Before declaring the new provider model production-ready, verify:
   - secret-free error messages.
 - Integration tests use minimal stubs for public OpenCode plugin interfaces
   only. A real-package compatibility test against the chosen minimum OpenCode
-  version is included.
+  version is included. A second real-package test against a current/reference
+  OpenCode version confirms that the supported range is still valid.
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
   fail-closed, and OAuth login. These require real credentials and are not a
@@ -669,10 +742,16 @@ Before declaring the new provider model production-ready, verify:
 - JSON bodies without `origin: "relay"` are not treated as Relay-origin errors,
   - malformed or oversized Relay-like bodies are bounded and secret-free.
 - Upstream redirect policy tests (added per SRG-012):
-  - Codex upstream 301/302/307/308 do not trigger a second fetch,
-  - OAuth Authorization is not re-sent to a redirect destination,
-  - 3xx responses are passed through with sanitized `Location` and an empty
-    body,
+  - Codex upstream 301/302/303/307/308 do not trigger a second fetch,
+  - Plugin/Gateway transport performs no redirected second fetch (the relay
+    converts non-304 3xx to `502` before the response leaves the relay),
+  - `304 Not Modified` follows the explicitly documented empty-body pass-through
+    contract;
+  - non-304 3xx are converted to Relay-origin `502`
+    `{"origin":"relay","error":"upstream_redirect_not_allowed"}`;
+  - upstream `Location` is not exposed for forbidden redirect responses;
+  - `Authorization` / `x-relay-authorization` / `cf-aig-*` are never sent to a
+    redirect target;
   - automatic redirect follow is disabled (`redirect: "manual"`).
 - Relay configuration failure tests (added per SRG-011):
   - `RELAY_SECRET` absent -> `503` / no upstream fetch,
@@ -692,17 +771,37 @@ Before declaring the new provider model production-ready, verify:
   - the §7.1 spike documents exact account ID / residency claim paths,
   - fixtures use synthetic claim objects only; no real token payloads or secrets
     are included in public tests.
+- Model-ID mapping tests (added per SRG-016):
+  - `/models` or the OpenCode model selector surfaces
+    `cf-ai-gw-relay/openai/<model>` for selection;
+  - the native model ID passed to the AI SDK runtime is `<model>` (without the
+    `openai/` prefix);
+  - the request body `model` field contains the native `<model>` and not the
+    user-visible `openai/<model>`;
+  - user-defined models under the `cf-ai-gw-relay` provider follow the same
+    mapping rule;
+  - if the selected model cannot be mapped to a native model ID, the provider
+    fails closed before any upstream fetch.
 - Refresh single-flight tests (added per SRG-007):
-  - N concurrent requests observing expiry trigger exactly one token endpoint
-    call,
-  - all concurrent requests use the same new access token,
-  - a rotated refresh token is saved exactly once,
-  - `accountId` updates are consistent with the single refresh result,
-  - residency is derived from the new access token,
-  - refresh failure propagates the same secret-free error to all waiters with no
-    direct fallback,
-  - after failure the in-flight state is cleared and a later explicit request
-    can start a new refresh.
+- Request/response header sanitization tests (added per SRG-015):
+  - inbound `x-relay-authorization` is not present in the Codex fetch headers,
+  - legacy `x-chatgpt-relay-authorization` is also removed before upstream,
+  - `cf-aig-*`, `cf-*`, and `x-forwarded-*` headers are removed,
+  - hop-by-hop denylist headers (`connection`, `content-length`, `te`, etc.) are
+    removed,
+  - `Connection: foo, bar` causes both `foo` and `bar` to be removed,
+  - OAuth `Authorization` is preserved,
+  - `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` are preserved,
+  - response hop-by-hop and `Connection`-token headers are removed before
+    downstream delivery,
+  - tests and logs do not emit the secret values used in headers.
+- Supported OpenCode version boundary tests (added per SRG-017):
+  - the minimum supported OpenCode version passes provider registration, auth
+    loader registration, and one mocked request through the real
+    `@opencode-ai/plugin` package;
+  - the current/reference OpenCode version passes the same contract;
+  - unsupported versions are handled according to the existing host-version
+    policy (activation rejection), not by this provider.
 
 ## 15. Documentation and Migration
 
@@ -720,17 +819,21 @@ Before declaring the new provider model production-ready, verify:
   - removal of the old fetch-intercept mode,
   - note that `collectLogPayload` affects Gateway-side logging only.
 - Update `SPEC.md` with:
-- the new provider namespace,
-- the exact `POST /upstream/openai/v1/responses` relay route contract,
-- the new control headers and auth header,
-- the exact Relay-origin error envelope `{"origin":"relay","error":"<code>"}`
-  with the documented status/code table including `relay_not_configured`
-  (`503`),
+  - the new provider namespace,
+  - the exact `POST /upstream/openai/v1/responses` relay route contract,
+  - the new control headers and auth header,
+  - the exact Relay-origin error envelope `{"origin":"relay","error":"<code>"}`
+    with the documented status/code table including `relay_not_configured`
+    (`503`) and `upstream_redirect_not_allowed` (`502`),
+  - request/response header sanitization for the new route
+    (`x-relay-authorization`, `cf-aig-*`, `cf-*`, `x-forwarded-*`, hop-by-hop,
+    and `Connection`-named headers),
   - `RELAY_SECRET` configuration failure semantics (`503`, no upstream fetch,
     distinguish from `401`),
-  - upstream redirect policy (`redirect: "manual"`, no automatic follow, 3xx
-    pass-through with sanitized `Location`),
-- the removal of the legacy `/v1/responses` route.
+  - upstream redirect policy (`redirect: "manual"`, no automatic follow, non-304
+    3xx converted to `502 upstream_redirect_not_allowed` before pass-through,
+    `304` passed through with an empty body),
+  - the removal of the legacy `/v1/responses` route.
 - Update `docs/configuration.md` to reflect the new option schema and removed
   settings.
 - Update `docs/deployment.md` and `docs/operations.md` if any values or runbooks
@@ -769,3 +872,4 @@ Before declaring the new provider model production-ready, verify:
 | Codex account/residency                | `accountId` is persisted in the public OAuth auth top-level field; residency is derived from the current access token per request. See §7.4.                                          |
 | AI SDK `apiKey` bootstrap              | A non-secret plugin-local sentinel is returned from `auth.loader()`; the actual ChatGPT OAuth token is injected by the custom `fetch`. `OPENAI_API_KEY` is not used.                  |
 | Gateway custom provider provisioning   | Slug `cf-ai-gw-relay`, `base_url` set to the deployed Deno relay root, enabled. Provisioning is a deployment prerequisite; the plugin does not auto-provision.                        |
+| OpenCode version boundary              | Fixed by the compatibility spike in §6.2; the minimum supported version, `engines.opencode` range, and `@opencode-ai/plugin` peerDependency range are recorded with concrete values.  |
