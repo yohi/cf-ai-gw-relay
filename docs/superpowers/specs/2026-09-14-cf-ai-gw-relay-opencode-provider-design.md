@@ -8,12 +8,12 @@ success through the target OpenCode runtime. This revision preserves the
 resolved decisions from SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023
 through SRG-033, and the previously recorded SRG-029/SRG-030/SRG-031 contract.
 SRG-021 is now BLOCKED: Blockers A, B, and C invalidate the earlier model-ID
-mapping and provider-package assumptions; items 3, 4, 5, 13, 14, 15, 16, 17, and
-18–25 remain open until they are measured through the actual OpenCode 1.18.31
-provider resolution path. SRG-022 remains a failed gate: no implementable
-credential source exists, so §7 presents two mutually exclusive paths and the
-design must not proceed to implementation planning until one path closes with
-concrete evidence.
+mapping and provider-package assumptions; §6.2 remains a blocking gate until
+every compatibility evidence item is recorded with a measured value and no
+unresolved FAILED item remains. See §6.2 for the current item-by-item status.
+SRG-022 remains a failed gate: no implementable credential source exists, so §7
+presents two mutually exclusive paths and the design must not proceed to
+implementation planning until one path closes with concrete evidence.
 
 ## 1. Summary
 
@@ -264,10 +264,13 @@ OpenCode runtime with the selected provider package):**
 
 **Compatibility spike evidence:**
 
-Until every item below is recorded here with measured values, §6.2 remains a
-blocking gate. Items tagged **PENDING** must be measured through the OpenCode
-runtime; items tagged **REFERENCE** were observed against `@ai-sdk/openai`
-standalone and are not sufficient to close the gate.
+Each item below has one of the following states. Gate-closing states are
+**MEASURED** and **FAILED** (with a recorded resolution). Non-closing states are
+**PENDING**, **NOT MEASURED**, **REFERENCE**, and **PARTIALLY MEASURED**. Until
+every item is in a gate-closing state, §6.2 remains a blocking gate. Items
+tagged **PENDING** must be measured through the OpenCode runtime; items tagged
+**REFERENCE** were observed against `@ai-sdk/openai` standalone and are not
+sufficient to close the gate.
 
 1. **MEASURED** — OpenCode version used: `1.18.31` (CLI in the spike
    environment). If a 4.x AI SDK package is chosen, the minimum OpenCode
@@ -351,8 +354,10 @@ standalone and are not sufficient to close the gate.
 24. **NOT MEASURED** — Request body `model`.
 25. **NOT MEASURED** — Request body input/tools/stream.
 
-Until items 3, 4, 13, 16, and 17 and the new end-to-end runtime items 18–25 are
-recorded with measured values, §6.2 remains a blocking gate.
+Until every compatibility spike evidence item below is in a gate-closing state
+(**MEASURED** or **FAILED** with a recorded resolution), §6.2 remains a blocking
+gate. Items tagged **PENDING**, **NOT MEASURED**, **REFERENCE**, or **PARTIALLY
+MEASURED** do not satisfy the gate.
 
 ### 6.3 Custom `fetch` responsibilities
 
@@ -401,10 +406,15 @@ implementation planning.
   chosen, the old dedicated-OAuth conditional design in §7.1–§7.4 is **not**
   retained as the main architecture. The new source must concretize, at minimum:
   credential owner, acquisition method, OpenCode public API boundary, storage,
-  refresh owner, chatgptAccountId source, residency source, outbound headers,
-  user login/setup flow, failure handling, security boundary, and tests. If Path
-  B is selected, §6.3, §13, §14, §15, and §16 must be updated to remove any
-  unconditional Path A contract.
+  refresh/rotation ownership, chatgptAccountId source, residency source,
+  outbound headers, user login/setup flow, failure handling, security boundary,
+  and tests. In addition, Path B must record whether it depends on stored
+  OpenCode auth: if it reuses `auth.loader()`, it must specify the auth record
+  type, creation API, persistence lifecycle, and measured evidence that the
+  loader is invoked from stored auth; if it does not use `auth.loader()`, it
+  must specify the exact public API that injects provider options or a custom
+  `fetch` without a stored auth record. If Path B is selected, §6.3, §13, §14,
+  §15, and §16 must be updated to remove any unconditional Path A contract.
 
 With the current information, neither path is closed. Therefore the design
 remains infeasible/blocked for ChatGPT-subscription traffic.
@@ -1062,8 +1072,12 @@ Under `provider.cf-ai-gw-relay.options`:
 
 Before declaring the new provider model production-ready, verify:
 
-- Pre-implementation gates in §7.1 and §6.2 are satisfied and their results are
-  documented in this design.
+- §6.2 compatibility gate is closed. The selected §7 credential-source path is
+  closed:
+  - Path A: §7.1 dedicated OAuth-client gate is satisfied.
+  - Path B: the replacement credential architecture is fully specified,
+    measured, and approved, including the `auth.loader()` dependency decision
+    recorded in §6.3.
 - Request isolation between `openai/*` and `cf-ai-gw-relay/*` traffic.
 - Credential handling (shared): secret-free errors, storage/refresh/rotation
   ownership, and outbound header sources are recorded for the selected §7 path.
@@ -1109,24 +1123,220 @@ Before declaring the new provider model production-ready, verify:
 ## 14. Testing Strategy
 
 - Plugin tests use Vitest. Relay tests use Deno built-in test runner.
-- Shared unit tests cover:
+- **Shared tests** (required regardless of the selected §7 credential-source
+  path):
   - configuration resolution, precedence, deferred validation, and secret
     masking,
   - Gateway URL construction,
   - control-header application,
   - provider/model definition merging,
   - unsupported-upstream detection,
-  - custom `fetch` URL validation and header replacement/application (using the
-    shape recorded for the selected §7 path),
+  - custom `fetch` URL validation and header replacement/application using the
+    shape recorded for the selected §7 path,
   - custom `fetch` does not change the request pathname,
   - custom `fetch` rejects a URL that does not match the expected Gateway shape,
-- Path A unit tests cover:
+  - Protocol contract tests (added per SRG-002):
+    - the AI SDK-generated request body uses `input` (not `messages`) for the
+      Responses API conversation field and matches the Codex endpoint contract
+      directly **if** the compatibility spike determines that no transformation
+      is required;
+    - **or**, if the spike determines that transformation is required, the exact
+      relay field mapping transforms it correctly and the spike records the
+      before/after contract, response/SSE transformation, tool semantics,
+      streaming/abort implications, and error behavior on transformation
+      failure;
+    - exact request path and method are `POST /upstream/openai/v1/responses`;
+      other methods/paths return a Relay-origin error before upstream fetch.
+  - Relay-origin error envelope tests (added per SRG-006; extended per SRG-029):
+    - each documented Relay-origin error returns the exact envelope
+      `{"origin":"relay","error":"<code>"}` with the documented status,
+    - every synthetic Relay-origin error generated by the relay uses the
+      canonical `Content-Type: application/json` media type,
+    - plugin candidate classification parses `Content-Type` as a media type:
+      - `application/json` -> candidate,
+      - `application/json; charset=utf-8` -> candidate,
+      - `APPLICATION/JSON` -> candidate,
+      - `text/json` -> non-candidate,
+      - `text/plain` -> non-candidate,
+    - for every candidate Content-Type, translation still requires the exact
+      JSON envelope and exact documented status/error-code pair; mismatches are
+      passed through untouched,
+    - the plugin translates only the documented codes,
+    - `relay_not_configured` (`503`) is distinguished from `unauthorized`
+      (`401`),
+    - `upstream_redirect_not_allowed` (`502`) is generated after exactly one
+      Codex fetch and is recognized as a Relay-origin error,
+    - arbitrary Codex/Gateway `502` responses without the Relay-origin envelope
+      are passed through unchanged,
+    - Gateway, Codex, and upstream `400`/`401` JSON bodies are passed through
+      without translation,
+    - JSON bodies without `origin: "relay"` are not treated as Relay-origin
+      errors,
+    - malformed or oversized Relay-like bodies are bounded and secret-free,
+    - **non-destructive probe tests**:
+      - Gateway/Codex JSON error with a documented Relay-origin status but no
+        `origin: "relay"` is passed through byte-for-byte unchanged; the
+        original body remains fully readable,
+      - an undocumented relay-like JSON body is passed through untouched,
+      - a malformed JSON candidate body is passed through untouched,
+      - an oversized candidate body (> 8 KiB) causes the probe to stop/cancel
+        and the original response body to remain fully readable,
+      - a probe read failure is treated as a non-match and the original response
+        is returned completely untouched; no synthetic translated error is
+        created,
+      - a candidate JSON response whose body is slow or non-terminating is
+        probed only for 500 ms; when the probe budget expires the probe is
+        treated as a non-match and the original response body remains fully
+        readable,
+      - probe timeout, read failure, or cancellation does not leak resources;
+        the probe reader and any cloned body stream are released and timers are
+        cleared,
+      - an exact documented Relay-origin body is translated to a synthetic
+        `Response`; the original body is not returned,
+      - success/SSE responses are never cloned or read by the probe.
+  - Upstream redirect policy tests (added per SRG-012):
+    - Codex upstream 301/302/303/307/308 do not trigger a second fetch,
+    - Plugin/Gateway transport performs no redirected second fetch (the relay
+      converts non-304 3xx to `502` before the response leaves the relay),
+    - `304 Not Modified` follows the explicitly documented empty-body
+      pass-through contract;
+    - non-304 3xx are converted to Relay-origin `502`
+      `{"origin":"relay","error":"upstream_redirect_not_allowed"}`;
+    - upstream `Location` is not exposed for forbidden redirect responses;
+    - `Authorization` / `x-relay-authorization` / `cf-aig-*` are never sent to a
+      redirect target;
+    - automatic redirect follow is disabled (`redirect: "manual"`).
+  - Relay configuration failure tests (added per SRG-011):
+    - `RELAY_SECRET` absent -> `503` / no upstream fetch,
+    - empty -> `503` / no upstream fetch,
+    - whitespace-only -> `503` / no upstream fetch,
+    - configured secret + missing request header -> `401`,
+    - configured secret + wrong request header -> `401`,
+    - configuration failure body does not include the secret value.
+  - Total pre-upstream precedence tests (added per SRG-030):
+    - invalid method + missing auth -> `405` / `unsupported_method`,
+    - invalid path + missing auth -> `404` / `unsupported_path`,
+    - unsupported upstream + wrong auth -> `404` / `unsupported_upstream`,
+    - missing `RELAY_SECRET` + malformed route -> `503` /
+      `relay_not_configured`,
+    - extra path/query + wrong auth -> `404` / `unsupported_path`,
+    - every winning pre-upstream case performs no upstream fetch; a request that
+      passes all six checks invokes exactly one upstream fetch.
+  - Custom `fetch` URL ownership tests (added per SRG-013):
+    - the AI SDK runtime uses the configured `baseURL` to produce the final
+      Gateway URL,
+    - the custom `fetch` does not change the request pathname,
+    - `/v1` / `/responses` segments are not duplicated,
+    - a URL that does not match the expected Gateway shape fails closed before
+      forwarding.
+  - Model-ID mapping tests (added per SRG-016):
+    - fixtures deliberately distinguish the visible OpenCode model key
+      (`cf-ai-gw-relay/openai/<model>`), the parsed OpenCode `modelID`
+      (`openai/<model>`), the config `model.id`, the config `model.api.id`, the
+      final model ID passed to the AI SDK factory, and the request body `model`
+      field;
+    - tests assert that the `openai/` prefix is **not** automatically stripped
+      by the OpenCode runtime and that any required mapping is explicit in the
+      provider config (`model.id` / `model.api.id`).
+    - `/models` or the OpenCode model selector surfaces
+      `cf-ai-gw-relay/openai/<model>` for selection;
+    - the request body `model` field contains the final AI SDK model ID, which
+      may differ from the visible key and from the parsed `modelID`;
+    - user-defined models under the `cf-ai-gw-relay` provider follow the same
+      explicit mapping rule;
+    - if the selected model cannot be mapped to a final model ID, the provider
+      fails closed before any upstream fetch.
+  - Request/response header sanitization tests (added per SRG-015):
+    - inbound `x-relay-authorization` is not present in the Codex fetch headers,
+    - legacy `x-chatgpt-relay-authorization` is also removed before upstream,
+    - `cf-aig-*`, `cf-*`, and `x-forwarded-*` headers are removed,
+    - hop-by-hop denylist headers (`connection`, `content-length`, `te`, etc.)
+      are removed,
+    - `Connection: foo, bar` causes both `foo` and `bar` to be removed,
+    - the outbound `Authorization` header source recorded for the selected §7
+      path is preserved,
+    - `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` are
+      preserved,
+    - response hop-by-hop and `Connection`-token headers are removed before
+      downstream delivery,
+    - tests and logs do not emit the secret values used in headers.
+  - Cloudflare / ChatGPT account identifier isolation tests (added per SRG-031):
+    - the Cloudflare account ID (`cloudflareAccountId`) is used only in the
+      Gateway URL path (`/v1/{cloudflareAccountId}/{gatewayId}/...`); it never
+      appears in `ChatGPT-Account-Id` or any other ChatGPT-bound header;
+    - the ChatGPT account ID (`chatgptAccountId`) is used only in the
+      `ChatGPT-Account-Id` header; it never appears in the Gateway URL path;
+    - fixture values for the two identifiers are deliberately different so that
+      accidental substitution is detectable; tests fail if the two values are
+      equal or if either identifier is used in the wrong location;
+    - custom `fetch` URL validation rejects any Gateway URL whose path account
+      placeholder does not match the configured `cloudflareAccountId`.
+- **Path A tests** (conditional on §7.1 dedicated OAuth-client gate
+  satisfaction):
   - OAuth PKCE/state/callback/token-exchange helpers,
   - callback server bind-before-return and cleanup paths,
   - OAuth token claim/refresh and account/residency metadata semantics.
-- Path B unit tests cover:
+  - OAuth and Codex account metadata tests (added per SRG-003):
+    - `accountId` persistence and refresh semantics follow the §7.1 decision
+      table. The tests exercise the concrete rules recorded there: required vs
+      optional account ID, claim source and precedence, and the refresh failure
+      cases for missing required account ID. The persisted `accountId` field is
+      the ChatGPT account ID (semantic name: `chatgptAccountId`); it is never
+      used as the Cloudflare account ID.
+    - residency derivation follows the §7.1 decision table. The tests exercise
+      the concrete token source and claim path recorded there, including the
+      case where the residency source is a token other than the access token.
+    - `ChatGPT-Account-Id` is set when a ChatGPT account ID is present and the
+      §7.1 spike records that it should be sent; omitted otherwise.
+    - `x-openai-internal-codex-residency` is set when a non-empty,
+      non-`no_constraint` residency is derived and the §7.1 spike records that
+      it should be sent; omitted otherwise.
+    - malformed token claims fail secret-free without leaking the token.
+    - account/residency headers survive the Gateway/Relay hop unchanged.
+    - for Path A, the ChatGPT account ID is persisted in the public OAuth auth
+      top-level `accountId` field.
+  - Token claim contract tests (added per SRG-014):
+    - the §7.1 spike documents exact account ID / residency claim paths,
+    - fixtures use synthetic claim objects only; no real token payloads or
+      secrets are included in public tests.
+  - AI SDK bootstrap tests (added per SRG-008):
+    - `OPENAI_API_KEY` being unset does not prevent the request from reaching
+      the custom `fetch`,
+    - `OPENAI_API_KEY` set to any value is ignored and never reaches Gateway or
+      relay,
+    - outbound Gateway request uses only the current ChatGPT OAuth token in the
+      `Authorization` header,
+    - the sentinel `apiKey` value does not leave the plugin process,
+    - after token refresh the new OAuth token is used without changing the
+      static provider `apiKey`,
+    - old `Authorization` is removed from `Headers`, tuple-array, and record
+      inputs before the OAuth token is injected.
+  - Refresh single-flight tests (added per SRG-007):
+    - concurrent refresh:
+      - N concurrent requests observe the same expired auth -> the token
+        endpoint is called exactly once,
+      - all waiters use the same newly persisted access token,
+      - a rotating refresh token is persisted exactly once,
+      - the persisted `accountId` (semantic value: `chatgptAccountId`) update is
+        based on the single successful refresh result,
+      - on refresh failure all waiters receive the same secret-free failure; no
+        direct fallback and no automatic retry storm,
+      - after failure completion the in-flight state is cleared so a later
+        request may start a fresh refresh attempt,
+      - only the in-flight Promise is shared; no general lock framework or retry
+        infrastructure is introduced.
+- **Path B tests** (conditional on the selected Path B credential architecture):
   - the concrete credential lifecycle and transport injection path recorded for
-    the selected architecture.
+    the selected architecture;
+  - credential acquisition, storage, rotation/refresh, transport injection,
+    Authorization source, chatgptAccountId source, residency source, and setup
+    lifecycle;
+  - the `auth.loader()` dependency decision recorded in §6.3:
+    - if Path B reuses `auth.loader()`, the auth record type, creation API,
+      persistence lifecycle, and measured evidence that the loader is invoked
+      from stored auth;
+    - if Path B does not use `auth.loader()`, the exact public API that injects
+      provider options or a custom `fetch` without a stored auth record.
 - Integration tests use minimal stubs for public OpenCode plugin interfaces
   only. A real-package compatibility test against the chosen minimum OpenCode
   version is included. A second real-package test against a current/reference
@@ -1135,195 +1345,17 @@ Before declaring the new provider model production-ready, verify:
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
   fail-closed, and the credential/login flow selected in §7. These require real
   credentials and are not a mandatory CI gate.
-- OAuth and Codex account metadata tests (added per SRG-003):
-  - `accountId` persistence and refresh semantics follow the §7.1 decision
-    table. The tests exercise the concrete rules recorded there: required vs
-    optional account ID, claim source and precedence, and the refresh failure
-    cases for missing required account ID. The persisted `accountId` field is
-    the ChatGPT account ID (semantic name: `chatgptAccountId`); it is never used
-    as the Cloudflare account ID.
-  - residency derivation follows the §7.1 decision table. The tests exercise the
-    concrete token source and claim path recorded there, including the case
-    where the residency source is a token other than the access token.
-  - `ChatGPT-Account-Id` is set when a ChatGPT account ID is present and the
-    §7.1 spike records that it should be sent; omitted otherwise.
-  - `x-openai-internal-codex-residency` is set when a non-empty,
-    non-`no_constraint` residency is derived and the §7.1 spike records that it
-    should be sent; omitted otherwise.
-  - malformed token claims fail secret-free without leaking the token.
-  - account/residency headers survive the Gateway/Relay hop unchanged.
-  - **Cloudflare / ChatGPT account identifier isolation tests** (added per
-    SRG-031):
-    - the Cloudflare account ID (`cloudflareAccountId`) is used only in the
-      Gateway URL path (`/v1/{cloudflareAccountId}/{gatewayId}/...`); it never
-      appears in `ChatGPT-Account-Id` or any other ChatGPT-bound header;
-    - the ChatGPT account ID (`chatgptAccountId`, persisted in the public OAuth
-      auth top-level `accountId` field) is used only in the `ChatGPT-Account-Id`
-      header; it never appears in the Gateway URL path;
-    - fixture values for the two identifiers are deliberately different so that
-      accidental substitution is detectable; tests fail if the two values are
-      equal or if either identifier is used in the wrong location;
-    - custom `fetch` URL validation rejects any Gateway URL whose path account
-      placeholder does not match the configured `cloudflareAccountId`.
-- Protocol contract tests (added per SRG-002):
-  - the AI SDK-generated request body uses `input` (not `messages`) for the
-    Responses API conversation field and matches the Codex endpoint contract
-    directly **if** the compatibility spike determines that no transformation is
-    required;
-  - **or**, if the spike determines that transformation is required, the exact
-    relay field mapping transforms it correctly and the spike records the
-    before/after contract, response/SSE transformation, tool semantics,
-    streaming/abort implications, and error behavior on transformation failure;
-  - exact request path and method are `POST /upstream/openai/v1/responses`;
-    other methods/paths return a Relay-origin error before upstream fetch.
-- AI SDK bootstrap tests (added per SRG-008):
-  - `OPENAI_API_KEY` being unset does not prevent the request from reaching the
-    custom `fetch`,
-  - `OPENAI_API_KEY` set to any value is ignored and never reaches Gateway or
-    relay,
-  - outbound Gateway request uses only the current ChatGPT OAuth token in the
-    `Authorization` header,
-  - the sentinel `apiKey` value does not leave the plugin process,
-  - after token refresh the new OAuth token is used without changing the static
-    provider `apiKey`,
-  - old `Authorization` is removed from `Headers`, tuple-array, and record
-    inputs before the OAuth token is injected.
-- Relay-origin error envelope tests (added per SRG-006; extended per SRG-029):
-  - each documented Relay-origin error returns the exact envelope
-    `{"origin":"relay","error":"<code>"}` with the documented status,
-  - every synthetic Relay-origin error generated by the relay uses the canonical
-    `Content-Type: application/json` media type,
-  - plugin candidate classification parses `Content-Type` as a media type:
-    - `application/json` -> candidate,
-    - `application/json; charset=utf-8` -> candidate,
-    - `APPLICATION/JSON` -> candidate,
-    - `text/json` -> non-candidate,
-    - `text/plain` -> non-candidate,
-  - for every candidate Content-Type, translation still requires the exact JSON
-    envelope and exact documented status/error-code pair; mismatches are passed
-    through untouched,
-  - the plugin translates only the documented codes,
-  - `relay_not_configured` (`503`) is distinguished from `unauthorized` (`401`),
-  - `upstream_redirect_not_allowed` (`502`) is generated after exactly one Codex
-    fetch and is recognized as a Relay-origin error,
-  - arbitrary Codex/Gateway `502` responses without the Relay-origin envelope
-    are passed through unchanged,
-  - Gateway, Codex, and upstream `400`/`401` JSON bodies are passed through
-    without translation,
-  - JSON bodies without `origin: "relay"` are not treated as Relay-origin
-    errors,
-  - malformed or oversized Relay-like bodies are bounded and secret-free,
-  - **non-destructive probe tests**:
-    - Gateway/Codex JSON error with a documented Relay-origin status but no
-      `origin: "relay"` is passed through byte-for-byte unchanged; the original
-      body remains fully readable,
-    - an undocumented relay-like JSON body is passed through untouched,
-    - a malformed JSON candidate body is passed through untouched,
-    - an oversized candidate body (> 8 KiB) causes the probe to stop/cancel and
-      the original response body to remain fully readable,
-    - a probe read failure is treated as a non-match and the original response
-      is returned completely untouched; no synthetic translated error is
-      created,
-    - a candidate JSON response whose body is slow or non-terminating is probed
-      only for 500 ms; when the probe budget expires the probe is treated as a
-      non-match and the original response body remains fully readable,
-    - probe timeout, read failure, or cancellation does not leak resources; the
-      probe reader and any cloned body stream are released and timers are
-      cleared,
-    - an exact documented Relay-origin body is translated to a synthetic
-      `Response`; the original body is not returned,
-    - success/SSE responses are never cloned or read by the probe.
-- Upstream redirect policy tests (added per SRG-012):
-  - Codex upstream 301/302/303/307/308 do not trigger a second fetch,
-  - Plugin/Gateway transport performs no redirected second fetch (the relay
-    converts non-304 3xx to `502` before the response leaves the relay),
-  - `304 Not Modified` follows the explicitly documented empty-body pass-through
-    contract;
-  - non-304 3xx are converted to Relay-origin `502`
-    `{"origin":"relay","error":"upstream_redirect_not_allowed"}`;
-  - upstream `Location` is not exposed for forbidden redirect responses;
-  - `Authorization` / `x-relay-authorization` / `cf-aig-*` are never sent to a
-    redirect target;
-  - automatic redirect follow is disabled (`redirect: "manual"`).
-- Relay configuration failure tests (added per SRG-011):
-  - `RELAY_SECRET` absent -> `503` / no upstream fetch,
-  - empty -> `503` / no upstream fetch,
-  - whitespace-only -> `503` / no upstream fetch,
-  - configured secret + missing request header -> `401`,
-  - configured secret + wrong request header -> `401`,
-  - configuration failure body does not include the secret value.
-- Total pre-upstream precedence tests (added per SRG-030):
-  - invalid method + missing auth -> `405` / `unsupported_method`,
-  - invalid path + missing auth -> `404` / `unsupported_path`,
-  - unsupported upstream + wrong auth -> `404` / `unsupported_upstream`,
-  - missing `RELAY_SECRET` + malformed route -> `503` / `relay_not_configured`,
-  - extra path/query + wrong auth -> `404` / `unsupported_path`,
-  - every winning pre-upstream case performs no upstream fetch; a request that
-    passes all six checks invokes exactly one upstream fetch.
-- Custom `fetch` URL ownership tests (added per SRG-013):
-  - the AI SDK runtime uses the configured `baseURL` to produce the final
-    Gateway URL,
-  - the custom `fetch` does not change the request pathname,
-  - `/v1` / `/responses` segments are not duplicated,
-  - a URL that does not match the expected Gateway shape fails closed before
-    forwarding.
-- Token claim contract tests (added per SRG-014):
-  - the §7.1 spike documents exact account ID / residency claim paths,
-  - fixtures use synthetic claim objects only; no real token payloads or secrets
-    are included in public tests.
-- Model-ID mapping tests (added per SRG-016):
-  - fixtures deliberately distinguish the visible OpenCode model key
-    (`cf-ai-gw-relay/openai/<model>`), the parsed OpenCode `modelID`
-    (`openai/<model>`), the config `model.id`, the config `model.api.id`, the
-    final model ID passed to the AI SDK factory, and the request body `model`
-    field;
-  - tests assert that the `openai/` prefix is **not** automatically stripped by
-    the OpenCode runtime and that any required mapping is explicit in the
-    provider config (`model.id` / `model.api.id`).
-  - `/models` or the OpenCode model selector surfaces
-    `cf-ai-gw-relay/openai/<model>` for selection;
-  - the request body `model` field contains the final AI SDK model ID, which may
-    differ from the visible key and from the parsed `modelID`;
-  - user-defined models under the `cf-ai-gw-relay` provider follow the same
-    explicit mapping rule;
-  - if the selected model cannot be mapped to a final model ID, the provider
-    fails closed before any upstream fetch.
-- Refresh single-flight tests (added per SRG-007):
-  - concurrent refresh:
-    - N concurrent requests observe the same expired auth -> the token endpoint
-      is called exactly once,
-    - all waiters use the same newly persisted access token,
-    - a rotating refresh token is persisted exactly once,
-    - the persisted `accountId` (semantic value: `chatgptAccountId`) update is
-      based on the single successful refresh result,
-    - on refresh failure all waiters receive the same secret-free failure; no
-      direct fallback and no automatic retry storm,
-    - after failure completion the in-flight state is cleared so a later request
-      may start a fresh refresh attempt,
-    - only the in-flight Promise is shared; no general lock framework or retry
-      infrastructure is introduced,
-- Request/response header sanitization tests (added per SRG-015):
-  - inbound `x-relay-authorization` is not present in the Codex fetch headers,
-  - legacy `x-chatgpt-relay-authorization` is also removed before upstream,
-  - `cf-aig-*`, `cf-*`, and `x-forwarded-*` headers are removed,
-  - hop-by-hop denylist headers (`connection`, `content-length`, `te`, etc.) are
-    removed,
-  - `Connection: foo, bar` causes both `foo` and `bar` to be removed,
-  - OAuth `Authorization` is preserved,
-  - `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` are preserved,
-  - response hop-by-hop and `Connection`-token headers are removed before
-    downstream delivery,
-  - tests and logs do not emit the secret values used in headers.
 - Supported OpenCode version boundary tests (added per SRG-017):
   - the minimum supported OpenCode version passes the full lifecycle through the
-    real `@opencode-ai/plugin` package: plugin initializes, the `config` hook
-    injects the `cf-ai-gw-relay` provider and models, OAuth authentication
-    completes and auth is persisted, the plugin/client lifecycle reinitializes
-    as OpenCode normally requires, the `cf-ai-gw-relay` provider and model
-    remain discoverable/selectable, `auth.loader()` is invoked with persisted
-    OAuth auth, and one request reaches the mocked custom `fetch`;
+    real `@opencode-ai/plugin` package for the selected §7 credential
+    architecture: plugin initializes, the `config` hook injects the
+    `cf-ai-gw-relay` provider and models, the selected credential lifecycle
+    completes, and one request reaches the mocked custom `fetch`;
+    - Path A: OAuth login, stored OAuth auth, `auth.loader()`, custom `fetch`,
+    - Path B: the exact acquisition/storage/injection lifecycle selected by Path
+      B;
   - the current/reference OpenCode version passes the same full lifecycle
-    contract;
+    contract for the selected §7 credential architecture;
   - unsupported versions are handled according to the existing host-version
     policy (activation rejection), not by this provider.
 
@@ -1404,9 +1436,9 @@ evidence; they must not be treated as resolved in planning or implementation.
 
 ### Open pre-implementation gates
 
-| Topic                            | Gate                          | Status                                                                                                                                                                                                                                           |
-| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AI SDK adapter                   | §6.2 compatibility spike      | BLOCKED — SRG-021 Blockers A, B, and C invalidate the earlier model-ID mapping and provider-package assumptions. Items 3, 4, 13, 16, 17, and the new end-to-end runtime items 18–25 are pending measurement through the actual OpenCode runtime. |
-| Protocol adaptation              | §6.2 compatibility spike      | BLOCKED — response/SSE transformation cannot be determined without a live Codex response through the OpenCode runtime.                                                                                                                           |
-| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no implementable credential source exists. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                                                      |
-| OpenCode version boundary        | §6.2 compatibility spike      | BLOCKED — environment versions recorded, but real-package compatibility test across the intended `engines.opencode` range is pending. This test must match the credential lifecycle chosen in §7.                                                |
+| Topic                            | Gate                          | Status                                                                                                                                                                                                                                          |
+| -------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK adapter                   | §6.2 compatibility spike      | BLOCKED — SRG-021 Blockers A, B, and C invalidate the earlier model-ID mapping and provider-package assumptions. §6.2 remains blocked until every compatibility evidence item is in a gate-closing state. See §6.2 for the item-by-item status. |
+| Protocol adaptation              | §6.2 compatibility spike      | BLOCKED — response/SSE transformation cannot be determined without a live Codex response through the OpenCode runtime.                                                                                                                          |
+| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no implementable credential source exists. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                                                     |
+| OpenCode version boundary        | §6.2 compatibility spike      | BLOCKED — environment versions recorded, but real-package compatibility test across the intended `engines.opencode` range is pending. This test must match the credential lifecycle chosen in §7.                                               |
