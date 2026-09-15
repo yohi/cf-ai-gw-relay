@@ -899,12 +899,12 @@ Under `provider.cf-ai-gw-relay.options`:
   - Cloudflare Gateway token (`cf-aig-authorization`),
   - relay secret,
   - ChatGPT account ID and residency values,
-- `relaySecret` / `x-relay-authorization` MUST terminate at the relay and MUST
-  NOT reach ChatGPT Codex or any other upstream.
-- Gateway-only control headers (`cf-aig-*`) and Cloudflare-internal headers
-  (`cf-*`, `x-forwarded-*`) MUST NOT reach ChatGPT Codex.
   - decoded token claims,
   - request and response payloads.
+- `relaySecret` / `x-relay-authorization` MUST terminate at the relay and MUST
+  NOT reach ChatGPT Codex or any other upstream.
+  - Gateway-only control headers (`cf-aig-*`) and Cloudflare-internal headers
+  (`cf-*`, `x-forwarded-*`) MUST NOT reach ChatGPT Codex.
 - `collectLogPayload=true` controls Cloudflare AI Gateway-side payload logging.
   The plugin and Deno relay must not log payloads regardless of this setting.
 
