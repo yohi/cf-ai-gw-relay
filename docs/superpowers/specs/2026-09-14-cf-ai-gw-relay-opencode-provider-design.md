@@ -62,7 +62,12 @@ intercept, or rewrite `openai/*` traffic.
 - Rename `packages/opencode-plugin/` to `packages/cf-ai-gw-relay/`.
 - Rename the npm package from `@yohi/cloudflare-ai-gateway-chatgpt` to
   `@yohi/cf-ai-gw-relay`.
-- Keep `apps/deno-relay/` and `.github/scripts/` unchanged in scope.
+- Keep the `apps/deno-relay/` and `.github/scripts/` directory paths unchanged;
+  their contents are modified as specified in §8 and §9 of this design. The Deno
+  relay implements the new fixed upstream route, request/response sanitization,
+  redirect handling, and Relay-origin error envelope. The provisioning scripts
+  are updated to enforce the fixed `cf-ai-gw-relay` custom-provider slug
+  invariant.
 - The Deno relay remains stateless with zero external runtime dependencies.
 - The npm plugin keeps its runtime dependency set constrained. It references
   `@opencode-ai/plugin` through `peerDependencies` / `devDependencies` and does
@@ -622,16 +627,39 @@ fetch.
 - Abort: propagate the inbound abort signal to the upstream `fetch`.
 - Timeouts: preserve the existing connect/header timeout and SSE idle timeout
   behavior.
+- Route validation precedence (all pre-upstream, evaluated in order; the first
+  matching rule produces the response and no later rule is evaluated):
+
+  1. Method must be `POST`. Any other method returns `405` `unsupported_method`.
+  2. Path must match the grammar `/upstream/{provider-slug}/v1/responses`. Any
+     path that does not start with `/upstream/` followed by exactly one provider
+     slug segment, then `/v1/responses`, returns `404` `unsupported_path`.
+  3. The extracted `{provider-slug}` must be exactly `openai`. Any other slug
+     returns `404` `unsupported_upstream`.
+  4. No further path segments or query parameters are permitted; if present,
+     return `404` `unsupported_path`.
+
+  Examples:
+
+  | Request path                          | HTTP status | Relay-origin error code |
+  | ------------------------------------- | ----------- | ----------------------- |
+  | `/upstream/openai/v1/responses`       | `200`       | (upstream)              |
+  | `/foo`                                | `404`       | `unsupported_path`      |
+  | `/upstream/anthropic/v1/responses`    | `404`       | `unsupported_upstream`  |
+  | `/upstream/anthropic/foo`             | `404`       | `unsupported_path`      |
+  | `/upstream/openai/v1/responses/extra` | `404`       | `unsupported_path`      |
+  | `/upstream/openai/v1/responses?x=1`   | `404`       | `unsupported_path`      |
+
 - Relay-generated error table:
 
-  | Condition                                                         | HTTP status | Relay-origin error code         | Phase                          | Notes                                                                                     |
-  | ----------------------------------------------------------------- | ----------- | ------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
-  | `RELAY_SECRET` missing, empty, or whitespace-only at request time | `503`       | `relay_not_configured`          | pre-upstream                   | Distinguish from incorrect request credential (`401`).                                    |
-  | Missing or incorrect `x-relay-authorization`                      | `401`       | `unauthorized`                  | pre-upstream                   | See §11.                                                                                  |
-  | Method other than `POST`                                          | `405`       | `unsupported_method`            | pre-upstream                   | Includes `GET`, `PUT`, `DELETE`, etc.                                                     |
-  | Path not exactly `/upstream/openai/v1/responses`                  | `404`       | `unsupported_path`              | pre-upstream                   | Any suffix other than `v1/responses`.                                                     |
-  | Upstream slug other than `openai`                                 | `404`       | `unsupported_upstream`          | pre-upstream                   | Future providers use their own presets; no generic proxying.                              |
-  | Upstream redirect other than `304 Not Modified`                   | `502`       | `upstream_redirect_not_allowed` | post-upstream, after one fetch | Converted from Codex 3xx before pass-through; no second fetch; `Location` is not exposed. |
+  | Condition                                                            | HTTP status | Relay-origin error code         | Phase                          | Notes                                                                                     |
+  | -------------------------------------------------------------------- | ----------- | ------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
+  | `RELAY_SECRET` missing, empty, or whitespace-only at request time    | `503`       | `relay_not_configured`          | pre-upstream                   | Distinguish from incorrect request credential (`401`).                                    |
+  | Missing or incorrect `x-relay-authorization`                         | `401`       | `unauthorized`                  | pre-upstream                   | See §11.                                                                                  |
+  | Method other than `POST`                                             | `405`       | `unsupported_method`            | pre-upstream                   | Includes `GET`, `PUT`, `DELETE`, etc.                                                     |
+  | Path grammar does not match `/upstream/{provider-slug}/v1/responses` | `404`       | `unsupported_path`              | pre-upstream                   | See route validation precedence above.                                                    |
+  | Provider slug other than `openai`                                    | `404`       | `unsupported_upstream`          | pre-upstream                   | Future providers use their own presets; no generic proxying.                              |
+  | Upstream redirect other than `304 Not Modified`                      | `502`       | `upstream_redirect_not_allowed` | post-upstream, after one fetch | Converted from Codex 3xx before pass-through; no second fetch; `Location` is not exposed. |
 - The legacy `POST /v1/responses` route is removed with no backward
   compatibility.
 
@@ -722,12 +750,32 @@ Under `provider.cf-ai-gw-relay.options`:
   error, and return a synthetic `Response` so that the calling runtime still
   receives a valid response object. The original response body is **not**
   consumed, disturbed, or canceled by the probe.
-- Probe time budget: candidate responses are probed with both a byte budget and
-  a wall-clock time budget. The probe MUST complete within 500 ms from the start
-  of the first probe read. If the probe does not read 8 KiB within that window,
-  the probe is treated as a non-match and the original response is returned
-  untouched. This prevents a slow or non-terminating response body from delaying
-  pass-through indefinitely.
+- Probe termination contract: the probe reads the independent probe stream until
+  the earliest of the following conditions. The byte limit and time limit are
+  guards, not success requirements.
+
+  1. `EOF` is reached.
+  2. More than 8 KiB of body data would be required to continue reading.
+  3. 500 ms of wall-clock time have elapsed since the first probe read.
+  4. A read error, cancellation, or other I/O failure occurs.
+
+  Outcome:
+
+  - `EOF` reached with the total probe body at or below 8 KiB and within the 500
+    ms budget -> parse the body as JSON and perform exact envelope/status/code
+    matching against the table above. Only an exact match produces a translated
+    synthetic `Response`.
+  - Body would exceed 8 KiB before `EOF` -> treat as a non-match; return the
+    original `Response` untouched.
+  - 500 ms expires before `EOF` -> treat as a non-match; return the original
+    `Response` untouched.
+  - Read error or cancellation -> treat as a non-match; return the original
+    `Response` untouched and clean up probe resources.
+
+  A small, valid Relay-origin JSON body (for example, a few hundred bytes) that
+  reaches `EOF` well before the byte and time limits must therefore be parsed
+  and matched; it must not be treated as a non-match simply because it did not
+  consume the full 8 KiB budget.
 - Probe cancellation and cleanup: the probe uses an `AbortSignal` or
   implementation-equivalent cancellation mechanism tied to the probe time
   budget. When the probe ends, on match, non-match, timeout, or error, the probe
@@ -768,6 +816,9 @@ Under `provider.cf-ai-gw-relay.options`:
      read failure).
   9. The original response body stream is never canceled, consumed, or disturbed
      by the probe; only the independent probe stream is read.
+  10. The 8 KiB bound is a maximum, not a minimum: a candidate body that reaches
+      `EOF` within the byte and time limits is parsed and matched exactly; it is
+      never rejected for being smaller than 8 KiB.
 
 ## 12. Secret Handling
 
