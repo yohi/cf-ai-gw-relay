@@ -8,12 +8,12 @@ success through the target OpenCode runtime. This revision preserves the
 resolved decisions from SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023
 through SRG-033, and the previously recorded SRG-029/SRG-030/SRG-031 contract.
 SRG-021 is now BLOCKED: Blockers A, B, and C invalidate the earlier model-ID
-mapping and provider-package assumptions; items 3, 4, 13, 16, and 17 remain open
-until the spike is re-run against the actual OpenCode 1.18.31 provider
-resolution path. SRG-022 remains a failed gate: no implementable credential
-source exists, so §7 presents two mutually exclusive paths and the design must
-not proceed to implementation planning until one path closes with concrete
-evidence.
+mapping and provider-package assumptions; items 3, 4, 5, 13, 14, 15, 16, 17, and
+18–25 remain open until they are measured through the actual OpenCode 1.18.31
+provider resolution path. SRG-022 remains a failed gate: no implementable
+credential source exists, so §7 presents two mutually exclusive paths and the
+design must not proceed to implementation planning until one path closes with
+concrete evidence.
 
 ## 1. Summary
 
@@ -140,7 +140,9 @@ intercept, or rewrite `openai/*` traffic.
   implementation described in §7.2–§7.4 is a conditional target for Path A only,
   not a current implementation plan. Return provider options (including a custom
   `fetch`) from `auth.loader()` so that the OpenCode / AI SDK runtime uses the
-  relay transport.
+  relay transport. If Path B is selected, this `auth.loader()` contract is
+  replaced by the transport injection path recorded for the chosen credential
+  architecture.
 - `provider` (`ProviderHook`) hook: keep optional. Do not rely on it as the
   primary provider registration path today. It may be enabled later when
   OpenCode supports registering unknown providers through this hook.
@@ -181,16 +183,16 @@ re-measured against that boundary.
 
 **Final provider config shape to be recorded as measured values:**
 
-| Field                         | What it controls                                  | Required measured value                                                                                           |
-| ----------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `provider.id`                 | OpenCode provider identifier                      | `cf-ai-gw-relay`                                                                                                  |
-| `provider.npm`                | AI SDK provider package selected by OpenCode      | exact package name and version                                                                                    |
-| model visible key             | User-selectable OpenCode model key                | `cf-ai-gw-relay/openai/<model>`                                                                                   |
-| `model.id` / `model.api.id`   | Model ID resolved by OpenCode for the AI SDK call | to be measured                                                                                                    |
-| provider options              | Object passed to the selected AI SDK factory      | `baseURL`, sentinel `apiKey`, custom `fetch` source                                                               |
-| `baseURL`                     | Gateway base URL used by the AI SDK runtime       | `https://gateway.ai.cloudflare.com/v1/{cloudflareAccountId}/{gatewayId}/custom-cf-ai-gw-relay/upstream/openai/v1` |
-| custom `fetch` source         | Transport returned from `auth.loader()`           | measured                                                                                                          |
-| selected AI SDK major/version | Contract compatibility with OpenCode runtime      | for example `@ai-sdk/openai@4.0.67` or a validated 3.x boundary                                                   |
+| Field                         | What it controls                                                                 | Required measured value                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `provider.id`                 | OpenCode provider identifier                                                     | `cf-ai-gw-relay`                                                                                                  |
+| `provider.npm`                | AI SDK provider package selected by OpenCode                                     | exact package name and version                                                                                    |
+| model visible key             | User-selectable OpenCode model key                                               | `cf-ai-gw-relay/openai/<model>`                                                                                   |
+| `model.id` / `model.api.id`   | Model ID resolved by OpenCode for the AI SDK call                                | to be measured                                                                                                    |
+| provider options              | Object passed to the selected AI SDK factory                                     | `baseURL`, sentinel `apiKey`, custom `fetch` source                                                               |
+| `baseURL`                     | Gateway base URL used by the AI SDK runtime                                      | `https://gateway.ai.cloudflare.com/v1/{cloudflareAccountId}/{gatewayId}/custom-cf-ai-gw-relay/upstream/openai/v1` |
+| custom `fetch` source         | Path A: transport returned from `auth.loader()`; Path B: recorded injection path | measured                                                                                                          |
+| selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | for example `@ai-sdk/openai@4.0.67` or a validated 3.x boundary                                                   |
 
 Until every cell in this table is filled with a measured value, §6.2 remains a
 blocking gate.
@@ -354,13 +356,20 @@ recorded with measured values, §6.2 remains a blocking gate.
 
 ### 6.3 Custom `fetch` responsibilities
 
-The custom `fetch` returned by `auth.loader()` is a thin transport boundary:
+The transport responsibilities below are conditional on the §7 credential-source
+gate selecting Path A (dedicated OAuth client). If Path B is selected, the
+transport injection path and the outbound `Authorization` header source must be
+recorded to match the chosen architecture; the shared responsibilities (validate
+the Gateway URL, add control headers, forward without body inspection, and
+fail-closed error handling) still apply. For Path A, the custom `fetch` returned
+by `auth.loader()` is a thin transport boundary:
 
 1. Receive the request generated by OpenCode / the AI SDK runtime.
 2. Validate and use the request URL generated by the configured provider; the
    custom `fetch` does **not** rewrite the URL to a different Gateway path.
 3. Add the required control headers.
-4. Replace the `Authorization` header with the current ChatGPT OAuth token.
+4. Replace the `Authorization` header with the current ChatGPT OAuth token (Path
+   A).
 5. Forward the request to the relay.
 6. Return the response without parsing or buffering the body, except for the
    limited, bounded Relay-origin error inspection described in §11.
@@ -393,7 +402,9 @@ implementation planning.
   retained as the main architecture. The new source must concretize, at minimum:
   credential owner, acquisition method, OpenCode public API boundary, storage,
   refresh owner, chatgptAccountId source, residency source, outbound headers,
-  user login/setup flow, failure handling, security boundary, and tests.
+  user login/setup flow, failure handling, security boundary, and tests. If Path
+  B is selected, §6.3, §13, §14, §15, and §16 must be updated to remove any
+  unconditional Path A contract.
 
 With the current information, neither path is closed. Therefore the design
 remains infeasible/blocked for ChatGPT-subscription traffic.
@@ -1054,11 +1065,19 @@ Before declaring the new provider model production-ready, verify:
 - Pre-implementation gates in §7.1 and §6.2 are satisfied and their results are
   documented in this design.
 - Request isolation between `openai/*` and `cf-ai-gw-relay/*` traffic.
-- Credential handling: OAuth flow, token refresh single-flight, account metadata
-  persistence, residency derivation per request, and secret-free errors.
-- AI SDK bootstrap: provider uses a non-secret sentinel `apiKey` and custom
-  `fetch` replaces it with the current OAuth token; `OPENAI_API_KEY` is not
-  used.
+- Credential handling (shared): secret-free errors, storage/refresh/rotation
+  ownership, and outbound header sources are recorded for the selected §7 path.
+- Credential handling (Path A only): OAuth flow, token refresh single-flight,
+  account metadata persistence, residency derivation per request.
+- Credential handling (Path B only): the concrete credential architecture
+  (credential owner, acquisition method, OpenCode public API boundary, storage,
+  refresh/rotation ownership, `chatgptAccountId` source, residency source,
+  outbound headers, user login/setup flow, failure handling, and security
+  boundary) is documented and measured.
+- AI SDK bootstrap (Path A): provider uses a non-secret sentinel `apiKey` and
+  custom `fetch` replaces it with the current OAuth token; `OPENAI_API_KEY` is
+  not used. Path B: bootstrap mechanism recorded for the chosen credential
+  architecture.
 - Cloudflare AI Gateway custom provider `cf-ai-gw-relay` exists, is enabled, and
   maps the Gateway URL to the deployed Deno relay root.
 - Streaming and abort propagation end-to-end.
@@ -1090,26 +1109,32 @@ Before declaring the new provider model production-ready, verify:
 ## 14. Testing Strategy
 
 - Plugin tests use Vitest. Relay tests use Deno built-in test runner.
-- Unit tests cover:
+- Shared unit tests cover:
   - configuration resolution, precedence, deferred validation, and secret
     masking,
   - Gateway URL construction,
   - control-header application,
   - provider/model definition merging,
   - unsupported-upstream detection,
-  - OAuth PKCE/state/callback/token-exchange helpers,
-  - callback server bind-before-return and cleanup paths,
-  - custom `fetch` URL validation and header replacement/application,
+  - custom `fetch` URL validation and header replacement/application (using the
+    shape recorded for the selected §7 path),
   - custom `fetch` does not change the request pathname,
   - custom `fetch` rejects a URL that does not match the expected Gateway shape,
+- Path A unit tests cover:
+  - OAuth PKCE/state/callback/token-exchange helpers,
+  - callback server bind-before-return and cleanup paths,
+  - OAuth token claim/refresh and account/residency metadata semantics.
+- Path B unit tests cover:
+  - the concrete credential lifecycle and transport injection path recorded for
+    the selected architecture.
 - Integration tests use minimal stubs for public OpenCode plugin interfaces
   only. A real-package compatibility test against the chosen minimum OpenCode
   version is included. A second real-package test against a current/reference
   OpenCode version confirms that the supported range is still valid.
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
-  fail-closed, and OAuth login. These require real credentials and are not a
-  mandatory CI gate.
+  fail-closed, and the credential/login flow selected in §7. These require real
+  credentials and are not a mandatory CI gate.
 - OAuth and Codex account metadata tests (added per SRG-003):
   - `accountId` persistence and refresh semantics follow the §7.1 decision
     table. The tests exercise the concrete rules recorded there: required vs
@@ -1309,7 +1334,8 @@ Before declaring the new provider model production-ready, verify:
   - the new usage flow diagram
     `OpenCode -> cf-ai-gw-relay provider -> Cloudflare AI Gateway -> Deno relay -> ChatGPT Codex`,
   - required ChatGPT OAuth login through the provider **if and only if** the
-    §7.1 OAuth client availability gate is satisfied; otherwise document that
+    §7.1 OAuth client availability gate is satisfied; if Path B is selected,
+    document the selected credential setup flow instead; otherwise document that
     the provider currently has no verified credential source and cannot be used
     for ChatGPT-subscription traffic,
   - Cloudflare AI Gateway / relay configuration via options and environment
@@ -1364,14 +1390,14 @@ evidence; they must not be treated as resolved in planning or implementation.
 | Plugin package name                    | `@yohi/cf-ai-gw-relay`.                                                                                                                                                                                                                                                                                                                                                                   |
 | Repository package path                | `packages/cf-ai-gw-relay` (renamed from `packages/opencode-plugin`).                                                                                                                                                                                                                                                                                                                      |
 | Provider registration path             | `config` hook is primary; `provider` hook is optional/future.                                                                                                                                                                                                                                                                                                                             |
-| Transport layer                        | Thin custom `fetch` returned from `auth.loader()`.                                                                                                                                                                                                                                                                                                                                        |
+| Transport layer                        | Path A: thin custom `fetch` returned from `auth.loader()`. Path B: transport injection path recorded for the chosen credential architecture.                                                                                                                                                                                                                                              |
 | Relay route                            | `POST /upstream/openai/v1/responses` exactly; other methods/paths are rejected before upstream fetch. Legacy `/v1/responses` removed.                                                                                                                                                                                                                                                     |
 | Gateway custom provider slug           | Fixed to `cf-ai-gw-relay` end-to-end; see §8 and §10.4 for the invariant and provisioning alignment obligation.                                                                                                                                                                                                                                                                           |
 | Relay auth header                      | `x-relay-authorization`.                                                                                                                                                                                                                                                                                                                                                                  |
 | Configuration precedence               | Environment variables > `opencode.json[c]`.                                                                                                                                                                                                                                                                                                                                               |
 | Old package/slug backward compat       | Not required.                                                                                                                                                                                                                                                                                                                                                                             |
 | AI SDK major/provider spec             | Not settled and now blocked by provider-package resolution. OpenCode 1.18.31 resolves the AI SDK provider package for `cf-ai-gw-relay` in the order `model.provider.npm → provider.npm → existing model npm → @ai-sdk/openai-compatible`. The spike must record the exact `provider.npm` value (if used) and the resolved package version/major before implementation planning. See §6.2. |
-| AI SDK `apiKey` bootstrap              | Non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used.                                                                                                                                                                                                                                                                           |
+| AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                                                                                      |
 | Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                                                                                      |
 | Codex account/residency shape          | `accountId` persists `chatgptAccountId`; residency derived per-request. Exact source/claim/precedence is **unknown** because no implementable credential path is closed (§7).                                                                                                                                                                                                             |
 | Built-in OpenAI credential claim paths | Reference only: built-in `openai` access-token JWT contains `https://api.openai.com/auth.chatgpt_account_id` and `https://api.openai.com/auth.chatgpt_compute_residency`. Not reused.                                                                                                                                                                                                     |
