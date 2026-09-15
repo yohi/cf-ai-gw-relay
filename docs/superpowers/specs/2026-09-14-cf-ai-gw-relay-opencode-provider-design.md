@@ -9,7 +9,7 @@ resolved decisions from SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023
 through SRG-033, and the previously recorded SRG-029/SRG-030/SRG-031 contract.
 SRG-021 is now BLOCKED: Blockers A, B, and C invalidate the earlier model-ID
 mapping and provider-package assumptions; §6.2 remains a blocking gate until
-every compatibility evidence item is recorded with a measured value and no
+every compatibility evidence item reaches a gate-closing state and no
 unresolved FAILED item remains. See §6.2 for the current item-by-item status.
 SRG-022 remains a failed gate: no implementable credential source exists, so §7
 presents two mutually exclusive paths and the design must not proceed to
@@ -654,6 +654,13 @@ not copied unless the spike or Codex contract provides a concrete reason.
   invariant described below. `base_url` MUST be the relay root without
   `/upstream/openai/v1/responses`; Gateway appends the request path to this
   root. The `enable` flag is required to be `true` for requests to be routed.
+- **MEASURED (2026-09-16):** A readonly production-account inspection confirmed
+  that the target AI Gateway exists and has request logging enabled. The same
+  inspection found no custom provider with slug `cf-ai-gw-relay`; therefore the
+  required Gateway-to-relay mapping is not provisioned. This is deployment
+  readiness evidence only. It does not close any §6.2 runtime compatibility
+  item, does not establish a §7 credential source, and does not provide Codex or
+  SSE acceptance evidence.
 - Custom provider slug: fixed to `cf-ai-gw-relay` end-to-end. The slug is an
   invariant across the plugin provider contract, the Cloudflare AI Gateway
   custom provider record, the repository provisioning workflow, deployment and
@@ -723,9 +730,6 @@ The Deno relay exposes a new fixed route for the OpenAI upstream. Every request
 is evaluated by the total validation/fetch precedence in this section. The first
 matching condition produces its response and no later condition is evaluated;
 the relay performs no upstream fetch unless checks 1–6 pass. Non-matching is
-evaluated by the total validation/fetch precedence in this section. The first
-matching condition produces its response and no later condition is evaluated;
-the relay performs no upstream fetch unless checks 1–6 pass. non-matching
 methods, paths, and upstream slugs are rejected before any upstream fetch.
 
 - Authentication: `x-relay-authorization: Bearer <RELAY_SECRET>`.
