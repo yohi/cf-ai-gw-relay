@@ -11,9 +11,9 @@ SRG-021 is now BLOCKED: Blockers A, B, and C invalidate the earlier model-ID
 mapping and provider-package assumptions; §6.2 remains a blocking gate until
 every compatibility evidence item reaches a gate-closing state and no unresolved
 FAILED item remains. See §6.2 for the current item-by-item status. SRG-022
-remains a failed gate: no implementable credential source exists, so §7 presents
-two mutually exclusive paths and the design must not proceed to implementation
-planning until one path closes with concrete evidence.
+remains a failed gate: no verified implementable credential source has been
+identified, so §7 presents two mutually exclusive paths and the design must not
+proceed to implementation planning until one path closes with concrete evidence.
 
 ## 1. Summary
 
@@ -394,6 +394,8 @@ The custom `fetch` does **not**:
 If unavoidable Codex adaptation is required, the adaptation boundary is the Deno
 relay, not the plugin.
 
+## 7. Credential Source and Authentication Architecture
+
 The `cf-ai-gw-relay` provider has no verified credential source today. This
 section presents two mutually exclusive paths. Until one path closes with
 concrete, measured evidence, the design is BLOCKED and must not proceed to
@@ -416,8 +418,10 @@ implementation planning.
   type, creation API, persistence lifecycle, and measured evidence that the
   loader is invoked from stored auth; if it does not use `auth.loader()`, it
   must specify the exact public API that injects provider options or a custom
-  `fetch` without a stored auth record. If Path B is selected, §6.3, §13, §14,
-  §15, and §16 must be updated to remove any unconditional Path A contract.
+  `fetch` without a stored auth record. If Path B is selected, every
+  credential-dependent section MUST be updated to remove any unconditional Path
+  A contract. This includes §6.1, §6.3, §7, §8, §9, §10, §11, §12, §13, §14,
+  §15, and §16.
 
 With the current information, neither path is closed. Therefore the design
 remains infeasible/blocked for ChatGPT-subscription traffic.
@@ -695,12 +699,22 @@ not copied unless the spike or Codex contract provides a concrete reason.
   - `cf-aig-metadata: {"source":"opencode","auth_type":"chatgpt_subscription","plugin":"cf-ai-gw-relay"}`
   - `cf-aig-skip-cache: true`
   - `cf-aig-max-attempts: 1`
-- The `Authorization` header carrying the ChatGPT OAuth access token is injected
-  by the plugin's custom `fetch` (after stripping any existing `Authorization`
-  value, including the AI SDK sentinel `apiKey`), passed through the Gateway to
-  the relay, and preserved for the upstream Codex request.
-- The `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` headers from
-  §7.4 are preserved and passed through.
+- Credential propagation (shared): the selected §7 credential architecture
+  determines the source of the upstream `Authorization` header and whether
+  ChatGPT account or residency metadata is required. The selected upstream
+  credential and required routing metadata pass through the Gateway and relay
+  according to that contract. Gateway and relay control credentials MUST NOT
+  reach Codex.
+- Path A only: the plugin's custom `fetch` injects the ChatGPT OAuth access
+  token after stripping any existing `Authorization` value, including the AI SDK
+  sentinel `apiKey`. The token is passed through the Gateway to the relay and
+  preserved for the upstream Codex request.
+- Path A only: the `ChatGPT-Account-Id` and `x-openai-internal-codex-residency`
+  headers defined by §7.4 are preserved and passed through.
+- Path B only: the `Authorization` source, bootstrap mechanism, transport
+  injection, and account/residency metadata follow the concrete Path B contract
+  selected and measured under §7. The Path A OAuth-token and sentinel
+  assumptions do not apply.
 - Request body stream, abort signal, and method are preserved.
 - Response body is streamed back without parsing or reconstruction, except for
   the limited Relay-origin error inspection described in §11.
@@ -790,10 +804,12 @@ methods, paths, and upstream slugs are rejected before any upstream fetch.
   - all `cf-*` headers
   - all `x-forwarded-*` headers
   - every header named by the comma-separated `Connection` header tokens. The
-    standard upstream `Authorization` header is NOT removed; it carries the
-    current ChatGPT OAuth token and must remain available to Codex. The
-    `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` headers from
-    §7.4 are also preserved. The relay secret MUST terminate at the relay.
+    standard upstream `Authorization` header is NOT removed; its value is
+    supplied according to the selected §7 credential architecture and MUST
+    remain available to authenticate the ChatGPT Codex upstream. Codex routing
+    metadata, including `ChatGPT-Account-Id` and residency, is preserved only
+    when required by the selected §7 credential contract. The relay secret MUST
+    terminate at the relay.
 - Response header sanitization: before returning any upstream or synthetic
   response to the Gateway, remove hop-by-hop response headers and every header
   named by the comma-separated `Connection` header tokens. This applies to
@@ -914,10 +930,17 @@ Under `provider.cf-ai-gw-relay.options`:
   `provider.cf-ai-gw-relay.options.cloudflareAccountId` (`opencode.json[c]`),
   with the environment variable winning. It is used only for Gateway URL path
   construction and must never be treated as a ChatGPT account ID.
-- The public OAuth auth top-level `accountId` field is the ChatGPT account ID
-  (semantic name: `chatgptAccountId`). It is used only for the outbound
-  `ChatGPT-Account-Id` header and must never be treated as a Cloudflare account
-  ID or used in Gateway URL construction.
+- The selected §7 credential architecture determines the source, storage, and
+  outbound use of ChatGPT account metadata. Under Path A, the public OAuth auth
+  top-level `accountId` field is the ChatGPT account ID (semantic name:
+  `chatgptAccountId`). It is used only for the outbound `ChatGPT-Account-Id`
+  header and must never be treated as a Cloudflare account ID or used in Gateway
+  URL construction. Under Path B, the corresponding source and storage semantics
+  MUST be recorded in the concrete Path B contract and MUST NOT be assumed to be
+  an OAuth `accountId` field.
+- Any Path B credential option, environment variable, persisted field, or
+  masking rule required by the selected architecture MUST be added to this
+  configuration contract before the credential-source gate closes.
 
 ## 11. Fail-closed and Error Handling
 
@@ -928,7 +951,8 @@ Under `provider.cf-ai-gw-relay.options`:
   - relay error / unauthorized,
   - relay configuration error,
   - network error,
-  - authentication error (OAuth not logged in, expired token),
+  - authentication or credential lifecycle error (credential not configured,
+    expired, rotated, or rejected),
   - unsupported upstream provider,
   - request adaptation error,
   - OpenCode version incompatibility.
@@ -1015,9 +1039,12 @@ Under `provider.cf-ai-gw-relay.options`:
   affecting the original body.
 - Success responses and SSE streams are never cloned, inspected, buffered, or
   reconstructed.
-- OAuth refresh failures do not fall back to a direct route; the plugin
-  distinguishes re-authentication needs from transient refresh failures where
-  possible.
+- Credential acquisition, refresh, or rotation failures never fall back to a
+  direct route. The selected §7 credential architecture defines whether each
+  lifecycle operation exists and how its failure is surfaced; all such failures
+  remain fail closed and secret-free.
+- Path A only: OAuth refresh failures distinguish re-authentication needs from
+  transient refresh failures where possible.
 - Secrets, tokens, authorization headers, and request/response payloads are
   never included in error messages or logs.
 - Non-destructive probe contract:
@@ -1050,9 +1077,13 @@ Under `provider.cf-ai-gw-relay.options`:
 
 ## 12. Secret Handling
 
+- Any secret credential selected by the §7 credential architecture MUST never be
+  logged, emitted in errors, or included in public fixtures. This covers the
+  concrete Path B credential form as well as Path A credentials.
+- Under Path A, the ChatGPT OAuth access token and refresh token are secret
+  credentials covered by the rule above.
 - The plugin and Deno relay MUST never log, emit in errors, or include in public
   fixtures:
-  - ChatGPT OAuth access token and refresh token,
   - `Authorization` header value,
   - `x-relay-authorization` header value,
   - Cloudflare Gateway token (`cf-aig-authorization`),
@@ -1262,8 +1293,8 @@ Before declaring the new provider model production-ready, verify:
     - `Connection: foo, bar` causes both `foo` and `bar` to be removed,
     - the outbound `Authorization` header source recorded for the selected §7
       path is preserved,
-    - `ChatGPT-Account-Id` and `x-openai-internal-codex-residency` are
-      preserved,
+    - the account/residency metadata required by the selected §7 credential
+      contract is preserved,
     - response hop-by-hop and `Connection`-token headers are removed before
       downstream delivery,
     - tests and logs do not emit the secret values used in headers.
@@ -1438,7 +1469,7 @@ evidence; they must not be treated as resolved in planning or implementation.
 | AI SDK major/provider spec             | Not settled and now blocked by provider-package resolution. OpenCode 1.18.31 resolves the AI SDK provider package for `cf-ai-gw-relay` in the order `model.provider.npm → provider.npm → existing model npm → @ai-sdk/openai-compatible`. The spike must record the exact `provider.npm` value (if used) and the resolved package version/major before implementation planning. See §6.2. |
 | AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                                                                                      |
 | Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                                                                                      |
-| Codex account/residency                | Conditional invariant only: for the selected §7 credential path, `accountId` carries the semantic `chatgptAccountId`, and residency is derived per-request. The exact source, claim path, and precedence remain **unknown** until an implementable credential path is closed.                                                                                                             |
+| Codex account/residency                | Conditional on the selected §7 credential path: that path defines whether account/residency metadata is required, its source, claim/storage semantics, precedence, and per-request derivation. Path A's OAuth `accountId` and §7.4 rules apply only if Path A closes; Path B must record its own concrete contract.                                                                       |
 | Built-in OpenAI credential claim paths | Reference only: built-in `openai` access-token JWT contains `https://api.openai.com/auth.chatgpt_account_id` and `https://api.openai.com/auth.chatgpt_compute_residency`. Not reused.                                                                                                                                                                                                     |
 
 ### Open pre-implementation gates
@@ -1447,5 +1478,5 @@ evidence; they must not be treated as resolved in planning or implementation.
 | -------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AI SDK adapter                   | §6.2 compatibility spike      | BLOCKED — SRG-021 Blockers A, B, and C invalidate the earlier model-ID mapping and provider-package assumptions. §6.2 remains blocked until every compatibility evidence item is in a gate-closing state. See §6.2 for the item-by-item status. |
 | Protocol adaptation              | §6.2 compatibility spike      | BLOCKED — response/SSE transformation cannot be determined without a live Codex response through the OpenCode runtime.                                                                                                                          |
-| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no implementable credential source exists. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                                                     |
+| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no verified implementable credential source has been identified. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                               |
 | OpenCode version boundary        | §6.2 compatibility spike      | BLOCKED — environment versions recorded, but real-package compatibility test across the intended `engines.opencode` range is pending. This test must match the credential lifecycle chosen in §7.                                               |
