@@ -9,11 +9,11 @@ resolved decisions from SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023
 through SRG-033, and the previously recorded SRG-029/SRG-030/SRG-031 contract.
 SRG-021 is now BLOCKED: Blockers A, B, and C invalidate the earlier model-ID
 mapping and provider-package assumptions; §6.2 remains a blocking gate until
-every compatibility evidence item reaches a gate-closing state and no
-unresolved FAILED item remains. See §6.2 for the current item-by-item status.
-SRG-022 remains a failed gate: no implementable credential source exists, so §7
-presents two mutually exclusive paths and the design must not proceed to
-implementation planning until one path closes with concrete evidence.
+every compatibility evidence item reaches a gate-closing state and no unresolved
+FAILED item remains. See §6.2 for the current item-by-item status. SRG-022
+remains a failed gate: no implementable credential source exists, so §7 presents
+two mutually exclusive paths and the design must not proceed to implementation
+planning until one path closes with concrete evidence.
 
 ## 1. Summary
 
@@ -194,8 +194,11 @@ re-measured against that boundary.
 | custom `fetch` source         | Path A: transport returned from `auth.loader()`; Path B: recorded injection path | measured                                                                                                          |
 | selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | for example `@ai-sdk/openai@4.0.67` or a validated 3.x boundary                                                   |
 
-Until every cell in this table is filled with a measured value, §6.2 remains a
-blocking gate.
+The final configuration fields above must be populated with concrete values for
+the selected implementation. Gate closure itself is determined by the
+evidence-state rules below: every required compatibility evidence item must
+reach a gate-closing state (`MEASURED` or `FAILED` with a recorded resolution).
+Until then, §6.2 remains a blocking gate.
 
 **Target request contract for the initial model (reference observations from a
 standalone `@ai-sdk/openai` spike; all rows must be re-confirmed through the
@@ -1417,7 +1420,7 @@ This section lists decisions that are already resolved and gates that remain
 open. Open gates are blocked until the corresponding spike records concrete
 evidence; they must not be treated as resolved in planning or implementation.
 
-### Resolved decisions
+### Resolved decisions and conditional invariants
 
 | Topic                                  | Decision                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1435,7 +1438,7 @@ evidence; they must not be treated as resolved in planning or implementation.
 | AI SDK major/provider spec             | Not settled and now blocked by provider-package resolution. OpenCode 1.18.31 resolves the AI SDK provider package for `cf-ai-gw-relay` in the order `model.provider.npm → provider.npm → existing model npm → @ai-sdk/openai-compatible`. The spike must record the exact `provider.npm` value (if used) and the resolved package version/major before implementation planning. See §6.2. |
 | AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                                                                                      |
 | Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                                                                                      |
-| Codex account/residency shape          | `accountId` persists `chatgptAccountId`; residency derived per-request. Exact source/claim/precedence is **unknown** because no implementable credential path is closed (§7).                                                                                                                                                                                                             |
+| Codex account/residency                | Conditional invariant only: for the selected §7 credential path, `accountId` carries the semantic `chatgptAccountId`, and residency is derived per-request. The exact source, claim path, and precedence remain **unknown** until an implementable credential path is closed.                                                                                                             |
 | Built-in OpenAI credential claim paths | Reference only: built-in `openai` access-token JWT contains `https://api.openai.com/auth.chatgpt_account_id` and `https://api.openai.com/auth.chatgpt_compute_residency`. Not reused.                                                                                                                                                                                                     |
 
 ### Open pre-implementation gates
