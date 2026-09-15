@@ -273,7 +273,10 @@ Each item below has one of the following states. Gate-closing states are
 every item is in a gate-closing state, §6.2 remains a blocking gate. Items
 tagged **PENDING** must be measured through the OpenCode runtime; items tagged
 **REFERENCE** were observed against `@ai-sdk/openai` standalone and are not
-sufficient to close the gate.
+sufficient to close the gate. The leading state label on each item is
+authoritative: a standalone observation mentioned within a **PENDING** item is
+supplemental **REFERENCE** evidence and does not close or change that item's
+state.
 
 1. **MEASURED** — OpenCode version used: `1.18.31` (CLI in the spike
    environment). If a 4.x AI SDK package is chosen, the minimum OpenCode
