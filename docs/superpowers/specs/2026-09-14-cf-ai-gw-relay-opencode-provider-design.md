@@ -317,9 +317,10 @@ sufficient to close the gate.
    `https://gateway.ai.cloudflare.com/v1/{cloudflareAccountId}/{gatewayId}/custom-cf-ai-gw-relay/upstream/openai/v1/responses`.
    Produced from the configured `baseURL` without URL rewriting.
 8. **REFERENCE** — Custom `fetch` observed method: `POST`.
-9. **PENDING / REFERENCE** — Custom `fetch` observed top-level request body
-   keys: `model`, `input`. With tools: `tools`, `tool_choice`. With streaming:
-   `stream`. Must be re-confirmed with the actual OpenCode-selected package.
+9. **PENDING** — Custom `fetch` observed top-level request body keys: `model`,
+   `input`. With tools: `tools`, `tool_choice`. With streaming: `stream`. The
+   standalone observation is **REFERENCE** only and must be re-confirmed with
+   the actual OpenCode-selected package.
 10. **REFERENCE** — Responses conversation data is generated as `input`, not
     `messages`.
 11. **REFERENCE** — Tool-call wire shape:
@@ -1298,15 +1299,21 @@ Before declaring the new provider model production-ready, verify:
     - response hop-by-hop and `Connection`-token headers are removed before
       downstream delivery,
     - tests and logs do not emit the secret values used in headers.
-  - Cloudflare / ChatGPT account identifier isolation tests (added per SRG-031):
+  - Cloudflare / ChatGPT account identifier isolation tests (added per SRG-031;
+    the ChatGPT-side assertions follow the selected §7 credential contract):
     - the Cloudflare account ID (`cloudflareAccountId`) is used only in the
       Gateway URL path (`/v1/{cloudflareAccountId}/{gatewayId}/...`); it never
       appears in `ChatGPT-Account-Id` or any other ChatGPT-bound header;
-    - the ChatGPT account ID (`chatgptAccountId`) is used only in the
-      `ChatGPT-Account-Id` header; it never appears in the Gateway URL path;
-    - fixture values for the two identifiers are deliberately different so that
-      accidental substitution is detectable; tests fail if the two values are
+    - if the selected credential contract requires or permits a ChatGPT account
+      ID (`chatgptAccountId`), tests assert that it is used only in the
+      `ChatGPT-Account-Id` header when the contract requires that header, and
+      never in the Gateway URL path;
+    - when both identifiers apply, fixture values are deliberately different so
+      that accidental substitution is detectable; tests fail if the values are
       equal or if either identifier is used in the wrong location;
+    - if the selected credential contract does not define a ChatGPT account ID,
+      tests assert that no account ID is synthesized or sent and that no
+      `ChatGPT-Account-Id` header is required by the provider;
     - custom `fetch` URL validation rejects any Gateway URL whose path account
       placeholder does not match the configured `cloudflareAccountId`.
 - **Path A tests** (conditional on §7.1 dedicated OAuth-client gate
