@@ -285,6 +285,21 @@ authoritative: a standalone observation mentioned within a **PENDING** item is
 supplemental **REFERENCE** evidence and does not close or change that item's
 state.
 
+A live E2E success used to close this gate must cover the complete initial
+operation set, not only a basic text response:
+
+- streaming text delta delivery through completion;
+- a supported tool call followed by its tool-result continuation through the
+  next model response; and
+- caller abort propagation through the Gateway and relay to the live upstream,
+  with no retry, fallback, or continued downstream stream.
+
+The tool requirement applies when tools are part of the selected initial model
+contract. A no-transformation conclusion applies only after every applicable
+operation above succeeds with the production request and SSE bodies forwarded
+unchanged. Otherwise §6.2 must record the exact request and/or response mapping
+for the unsupported operation before the gate can close.
+
 1. **MEASURED** — OpenCode version used: `1.18.31` (CLI in the spike
    environment). If a 4.x AI SDK package is chosen, the minimum OpenCode
    boundary must be raised to a version that formally consumes
@@ -302,6 +317,11 @@ state.
    `engines.opencode` as `>=1.18.20 <2` and `@opencode-ai/plugin` as
    `>=1.18.20`. A real-package compatibility test across that range is still
    required, and must match the credential architecture eventually selected.
+   Testing only a minimum version and one current/reference version does not
+   establish the complete declared range. The final ranges must be no broader
+   than the tested compatibility interval; every OpenCode or plugin-SDK API
+   compatibility boundary within that interval must be exercised, or the ranges
+   must be narrowed to the versions actually verified.
 5. **MEASURED** — OpenCode model-ID mapping trace from the runtime spike:
    - Visible OpenCode model key: `cf-ai-gw-relay/openai/visible-model`
    - Parsed OpenCode `modelID`: `openai/visible-model` (split at first `/`)
@@ -418,15 +438,20 @@ implementation planning.
   credential owner, acquisition method, OpenCode public API boundary, storage,
   refresh/rotation ownership, chatgptAccountId source, residency source,
   outbound headers, user login/setup flow, failure handling, security boundary,
-  and tests. In addition, Path B must record whether it depends on stored
-  OpenCode auth: if it reuses `auth.loader()`, it must specify the auth record
-  type, creation API, persistence lifecycle, and measured evidence that the
-  loader is invoked from stored auth; if it does not use `auth.loader()`, it
-  must specify the exact public API that injects provider options or a custom
-  `fetch` without a stored auth record. If Path B is selected, every
-  credential-dependent section MUST be updated to remove any unconditional Path
-  A contract. This includes §6.1, §6.3, §7, §8, §9, §10, §11, §12, §13, §14,
-  §15, and §16.
+  and tests. Path B must also provide evidence that the credential owner and
+  applicable provider terms permit this third-party plugin to use the credential
+  through the Gateway/relay route for the intended ChatGPT-subscription traffic;
+  the evidence must identify its authority and scope without recording a
+  credential value. Technical ability to acquire, store, or inject an
+  `Authorization` header alone is not sufficient to mark Path B **VIABLE**. In
+  addition, Path B must record whether it depends on stored OpenCode auth: if it
+  reuses `auth.loader()`, it must specify the auth record type, creation API,
+  persistence lifecycle, and measured evidence that the loader is invoked from
+  stored auth; if it does not use `auth.loader()`, it must specify the exact
+  public API that injects provider options or a custom `fetch` without a stored
+  auth record. If Path B is selected, every credential-dependent section MUST be
+  updated to remove any unconditional Path A contract. This includes §6.1, §6.3,
+  §7, §8, §9, §10, §11, §12, §13, §14, §15, and §16.
 
 With the current information, neither path is closed. Therefore the design
 remains infeasible/blocked for ChatGPT-subscription traffic.
@@ -1138,7 +1163,9 @@ Before declaring the new provider model production-ready, verify:
   (credential owner, acquisition method, OpenCode public API boundary, storage,
   refresh/rotation ownership, `chatgptAccountId` source, residency source,
   outbound headers, user login/setup flow, failure handling, and security
-  boundary) is documented and measured.
+  boundary) is documented and measured, and evidence confirms that the
+  credential owner and applicable provider terms authorize the intended
+  third-party Gateway/relay use.
 - AI SDK bootstrap (Path A): provider uses a non-secret sentinel `apiKey` and
   custom `fetch` replaces it with the current OAuth token; `OPENAI_API_KEY` is
   not used. Path B: bootstrap mechanism recorded for the chosen credential
@@ -1400,8 +1427,12 @@ Before declaring the new provider model production-ready, verify:
   OpenCode version confirms that the supported range is still valid.
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
-  fail-closed, and the credential/login flow selected in §7. These require real
-  credentials and are not a mandatory CI gate.
+  fail-closed, and the credential/login flow selected in §7. Streaming
+  acceptance includes text delta/completion and, when supported by the selected
+  initial model, a tool call and tool-result continuation. Abort acceptance
+  verifies that cancellation reaches the live upstream without retry, fallback,
+  or a continued downstream stream. These require real credentials and are not a
+  mandatory CI gate.
 - Supported OpenCode version boundary tests (added per SRG-017):
   - the minimum supported OpenCode version passes the full lifecycle through the
     real `@opencode-ai/plugin` package for the selected §7 credential
@@ -1411,8 +1442,10 @@ Before declaring the new provider model production-ready, verify:
     - Path A: OAuth login, stored OAuth auth, `auth.loader()`, custom `fetch`,
     - Path B: the exact acquisition/storage/injection lifecycle selected by Path
       B;
-  - the current/reference OpenCode version passes the same full lifecycle
-    contract for the selected §7 credential architecture;
+  - the current/reference OpenCode version and every OpenCode or plugin-SDK API
+    compatibility boundary within the declared supported range pass the same
+    full lifecycle contract for the selected §7 credential architecture; a
+    two-version minimum/current sample does not justify a broader range;
   - unsupported versions are handled according to the existing host-version
     policy (activation rejection), not by this provider.
 
