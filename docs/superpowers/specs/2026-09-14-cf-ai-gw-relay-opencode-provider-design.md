@@ -891,7 +891,7 @@ Under `provider.cf-ai-gw-relay.options`:
 
 ## 12. Secret Handling
 
-- The following must never be logged, emitted in errors, or included in public
+- The plugin and Deno relay MUST never log, emit in errors, or include in public
   fixtures:
   - ChatGPT OAuth access token and refresh token,
   - `Authorization` header value,
@@ -899,14 +899,22 @@ Under `provider.cf-ai-gw-relay.options`:
   - Cloudflare Gateway token (`cf-aig-authorization`),
   - relay secret,
   - ChatGPT account ID and residency values,
-  - decoded token claims,
+  - decoded token claims.
+- The plugin and Deno relay MUST never log or emit in errors:
   - request and response payloads.
 - `relaySecret` / `x-relay-authorization` MUST terminate at the relay and MUST
   NOT reach ChatGPT Codex or any other upstream.
   - Gateway-only control headers (`cf-aig-*`) and Cloudflare-internal headers
-  (`cf-*`, `x-forwarded-*`) MUST NOT reach ChatGPT Codex.
-- `collectLogPayload=true` controls Cloudflare AI Gateway-side payload logging.
-  The plugin and Deno relay must not log payloads regardless of this setting.
+    (`cf-*`, `x-forwarded-*`) MUST NOT reach ChatGPT Codex.
+- Cloudflare AI Gateway payload logging is controlled exclusively by
+  `collectLogPayload` / `cf-aig-collect-log-payload`. When
+  `collectLogPayload=true`, request/response payloads may be retained in
+  Cloudflare AI Gateway logs according to Cloudflare's configured logging
+  behavior. This exception does not permit the plugin or Deno relay to log
+  payloads.
+- `collectLogPayload=true` is an intentional production default: users who want
+  to prevent Cloudflare AI Gateway from retaining payloads set
+  `collectLogPayload=false` or `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD=false`.
 
 ## 13. Production Readiness Criteria
 
@@ -1171,7 +1179,9 @@ Before declaring the new provider model production-ready, verify:
     variables,
   - fail-closed semantics,
   - removal of the old fetch-intercept mode,
-  - note that `collectLogPayload` affects Gateway-side logging only.
+  - note that `collectLogPayload` affects Cloudflare AI Gateway-side payload
+    logging only; the plugin and Deno relay never log payloads regardless of
+    this setting.
 - Update `SPEC.md` with:
   - the new provider namespace,
   - the exact `POST /upstream/openai/v1/responses` relay route contract,
