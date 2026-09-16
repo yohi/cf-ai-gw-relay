@@ -404,17 +404,19 @@ requires design re-approval before further implementation.
    `http://127.0.0.1:43133/v1/responses` without URL rewriting. Production
    routing is item 26 and is not required before planning.
 8. **PRE-IMPLEMENTATION / MEASURED** — Runtime custom `fetch` method: `POST`.
-9. **PRE-IMPLEMENTATION / MEASURED** — With `@ai-sdk/openai@4.0.67`, the runtime
-   captured `input`, `max_output_tokens`, `model`, and `stream` on the basic
-   request. The tool-enabled request additionally contained `tools` and
+9. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
+   runtime captured `input`, `max_output_tokens`, `model`, and `stream` on the
+   basic request. The tool-enabled request additionally contained `tools` and
    `tool_choice`.
-10. **PRE-IMPLEMENTATION / MEASURED** — Responses conversation data is generated
-    as `input`; the runtime request did not contain `messages`.
-11. **PRE-IMPLEMENTATION / MEASURED** — Runtime tool shape is an array of
-    function definitions with `type`, `name`, `description`, and JSON-Schema
-    `parameters`; the captured tool-enabled request used `tool_choice: "auto"`.
-12. **PRE-IMPLEMENTATION / MEASURED** — Runtime `stream` value was `true` for
-    both captured streaming requests.
+10. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** —
+    Responses conversation data is generated as `input`; the runtime request did
+    not contain `messages`.
+11. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** —
+    Runtime tool shape is an array of function definitions with `type`, `name`,
+    `description`, and JSON-Schema `parameters`; the captured tool-enabled
+    request used `tool_choice: "auto"`.
+12. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** —
+    Runtime `stream` value was `true` for both captured streaming requests.
 
 ### 6.2.4 Selected-baseline validation handoff
 
@@ -457,9 +459,10 @@ the failure, return to design review for explicit re-approval.
     `cf-ai-gw-relay/openai/visible-model` mapped to parsed `modelID`
     `openai/visible-model`, while the explicit model definition mapped the AI
     SDK and wire ID to `wire-model`.
-16. **PRE-IMPLEMENTATION / MEASURED** — A synthetic OpenAI Responses SSE stream
-    containing output-item/content-part/delta/completion events was consumed
-    successfully by the OpenCode runtime. Live Codex SSE acceptance is item 27.
+16. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — A
+    synthetic OpenAI Responses SSE stream containing
+    output-item/content-part/delta/completion events was consumed successfully
+    by the OpenCode runtime. Live Codex SSE acceptance is item 27.
 17. **POST-IMPLEMENTATION ACCEPTANCE / NOT MEASURED** — The local runtime
     request matched the OpenAI Responses API and the synthetic response was
     consumed without adapter transformation. The bounded protocol task in §6.2.3
@@ -469,20 +472,22 @@ the failure, return to design review for explicit re-approval.
     `cf-ai-gw-relay` provider into the OpenCode configuration.
 19. **PRE-IMPLEMENTATION / MEASURED** — `opencode models cf-ai-gw-relay`
     surfaced `cf-ai-gw-relay/openai/visible-model` for selection.
-20. **PRE-IMPLEMENTATION / MEASURED** — The provider npm package selected by the
-    runtime was `@ai-sdk/openai@4.0.67`.
+20. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
+    provider npm package selected by the runtime was `@ai-sdk/openai@4.0.67`.
 21. **PRE-IMPLEMENTATION / MEASURED** — OpenCode resolved `model.api.id` as
     `wire-model`.
-22. **PRE-IMPLEMENTATION / MEASURED** — The runtime used the generic
-    custom-provider path: `createOpenAI({ name, ...options })` followed by
+22. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
+    runtime used the generic custom-provider path:
+    `createOpenAI({ name, ...options })` followed by
     `languageModel("wire-model")`, which selected the package's Responses model.
-23. **PRE-IMPLEMENTATION / MEASURED** — Custom `fetch` received the local URL
-    `http://127.0.0.1:43133/v1/responses`.
-24. **PRE-IMPLEMENTATION / MEASURED** — The request body `model` was
-    `wire-model`.
-25. **PRE-IMPLEMENTATION / MEASURED** — The runtime captured `input` and
-    `stream` on the basic request, and `input`, `tools`, `tool_choice`, and
-    `stream` on the tool-enabled request; `messages` was absent.
+23. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** —
+    Custom `fetch` received the local URL `http://127.0.0.1:43133/v1/responses`.
+24. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
+    request body `model` was `wire-model`.
+25. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
+    runtime captured `input` and `stream` on the basic request, and `input`,
+    `tools`, `tool_choice`, and `stream` on the tool-enabled request; `messages`
+    was absent.
 
 26. **POST-IMPLEMENTATION ACCEPTANCE / NOT MEASURED** — The deployed Gateway
     custom provider maps the configured production URL to the deployed fixed
@@ -548,10 +553,10 @@ credential-gate prerequisites.
 candidate evaluated to date. No entry is **VIABLE**, so neither path can be
 selected and the gate remains blocked.
 
-| Candidate                                           | Credential owner                                      | Acquisition method             | Public OpenCode API                              | Stored auth        | Storage                       | Refresh/rotation       | Authorization source                                                    | `chatgptAccountId` source           | Residency source                    | Transport injection                          | User setup              | Failure behavior                               | Permission authority                      | Permission scope                                                 | Result         |
-| --------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
-| Path A: dedicated public OAuth client               | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
-| Path B: reuse built-in OpenCode `openai` OAuth auth | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
+| Candidate                                                       | Credential owner                                      | Acquisition method             | Public OpenCode API                              | Stored auth        | Storage                       | Refresh/rotation       | Authorization source                                                    | `chatgptAccountId` source           | Residency source                    | Transport injection                          | User setup              | Failure behavior                               | Permission authority                      | Permission scope                                                 | Result         |
+| --------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
+| Path A: dedicated public OAuth client                           | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
+| Path B0: reuse built-in OpenCode `openai` OAuth auth (rejected) | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
 
 Before selecting a replacement credential architecture, record every evaluated
 candidate in a decision table with these columns: candidate, credential owner,
@@ -596,8 +601,9 @@ unmeasured injection path rejects the candidate.
 - **Path B — Redesign credential architecture:** Replace the dedicated-OAuth
   design with a concrete, implementable credential source. If this path is
   chosen, the old dedicated-OAuth conditional design in §7.1–§7.4 is **not**
-  retained as the main architecture. The new source must concretize, at minimum:
-  credential owner, acquisition method, OpenCode public API boundary, storage,
+  retained as the main architecture. This is a new candidate, not a reopening of
+  rejected Path B0. The new source must concretize, at minimum: credential
+  owner, acquisition method, OpenCode public API boundary, storage,
   refresh/rotation ownership, chatgptAccountId source, residency source,
   outbound headers, user login/setup flow, failure handling, security boundary,
   and tests. Path B must also provide evidence that the credential owner and
