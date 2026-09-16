@@ -17,9 +17,10 @@ provider/model mapping, `auth.loader()`, custom `fetch`, the generated Responses
 request, and synthetic Responses SSE consumption. It did not verify the live
 Codex endpoint, the production Gateway/relay mapping, or the native Codex model
 ID. See §6.2 for the item-by-item status. SRG-022 remains PARTIALLY RESOLVED /
-BLOCKED: no verified implementable credential source has been identified, so §7
-presents two mutually exclusive paths and the design must not proceed to
-implementation planning until one path closes with concrete evidence.
+BLOCKED: no verified implementable credential source has been identified and no
+concrete replacement candidate is under evaluation. The ChatGPT-subscription
+provider design is currently infeasible, and implementation planning MUST NOT
+start until a new candidate closes with concrete evidence.
 
 ## 1. Summary
 
@@ -543,11 +544,11 @@ relay, not the plugin.
 ## 7. Credential Source and Authentication Architecture
 
 The `cf-ai-gw-relay` provider has no verified credential source today. This
-section presents two mutually exclusive paths. Credential selection is part of
-the pre-implementation design gate. Until one path closes with concrete,
-measured evidence, the design is BLOCKED and must not proceed to implementation
-planning. Candidate deployment and post-implementation acceptance are not
-credential-gate prerequisites.
+section records the rejected evaluated paths and the requirements for any future
+replacement candidate. Credential selection is part of the pre-implementation
+design gate. Until a concrete path closes with measured evidence, the design is
+BLOCKED and must not proceed to implementation planning. Candidate deployment
+and post-implementation acceptance are not credential-gate prerequisites.
 
 **Candidate decision table (2026-09-16):** The following are every credential
 candidate evaluated to date. No entry is **VIABLE**, so neither path can be
@@ -621,8 +622,12 @@ unmeasured injection path rejects the candidate.
   updated to remove any unconditional Path A contract. This includes §6.1, §6.3,
   §7, §8, §9, §10, §11, §12, §13, §14, §15, and §16.
 
-With the current information, neither path is closed. Therefore the design
-remains infeasible/blocked for ChatGPT-subscription traffic.
+With the current information, Path A and Path B0 are not viable, and no concrete
+replacement candidate is under evaluation. No verified implementable credential
+architecture is available. Therefore the ChatGPT-subscription provider design is
+currently infeasible, and implementation planning MUST NOT start. Do not repeat
+credential-candidate review unless new authoritative external evidence yields a
+concrete candidate.
 
 The 2026-09-16 runtime spike separately measured the public auth-loader seam
 using a synthetic stored `api` auth record. The record was created with
@@ -1746,12 +1751,12 @@ acceptance, candidate abort propagation, selected-contract harness execution,
 and finite OpenCode compatibility-interval measurement are not preconditions for
 writing an implementation plan.
 
-| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                          |
-| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2.4 validation handoff     | RESOLVED FOR PLANNING / VALIDATION REQUIRED — `@ai-sdk/openai@3.0.88` / `LanguageModelV3` and the 1.18.31 minimum candidate boundary are selected. The selected-contract harness, finite boundary, and §7 credential lifecycle are bounded implementation-plan validation work. |
-| Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                               |
-| Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A is FAILED and Path B is OPEN. No verified implementable credential source has been identified, so neither path is closed.                                                                                                                 |
-| OpenCode version boundary        | §6.2.4 validation handoff     | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                   |
+| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                                 |
+| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AI SDK adapter                   | §6.2.4 validation handoff     | RESOLVED FOR PLANNING / VALIDATION REQUIRED — `@ai-sdk/openai@3.0.88` / `LanguageModelV3` and the 1.18.31 minimum candidate boundary are selected. The selected-contract harness, finite boundary, and §7 credential lifecycle are bounded implementation-plan validation work.                        |
+| Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                                                      |
+| Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. |
+| OpenCode version boundary        | §6.2.4 validation handoff     | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                          |
 
 ### Re-review finding discipline
 
