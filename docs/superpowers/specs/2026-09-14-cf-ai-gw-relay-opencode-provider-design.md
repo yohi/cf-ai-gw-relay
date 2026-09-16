@@ -300,6 +300,26 @@ operation above succeeds with the production request and SSE bodies forwarded
 unchanged. Otherwise §6.2 must record the exact request and/or response mapping
 for the unsupported operation before the gate can close.
 
+The live E2E is protected-acceptance evidence for a candidate implementation; it
+cannot be run against this repository's current legacy provider and relay path.
+Before it starts, the candidate dedicated provider and relay route described in
+§§8–11 must be deployed, the selected credential path must be available, and the
+Gateway custom-provider mapping must target that deployment. A task that
+prohibits source, provisioning, and external-resource changes cannot create
+those prerequisites. If they are absent, record **BLOCKED BY CANDIDATE
+IMPLEMENTATION AND EXTERNAL TEST ENVIRONMENT PREREQUISITES** and do not
+represent the result as a live E2E measurement.
+
+Live abort evidence has two distinct parts. A deterministic relay integration
+test must prove that the inbound abort signal aborts the upstream fetch and
+cancels the upstream response body. The protected live E2E must prove caller
+cancellation, downstream stream termination, and exactly one Gateway and relay
+request with no retry or fallback. Before the live test starts, its evidence
+record must name the approved, secret-free correlation source used to establish
+those Gateway/relay observations. Unless an approved upstream-side cancellation
+signal is available, the live test must not claim direct observation of Codex
+resource release; that claim remains limited to the deterministic relay test.
+
 1. **MEASURED** — OpenCode version used: `1.18.31` (CLI in the spike
    environment). If a 4.x AI SDK package is chosen, the minimum OpenCode
    boundary must be raised to a version that formally consumes
@@ -318,10 +338,11 @@ for the unsupported operation before the gate can close.
    `>=1.18.20`. A real-package compatibility test across that range is still
    required, and must match the credential architecture eventually selected.
    Testing only a minimum version and one current/reference version does not
-   establish the complete declared range. The final ranges must be no broader
-   than the tested compatibility interval; every OpenCode or plugin-SDK API
-   compatibility boundary within that interval must be exercised, or the ranges
-   must be narrowed to the versions actually verified.
+   establish the complete declared range. The final ranges must have an explicit
+   upper bound at a released version boundary and must not include future
+   OpenCode or plugin-SDK releases by construction. Every known OpenCode or
+   plugin-SDK API compatibility boundary within that finite interval must be
+   exercised, or the ranges must be narrowed to the versions actually verified.
 5. **MEASURED** — OpenCode model-ID mapping trace from the runtime spike:
    - Visible OpenCode model key: `cf-ai-gw-relay/openai/visible-model`
    - Parsed OpenCode `modelID`: `openai/visible-model` (split at first `/`)
@@ -1193,7 +1214,9 @@ Before declaring the new provider model production-ready, verify:
   intended `engines.opencode` range, and the intended `@opencode-ai/plugin`
   peerDependency range are recorded in §6.2 once the compatibility spike closes
   the gate, and must be identical across the design, package metadata, and test
-  target before production readiness is declared.
+  target before production readiness is declared. Both declared ranges have a
+  finite released upper bound; a range that includes future releases is not
+  supported by a one-time compatibility spike.
 - The provisioned Cloudflare AI Gateway custom provider slug is exactly
   `cf-ai-gw-relay`; the plugin runtime and provisioning workflow both enforce
   this value.
@@ -1423,16 +1446,20 @@ Before declaring the new provider model production-ready, verify:
       provider options or a custom `fetch` without a stored auth record.
 - Integration tests use minimal stubs for public OpenCode plugin interfaces
   only. A real-package compatibility test against the chosen minimum OpenCode
-  version is included. A second real-package test against a current/reference
-  OpenCode version confirms that the supported range is still valid.
+  version is included. The real-package test matrix also covers the
+  current/reference version and every known compatibility boundary in the final
+  finite supported range, as specified by the version-boundary tests below.
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
   fail-closed, and the credential/login flow selected in §7. Streaming
   acceptance includes text delta/completion and, when supported by the selected
-  initial model, a tool call and tool-result continuation. Abort acceptance
-  verifies that cancellation reaches the live upstream without retry, fallback,
-  or a continued downstream stream. These require real credentials and are not a
-  mandatory CI gate.
+  initial model, a tool call and tool-result continuation. Abort acceptance uses
+  the §6.2 correlation source to verify exactly one Gateway and relay request,
+  no retry or fallback, and no continued downstream stream. Upstream fetch abort
+  and response-body cancellation are verified deterministically in relay
+  integration tests; direct live Codex resource-release claims require an
+  approved upstream-side cancellation signal. These require real credentials and
+  are not a mandatory CI gate.
 - Supported OpenCode version boundary tests (added per SRG-017):
   - the minimum supported OpenCode version passes the full lifecycle through the
     real `@opencode-ai/plugin` package for the selected §7 credential
@@ -1443,9 +1470,11 @@ Before declaring the new provider model production-ready, verify:
     - Path B: the exact acquisition/storage/injection lifecycle selected by Path
       B;
   - the current/reference OpenCode version and every OpenCode or plugin-SDK API
-    compatibility boundary within the declared supported range pass the same
-    full lifecycle contract for the selected §7 credential architecture; a
-    two-version minimum/current sample does not justify a broader range;
+    compatibility boundary within the declared finite supported range pass the
+    same full lifecycle contract for the selected §7 credential architecture.
+    The test record identifies the released upper bound and the official change
+    evidence used to identify each boundary; a two-version minimum/current
+    sample does not justify a broader range;
   - unsupported versions are handled according to the existing host-version
     policy (activation rejection), not by this provider.
 
@@ -1526,9 +1555,9 @@ evidence; they must not be treated as resolved in planning or implementation.
 
 ### Open pre-implementation gates
 
-| Topic                            | Gate                          | Status                                                                                                                                                                                                                             |
-| -------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2 compatibility spike      | BLOCKED — local OpenCode adapter evidence is now recorded, but production Gateway/relay routing, live Codex acceptance, the native model ID, and the minimum supported boundary remain open. See §6.2 for the item-by-item status. |
-| Protocol adaptation              | §6.2 compatibility spike      | BLOCKED — a synthetic Responses SSE stream was consumed locally, but response/SSE transformation cannot be determined without a live Codex response through the OpenCode runtime.                                                  |
-| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no verified implementable credential source has been identified. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                  |
-| OpenCode version boundary        | §6.2 compatibility spike      | BLOCKED — environment versions recorded, but real-package compatibility test across the intended `engines.opencode` range is pending. This test must match the credential lifecycle chosen in §7.                                  |
+| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                  |
+| -------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK adapter                   | §6.2 compatibility spike      | BLOCKED — local OpenCode adapter evidence is now recorded, but the candidate dedicated implementation and its Gateway/relay mapping are not deployed. Live Codex acceptance, the native model ID, and the minimum supported boundary remain open. See §6.2 for the item-by-item status. |
+| Protocol adaptation              | §6.2 compatibility spike      | BLOCKED — a synthetic Responses SSE stream was consumed locally, but response/SSE transformation cannot be determined without a live Codex response through the deployed candidate implementation and OpenCode runtime.                                                                 |
+| Credential source / OAuth client | §7 credential-source decision | FAILED / BLOCKED — no verified implementable credential source has been identified. §7 presents Path A (dedicated OAuth client) and Path B (redesign credential architecture); neither is closed.                                                                                       |
+| OpenCode version boundary        | §6.2 compatibility spike      | BLOCKED — environment versions recorded, but the final finite OpenCode and plugin-SDK compatibility interval is not selected or tested. It must match the credential lifecycle chosen in §7.                                                                                            |
