@@ -180,30 +180,42 @@ is a measured value, not a candidate list. The same requirement applies to any
 chosen AI SDK major/version.
 
 OpenCode 1.18.31, when a custom provider has no dedicated model loader, calls
-`sdk.languageModel(model.api.id)`. The runtime spike measured the selected path
+`sdk.languageModel(model.api.id)`. The runtime spike measured the observed path
 as `createOpenAI({ name, ...options })` followed by
-`languageModel("wire-model")`; `@ai-sdk/openai@4.0.67` delegates that method to
+`languageModel("wire-model")`; `@ai-sdk/openai@4.0.67` delegated that method to
 its Responses model implementation. The custom provider does not use the
 built-in `openai` provider's special loader. This confirms the local adapter
-path, but not live Codex acceptance. If the final AI SDK major is 3.x, all wire
-contracts must be re-measured in 3.x. If 4.x is chosen, the minimum supported
-OpenCode version must be changed to a released version with published evidence
-that it consumes `LanguageModelV4`, and all contracts must be re-measured
-against that boundary. A 4.x request generated incidentally by OpenCode 1.18.31
-is not evidence of that support.
+path, but not live Codex acceptance.
+
+**Baseline selection record (2026-09-16):** The selected AI SDK baseline is
+`@ai-sdk/openai@3.0.88`, selected through the exact `provider.npm` value
+`@ai-sdk/openai@3.0.88`; its provider specification is `LanguageModelV3`. The
+published OpenCode `v1.18.31` source imports and consumes `LanguageModelV3` for
+provider models, and its release manifest pins `@ai-sdk/openai@3.0.88`.
+Therefore the 4.0.67 runtime observation is retained only as supplemental
+reference evidence and is not a selectable production baseline for OpenCode
+1.18.31. The selected 3.0.88 package has not yet been re-measured through the
+complete adapter harness, so this selection does not close the
+pre-implementation gate. The relevant primary sources are the
+[OpenCode v1.18.31 provider implementation](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/provider/provider.ts)
+and its
+[release manifest](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/package.json).
+All package-specific captures from the former 4.0.67 spike below are
+**REFERENCE** evidence for selected-baseline closure until 3.0.88 is
+re-measured.
 
 **Final provider config shape to be recorded as measured values:**
 
 | Field                         | What it controls                                                                 | Required measured value                                                                                                                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `provider.id`                 | OpenCode provider identifier                                                     | `cf-ai-gw-relay`                                                                                                                                                                          |
-| `provider.npm`                | AI SDK provider package selected by OpenCode                                     | **MEASURED locally:** `@ai-sdk/openai@4.0.67`                                                                                                                                             |
+| `provider.npm`                | AI SDK provider package selected by OpenCode                                     | **SELECTED:** `@ai-sdk/openai@3.0.88`; 4.0.67 is supplemental reference evidence and the selected package still requires harness measurement                                              |
 | model visible key             | User-selectable OpenCode model key                                               | **MEASURED locally:** `cf-ai-gw-relay/openai/visible-model`                                                                                                                               |
 | `model.id` / `model.api.id`   | Model ID resolved by OpenCode for the AI SDK call                                | **MEASURED locally:** `openai/visible-model` / `wire-model`                                                                                                                               |
 | provider options              | Object passed to the selected AI SDK factory                                     | **MEASURED locally:** `baseURL`, loader sentinel `apiKey`, custom `fetch`                                                                                                                 |
 | `baseURL`                     | Gateway base URL used by the AI SDK runtime                                      | Production target remains `https://gateway.ai.cloudflare.com/v1/{cloudflareAccountId}/{gatewayId}/custom-cf-ai-gw-relay/upstream/openai/v1`; local spike used `http://127.0.0.1:43133/v1` |
 | custom `fetch` source         | Path A: transport returned from `auth.loader()`; Path B: recorded injection path | **MEASURED locally:** `auth.loader()` after stored `api` auth via `client.auth.set({ path: { id: "cf-ai-gw-relay" }, ... })`; credential architecture remains open                        |
-| selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | **MEASURED locally:** `@ai-sdk/openai@4.0.67`; minimum supported boundary remains open                                                                                                    |
+| selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | **SELECTED:** `@ai-sdk/openai@3.0.88` / `LanguageModelV3`; the selected-contract harness, finite interval, and credential lifecycle remain open                                           |
 
 The final configuration fields above must be populated with concrete values for
 the selected implementation. §6.2 has two separate gates. The pre-implementation
@@ -340,14 +352,17 @@ relay-only mapping with the selected AI SDK baseline, fails acceptance and
 requires design re-approval before further implementation.
 
 1. **PRE-IMPLEMENTATION / MEASURED** — OpenCode version used: `1.18.31` (CLI in
-   the spike environment). If a 4.x AI SDK package is chosen, the minimum
-   OpenCode boundary must be raised to a released version with published
-   evidence that it consumes `LanguageModelV4`.
-2. **PRE-IMPLEMENTATION / MEASURED** — The runtime selected the explicitly
-   configured `provider.npm` value `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`.
-   The package metadata and the runtime `model.api.npm` trace agree. Without an
-   explicit `provider.npm`, the fallback for this unknown provider remains
-   `@ai-sdk/openai-compatible`.
+   the spike environment). The selected baseline's minimum candidate boundary is
+   this released version because its published source consumes
+   `LanguageModelV3`; the interval is not closed until the selected package and
+   credential lifecycle are measured.
+2. **PRE-IMPLEMENTATION / PARTIALLY MEASURED** — The former runtime spike
+   selected the explicitly configured `provider.npm` value
+   `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`. The selected baseline is now
+   `@ai-sdk/openai@3.0.88` / `LanguageModelV3`, based on the released OpenCode
+   1.18.31 source. The selected package has not yet completed the required
+   harness run. Without an explicit `provider.npm`, the fallback for this
+   unknown provider remains `@ai-sdk/openai-compatible`.
 3. **PRE-IMPLEMENTATION / PARTIALLY MEASURED** — The exercised versions are
    OpenCode `1.18.31`, `@opencode-ai/plugin@1.18.29`, and
    `@opencode-ai/sdk@1.18.29`. The minimum supported OpenCode version and the
@@ -508,6 +523,15 @@ the pre-implementation design gate. Until one path closes with concrete,
 measured evidence, the design is BLOCKED and must not proceed to implementation
 planning. Candidate deployment and post-implementation acceptance are not
 credential-gate prerequisites.
+
+**Candidate decision table (2026-09-16):** The following are every credential
+candidate evaluated to date. No entry is **VIABLE**, so neither path can be
+selected and the gate remains blocked.
+
+| Candidate                                           | Credential owner                                      | Acquisition method             | Public OpenCode API                              | Stored auth        | Storage                       | Refresh/rotation       | Authorization source                                                    | `chatgptAccountId` source           | Residency source                    | Transport injection                          | User setup              | Failure behavior                               | Permission authority                      | Permission scope                                                 | Result         |
+| --------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
+| Path A: dedicated public OAuth client               | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
+| Path B: reuse built-in OpenCode `openai` OAuth auth | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
 
 Before selecting a replacement credential architecture, record every evaluated
 candidate in a decision table with these columns: candidate, credential owner,
@@ -1672,7 +1696,7 @@ declared production-ready.
 | Relay auth header                      | `x-relay-authorization`.                                                                                                                                                                                                                                                                                            |
 | Configuration precedence               | Environment variables > `opencode.json[c]`.                                                                                                                                                                                                                                                                         |
 | Old package/slug backward compat       | Not required.                                                                                                                                                                                                                                                                                                       |
-| AI SDK major/provider spec             | Before planning, select one package/version and provider specification with a measured minimum OpenCode boundary and finite interval. Live Codex/production-path evidence validates, but cannot replace, that baseline. See §6.2.                                                                                   |
+| AI SDK major/provider spec             | Selected: `@ai-sdk/openai@3.0.88` / `LanguageModelV3`, with OpenCode 1.18.31 as the minimum candidate boundary. The selected-contract harness and finite interval remain open. Live Codex/production-path evidence validates, but cannot replace, that baseline. See §6.2.                                          |
 | AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                |
 | Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                |
 | Codex account/residency                | Conditional on the selected §7 credential path: that path defines whether account/residency metadata is required, its source, claim/storage semantics, precedence, and per-request derivation. Path A's OAuth `accountId` and §7.4 rules apply only if Path A closes; Path B must record its own concrete contract. |
@@ -1694,12 +1718,12 @@ Candidate implementation or deployment, Gateway mapping, protected live
 acceptance, and candidate abort propagation are not preconditions for writing an
 implementation plan.
 
-| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                             |
-| -------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2 design evidence          | PARTIALLY RESOLVED / BLOCKED — local adapter evidence is recorded, but the selected package/version, provider specification, finite boundary, and §7 credential lifecycle remain open. Candidate deployment and live Codex acceptance are post-implementation evidence, not blockers for planning. |
-| Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                                                  |
-| Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A is FAILED and Path B is OPEN. No verified implementable credential source has been identified, so neither path is closed.                                                                                                                                    |
-| OpenCode version boundary        | §6.2 design evidence          | BLOCKED — environment versions are recorded, but the final finite OpenCode and plugin-SDK compatibility interval is not selected or tested. It must match the credential lifecycle chosen in §7.                                                                                                   |
+| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK adapter                   | §6.2 design evidence          | PARTIALLY RESOLVED / BLOCKED — `@ai-sdk/openai@3.0.88` / `LanguageModelV3` and the 1.18.31 minimum candidate boundary are selected, but the selected-contract harness, finite boundary, and §7 credential lifecycle remain open. Candidate deployment and live Codex acceptance are post-implementation evidence, not blockers for planning. |
+| Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                                                                                            |
+| Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A is FAILED and Path B is OPEN. No verified implementable credential source has been identified, so neither path is closed.                                                                                                                                                                              |
+| OpenCode version boundary        | §6.2 design evidence          | BLOCKED — environment versions are recorded, but the final finite OpenCode and plugin-SDK compatibility interval is not selected or tested. It must match the credential lifecycle chosen in §7.                                                                                                                                             |
 
 ### Post-implementation acceptance gate
 
