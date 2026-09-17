@@ -34,10 +34,11 @@ within the relay-only adaptation boundary. The ChatGPT-subscription provider
 design is currently infeasible, and implementation planning MUST NOT start until
 both blockers close with concrete evidence.
 
-The initial tools scope is also not selected. The §6.2.3 gate MUST record either
-decision A (tools in the initial contract) or decision B (tools explicitly out of
-initial scope) before the protocol gate closes; the implementation plan MUST NOT
-make that decision.
+The initial tools scope is also not selected. Choosing decision A (tools in the
+initial contract) or decision B (tools explicitly out of initial scope) is a
+design decision independent of discovering a credential candidate, but the
+§6.2.3 gate MUST record exactly one decision before the protocol gate closes. The
+implementation plan MUST NOT make that decision.
 
 ## 1. Summary
 
@@ -695,6 +696,12 @@ selected and the gate remains blocked.
 | --------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
 | Path A: dedicated public OAuth client                           | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
 | Path B0: reuse built-in OpenCode `openai` OAuth auth (rejected) | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
+
+In this table, **NOT VIABLE** means not selectable for the current design based
+on the evidence evaluated to date. It does not claim that no future credential
+candidate can exist. A future candidate is a new evaluation and MUST supply the
+authoritative ownership, permission, lifecycle, metadata, transport, and secret
+boundary evidence required below before it can be marked **VIABLE**.
 
 No credential architecture is selected in this revision. The Path A contract in
 §7.1–§7.4 and every Path A-specific reference elsewhere in this document are
@@ -1956,6 +1963,24 @@ validation.
 | Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and must be recorded as decision A or B before the gate closes. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
 | Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
+
+### Current Re-review Disposition (2026-09-17)
+
+This revision adds no new authoritative credential-source evidence and no
+target-runtime or live-Codex protocol capture. It therefore records no gate
+promotion:
+
+- `SRG-021` remains **RESOLVED FOR PLANNING** for provider identity and
+  release-pinned SDK separation only. Exact-identity runtime behavior remains a
+  §6.2.3 protocol-gate requirement.
+- `SRG-022` remains **PARTIALLY RESOLVED / BLOCKED**. No implementable
+  credential architecture is selected.
+- `SRG-035` remains **PARTIALLY RESOLVED / BLOCKED**. The native model ID,
+  selected-baseline request acceptance, response/SSE compatibility, relay-only
+  mappings, and the tools A/B decision are not closed.
+
+This status record is not technical evidence. Writing an implementation plan or
+starting implementation remains prohibited until §7 and §6.2.3 close in order.
 
 ### Re-review finding discipline
 
