@@ -8,8 +8,9 @@ gate selects an implementable path. The post-implementation acceptance gate in
 implemented candidate. This revision preserves the resolved decisions from
 SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023 through SRG-033, and the
 previously recorded SRG-029/SRG-030/SRG-031 contract. It resolves SRG-034 by
-separating the two gates. SRG-021 is RESOLVED FOR PLANNING: the selected
-identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles version `3.0.88` with
+separating the two gates. SRG-021 is RESOLVED FOR PLANNING and MUST NOT be
+reopened absent a concrete runtime contradiction. The selected identity is
+`@ai-sdk/openai`; OpenCode 1.18.31 bundles version `3.0.88` with
 provider specification `LanguageModelV3`. The configured `provider.npm` value
 MUST remain the unqualified package identity, not a version-qualified npm
 specification. Its selected-contract harness and finite compatibility interval
