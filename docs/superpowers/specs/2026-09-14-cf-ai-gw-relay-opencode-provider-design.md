@@ -26,14 +26,18 @@ OpenCode 1.18.31, including provider/model mapping, `auth.loader()`, custom
 `fetch`, the generated Responses request, and synthetic Responses SSE
 consumption. It did not verify the selected bare-identity bundled path, the live
 Codex endpoint, the production Gateway/relay mapping, or the native Codex model
-ID. See §6.2 for the item-by-item status. SRG-022 remains PARTIALLY RESOLVED /
-BLOCKED: no verified implementable credential source has been identified and no
-concrete replacement candidate is under evaluation. SRG-035 remains PARTIALLY
-RESOLVED / BLOCKED
-until the selected credential path establishes native Codex protocol viability
-within the relay-only adaptation boundary. The ChatGPT-subscription provider
-design is currently infeasible, and implementation planning MUST NOT start until
-both blockers close with concrete evidence.
+ID. See §6.2 for the item-by-item status. SRG-022 remains UNRESOLVED — EVIDENCE
+REQUIRED: no verified implementable credential source has been identified and no
+concrete replacement candidate is under evaluation. The document records the
+blocked state, the missing evidence, and the §7 gate order; this status does not
+require repeated document edits until a concrete credential candidate or
+authoritative credential evidence exists. SRG-035 remains UNRESOLVED — WAITING
+ON SRG-022 for the credential-dependent native Codex protocol characterization.
+Its independent tools-scope decision is still NOT SELECTED and may be recorded
+before §7 closes; live tool semantics under decision A remain dependent on
+SRG-022. The ChatGPT-subscription provider design is currently infeasible, and
+implementation planning MUST NOT start until both blockers close with concrete
+evidence.
 
 The initial tools scope is also not selected. Choosing decision A (tools in the
 initial contract) or decision B (tools explicitly out of initial scope) is a
@@ -1794,9 +1798,9 @@ closed. Before declaring the new provider model production-ready, verify:
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
   fail-closed, and the credential/login flow selected in §7. Streaming
-acceptance includes text delta/completion and, when §6.2.3 selects decision A
-and the selected initial model supports it, a tool call and tool-result
-continuation. Abort acceptance uses
+  acceptance includes text delta/completion and, when §6.2.3 selects decision A
+  and the selected initial model supports it, a tool call and tool-result
+  continuation. Abort acceptance uses
   the §6.2 correlation source to verify exactly one Gateway and relay request,
   no retry or fallback, and no continued downstream stream. Upstream fetch abort
   and response-body cancellation are verified deterministically in relay
@@ -1963,12 +1967,12 @@ to run §6.2.3 is a precondition and is part of that protocol gate; the broader
 §6.2.4 harness and interval measurement remain bounded implementation-plan
 validation.
 
-| Topic                            | Gate                                             | Status                                                                                                                                                                                                                                                                                                                                                                |
-| -------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED FOR PLANNING / VALIDATION REQUIRED — the selected identity is `@ai-sdk/openai`, separate from OpenCode 1.18.31's bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3` release pin. This resolves the identity-versus-version decision only; exact-identity runtime behavior remains a §6.2.3 protocol-gate requirement. The broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4. |
-| Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 PARTIALLY RESOLVED / BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and must be recorded as decision A or B before the gate closes. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
-| Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
-| OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
+| Topic                            | Gate                                             | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED FOR PLANNING / VALIDATION REQUIRED — the selected identity is `@ai-sdk/openai`, separate from OpenCode 1.18.31's bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3` release pin. This resolves the identity-versus-version decision only; exact-identity runtime behavior remains a §6.2.3 protocol-gate requirement. The broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4.         |
+| Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 UNRESOLVED — WAITING ON SRG-022 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and may be recorded independently as decision A or B; live tool semantics under decision A remain dependent on SRG-022. The credential-dependent protocol gate remains frozen until SRG-022 closes. Any architecture change requires design re-approval. |
+| Credential source / OAuth client | §7 credential-source decision                    | UNRESOLVED — EVIDENCE REQUIRED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. The document correctly records the blocked state and gate order.                                                                                                                                                                                                       |
+| OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                                                                                                                                                                                                                                   |
 
 ### Current Re-review Disposition (2026-09-18)
 
@@ -1978,16 +1982,20 @@ plan, new authoritative credential-source evidence, or target-runtime or
 live-Codex protocol capture. This status is a review record, not technical
 evidence, and records no gate promotion:
 
-- `SRG-021` remains **RESOLVED FOR PLANNING** for provider identity and
-  release-pinned SDK separation only. Exact-identity runtime behavior remains a
-  §6.2.3 protocol-gate requirement.
-- `SRG-022` remains **PARTIALLY RESOLVED / BLOCKED**. No implementable
-  credential architecture is selected.
-- `SRG-035` remains **PARTIALLY RESOLVED / BLOCKED**. The native model ID,
-  selected-baseline request acceptance, response/SSE compatibility, and
-  relay-only mappings are not closed. The tools A/B decision is also not yet
-  recorded; that decision may be made independently of credential discovery,
-  while live tool semantics under decision A remain credential-gated.
+- `SRG-021` remains **RESOLVED FOR PLANNING — UNCHANGED** for provider identity
+  and release-pinned SDK separation only. Exact-identity runtime behavior
+  remains a §6.2.3 protocol-gate requirement.
+- `SRG-022` remains **UNRESOLVED — EVIDENCE REQUIRED**. No implementable
+  credential architecture is selected. The document correctly records the
+  blocked state, the missing evidence, and the gate order; this re-review
+  requests no document fix for the evidence gap.
+- `SRG-035` remains **UNRESOLVED — WAITING ON SRG-022** for the
+  credential-dependent native model ID, selected-baseline request acceptance,
+  response/SSE compatibility, and relay-only mappings. The tools A/B decision is
+  also not yet recorded, but it may be made independently of credential
+  discovery; live tool semantics under decision A remain dependent on SRG-022.
+  There is no new independent contradiction, and this re-review requests no
+  document fix for the evidence-dependent portion.
 
 No implementation plan or implementation work is authorized by this status
 record. Writing an implementation plan remains prohibited until §7 and §6.2.3
@@ -2016,6 +2024,59 @@ Do not issue a new finding only by applying a stricter evidence threshold to an
 unknown previously accepted as bounded. Do not reissue the same root cause under
 a new finding ID. Evidence cleanup remains part of the existing finding unless
 it identifies an independent design decision or failure mode.
+
+### Re-review convergence rules
+
+Re-review findings have an outcome state and a separate change marker. The
+outcome state describes the finding; `UNCHANGED` describes the delta from the
+previous review and MUST NOT replace the outcome state. For example:
+
+```text
+SRG-021: RESOLVED — UNCHANGED
+SRG-022: UNRESOLVED — EVIDENCE REQUIRED
+SRG-035: UNRESOLVED — WAITING ON SRG-022
+```
+
+Use `UNRESOLVED — EVIDENCE REQUIRED` when the remaining closure condition is
+external evidence, target-runtime validation, or live protocol evidence and the
+reviewed document already records the blocked state, required evidence, and gate
+order correctly. Do not use `PARTIALLY RESOLVED` in that case. Use
+`PARTIALLY RESOLVED` only when a concrete document correction remains.
+
+Use `UNRESOLVED — WAITING ON <finding-id>` when the required validation cannot
+be performed until another finding closes. Freeze the dependent finding's
+detailed review until that dependency changes. Continue to check only for a
+dependency change or a new independent contradiction. Independent decisions
+that can be recorded without the dependency MUST remain visible and MUST NOT be
+hidden by the waiting status.
+
+If there is no new authoritative evidence, target-runtime evidence, live
+protocol evidence, related architecture change, interface or responsibility
+change, security-boundary change, or contradiction introduced by the previous
+revision, report `UNCHANGED` and do not repeat the finding's full rationale,
+repair instructions, or closure criteria. The canonical design document may
+retain the evidence and gate rationale needed to explain the current state.
+
+When no finding has a concrete document correction remaining, the re-review
+output is documentation-only and MUST state:
+
+```text
+修正スコープ: ドキュメントのみ
+DO NOT MODIFY SOURCE CODE
+判定: BLOCKED
+今回要求するドキュメント修正: なし
+```
+
+`BLOCKED` readiness is independent from document quality. A design may be
+blocked by missing external evidence while requiring no additional document
+edit. The next meaningful re-review requires at least one of the following:
+
+- a concrete credential candidate or authoritative permission evidence;
+- target-runtime credential integration evidence;
+- live Codex request/response or SSE capture;
+- protocol characterization results for the selected baseline;
+- a related architecture, interface, responsibility, or security-boundary
+  decision change.
 
 ### Post-implementation acceptance gate
 
