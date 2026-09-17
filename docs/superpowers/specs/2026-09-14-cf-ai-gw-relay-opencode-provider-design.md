@@ -17,8 +17,10 @@ with provider specification `LanguageModelV3`. The configured `provider.npm`
 value MUST remain the unqualified package identity, not a version-qualified npm
 specification. Its selected-contract harness and finite compatibility interval
 are bounded implementation-plan validation tasks, not architecture decisions;
-the minimum exact-identity adapter behavior needed by §6.2.3 is measured as part
-of that protocol gate and MUST NOT reopen SRG-021. The 2026-09-16 runtime spike
+the §7 credential-source lifecycle remains a pre-implementation gate and is not
+deferred to that validation. The minimum exact-identity adapter behavior needed
+by §6.2.3 is measured as part of that protocol gate and MUST NOT reopen SRG-021.
+The 2026-09-16 runtime spike
 measured a version-qualified dynamic config-defined provider path through
 OpenCode 1.18.31, including provider/model mapping, `auth.loader()`, custom
 `fetch`, the generated Responses request, and synthetic Responses SSE
@@ -31,6 +33,11 @@ until the selected credential path establishes native Codex protocol viability
 within the relay-only adaptation boundary. The ChatGPT-subscription provider
 design is currently infeasible, and implementation planning MUST NOT start until
 both blockers close with concrete evidence.
+
+The initial tools scope is also not selected. The §6.2.3 gate MUST record either
+decision A (tools in the initial contract) or decision B (tools explicitly out of
+initial scope) before the protocol gate closes; the implementation plan MUST NOT
+make that decision.
 
 ## 1. Summary
 
@@ -298,7 +305,7 @@ relay, or Codex, so production URL routing and upstream acceptance remain open.
   | `model`       | required | Runtime capture: `wire-model`, the explicit `model.api.id`; the `openai/` prefix is not automatically stripped. |
   | `input`       | required | Runtime capture: present as the OpenAI Responses conversation input; `messages` was absent.                     |
   | `stream`      | optional | Runtime capture: `true` for both streamed requests.                                                             |
-  | `tools`       | optional | Runtime capture: present on the tool-enabled request.                                                           |
+  | `tools`       | optional | Reference capture only; §6.2.3 must select whether tools are in the initial contract.                           |
   | `tool_choice` | optional | Runtime capture: `auto` on the tool-enabled request.                                                            |
 
   Runtime-captured tool shape (payload values omitted):
@@ -364,9 +371,9 @@ protected deployment exist. It is not a precondition for implementation
 planning. It verifies the native model ID, wire mapping, and protocol adaptation
 contract already fixed by §6.2.3; it does not discover or choose those
 architecture decisions. Protected acceptance covers streaming text delta
-delivery through completion; when tools are in the selected initial contract, a
-tool call, tool-result, and continuation; and caller abort through Gateway and
-relay with no retry, fallback, or continued downstream stream.
+delivery through completion; when §6.2.3 selects decision A (tools in the initial
+contract), a tool call, tool-result, and continuation; and caller abort through
+Gateway and relay with no retry, fallback, or continued downstream stream.
 
 Live abort evidence has two distinct parts. A deterministic relay integration
 test proves that the inbound abort signal aborts the upstream fetch and cancels
@@ -389,6 +396,20 @@ injection boundary already recorded in this design.
 
 The gate MUST establish all of the following before planning starts:
 
+The initial tools scope is an explicit gate decision, not an implementation
+choice. It is currently **NOT SELECTED** because the §7 credential-source gate
+is blocked. Before §6.2.3 closes, the design MUST record exactly one of these
+decisions:
+
+- **A: tools are in the initial contract:** the probe measures tool call, tool
+  result, and continuation semantics and records the relay-only contract.
+- **B: tools are explicitly out of initial scope:** the design records this as
+  a supported-capability non-goal, and implementation-plan tasks and acceptance
+  tests exclude tool call, result, and continuation behavior.
+
+Until A or B is recorded, every tools reference below is a protocol-gate
+placeholder only. The implementation plan MUST NOT choose this scope.
+
 1. The initial native Codex model ID and the explicit mapping from the visible
    OpenCode model key to the AI SDK and wire-body model IDs.
 2. The selected AI SDK's generated request is accepted by the Codex endpoint.
@@ -396,8 +417,10 @@ The gate MUST establish all of the following before planning starts:
    route and its relay-only responsibility.
 4. The response and SSE framing are compatible, or the minimum relay-only
    response/SSE mapping is recorded.
-5. If tools are part of the initial contract, tool call, tool result, and
-   continuation semantics are compatible within the relay-only boundary.
+5. The selected initial tools-scope decision is recorded. Under decision A,
+   tool call, tool result, and continuation semantics are compatible within the
+   relay-only boundary; under decision B, no tool continuation contract is
+   included in the initial release.
 6. No plugin-side body rewrite is required.
 7. No plugin/relay component-boundary or public-interface change is required.
 8. No selected AI SDK family or major-version change is required.
@@ -508,8 +531,11 @@ The minimum exact-identity request-generation and transport behavior required by
 following broader task verifies the selected contract and determines the
 released support interval without reopening the selected architecture.
 
-**Validation Task:** Re-measure the selected SDK contract with the selected §7
+**Validation Task:** After the §7 credential-source gate and §6.2.3 protocol
+gate have closed, re-measure the selected SDK contract with the selected §7
 credential lifecycle through the real `@opencode-ai/plugin` package. Record the
+credential lifecycle as an input to this task; this task does not select or
+validate the credential source itself. Then record the
 minimum and maximum verified released OpenCode versions, each released OpenCode
 or plugin-SDK API boundary in that interval, the bundled `@ai-sdk/openai`
 version for each OpenCode release, and matching `engines.opencode` and
@@ -1755,8 +1781,9 @@ closed. Before declaring the new provider model production-ready, verify:
 - Protected / manual acceptance tests cover live Cloudflare AI Gateway, live
   Deno Deploy relay, and real ChatGPT Codex, including streaming, abort,
   fail-closed, and the credential/login flow selected in §7. Streaming
-  acceptance includes text delta/completion and, when supported by the selected
-  initial model, a tool call and tool-result continuation. Abort acceptance uses
+acceptance includes text delta/completion and, when §6.2.3 selects decision A
+and the selected initial model supports it, a tool call and tool-result
+continuation. Abort acceptance uses
   the §6.2 correlation source to verify exactly one Gateway and relay request,
   no retry or fallback, and no continued downstream stream. Upstream fetch abort
   and response-body cancellation are verified deterministically in relay
@@ -1791,8 +1818,8 @@ closed. Before declaring the new provider model production-ready, verify:
   - non-production or protected deployment;
   - production-shaped Gateway-to-relay routing acceptance;
   - live text-streaming acceptance;
-  - tool call, tool result, and continuation acceptance when tools are in the
-    initial contract;
+  - tool call, tool result, and continuation acceptance when §6.2.3 selects
+    decision A (tools in the initial contract);
   - abort acceptance with secret-free correlation; and
   - verification that retry and fallback are absent.
 
@@ -1925,8 +1952,8 @@ validation.
 
 | Topic                            | Gate                                             | Status                                                                                                                                                                                                                                                                                                                                                                |
 | -------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The minimum exact-identity behavior needed by §6.2.3 is measured in the protocol gate; the broader harness, interval, and §7 lifecycle remain bounded validation.                                               |
-| Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
+| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The minimum exact-identity behavior needed by §6.2.3 is measured in the protocol gate; the broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4. |
+| Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and must be recorded as decision A or B before the gate closes. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
 | Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
 
