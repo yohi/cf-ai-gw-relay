@@ -9,14 +9,18 @@ implemented candidate. This revision preserves the resolved decisions from
 SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023 through SRG-033, and the
 previously recorded SRG-029/SRG-030/SRG-031 contract. It resolves SRG-034 by
 separating the two gates. SRG-021 is RESOLVED FOR PLANNING: the selected
-baseline is `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. Its selected-contract
-harness and finite compatibility interval are bounded implementation-plan
-validation tasks, not architecture decisions. The 2026-09-16 runtime spike
-measured the config-defined provider path through OpenCode 1.18.31, including
-provider/model mapping, `auth.loader()`, custom `fetch`, the generated Responses
-request, and synthetic Responses SSE consumption. It did not verify the live
-Codex endpoint, the production Gateway/relay mapping, or the native Codex model
-ID. See §6.2 for the item-by-item status. SRG-022 remains PARTIALLY RESOLVED /
+identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles version `3.0.88` with
+provider specification `LanguageModelV3`. The configured `provider.npm` value
+MUST remain the unqualified package identity, not a version-qualified npm
+specification. Its selected-contract harness and finite compatibility interval
+are bounded implementation-plan validation tasks, not architecture decisions.
+The 2026-09-16 runtime spike measured a version-qualified dynamic config-defined
+provider path through OpenCode 1.18.31, including provider/model mapping,
+`auth.loader()`, custom `fetch`, the generated Responses request, and synthetic
+Responses SSE consumption. It did not verify the selected bare-identity bundled
+path, the live Codex endpoint, the production Gateway/relay mapping, or the
+native Codex model ID. See §6.2 for the item-by-item status. SRG-022 remains
+PARTIALLY RESOLVED /
 BLOCKED: no verified implementable credential source has been identified and no
 concrete replacement candidate is under evaluation. The ChatGPT-subscription
 provider design is currently infeasible, and implementation planning MUST NOT
@@ -177,35 +181,47 @@ model.provider.npm → provider.npm → existing model npm → @ai-sdk/openai-co
 For the unknown provider `cf-ai-gw-relay`, if no `provider.npm` field is
 specified, the fallback is `@ai-sdk/openai-compatible`, not `@ai-sdk/openai`.
 The compatibility spike must therefore record the exact provider configuration
-that causes OpenCode to select the intended AI SDK package. If `provider.npm` is
-used to select `@ai-sdk/openai`, its exact value (for example `@ai-sdk/openai`)
-is a measured value, not a candidate list. The same requirement applies to any
-chosen AI SDK major/version.
+that causes OpenCode to select the intended AI SDK package. For the native
+OpenAI path, `provider.npm` MUST be the exact unqualified value
+`@ai-sdk/openai`. OpenCode uses the effective `model.api.npm` string both as a
+package specification and as a provider identity for exact-match runtime
+branches. `@ai-sdk/openai@3.0.88` is therefore not equivalent: it can be
+installed as a version-qualified package specification, but it does not match
+the bundled-provider or OpenAI-specific identity checks. The OpenCode release
+and its bundled SDK version are recorded separately as a compatibility tuple.
 
 OpenCode 1.18.31, when a custom provider has no dedicated model loader, calls
 `sdk.languageModel(model.api.id)`. The runtime spike measured the observed path
 as `createOpenAI({ name, ...options })` followed by
-`languageModel("wire-model")`; `@ai-sdk/openai@4.0.67` delegated that method to
-its Responses model implementation. The custom provider does not use the
-built-in `openai` provider's special loader. This confirms the local adapter
-path, but not live Codex acceptance.
+`languageModel("wire-model")`; the former version-qualified
+`@ai-sdk/openai@4.0.67` package delegated that method to its Responses model
+implementation. The custom provider does not use the built-in `openai`
+provider's special loader. This confirms only the version-qualified dynamic
+package adapter path and its local request-generation behavior; it does not
+confirm the bundled `@ai-sdk/openai` identity path, its identity-sensitive
+OpenCode transforms, or live Codex acceptance.
 
-**Baseline selection record (2026-09-16):** The selected AI SDK baseline is
-`@ai-sdk/openai@3.0.88`, selected through the exact `provider.npm` value
-`@ai-sdk/openai@3.0.88`; its provider specification is `LanguageModelV3`. The
-published OpenCode `v1.18.31` source imports and consumes `LanguageModelV3` for
-provider models, and its release manifest pins `@ai-sdk/openai@3.0.88`.
-Therefore the 4.0.67 runtime observation is retained only as supplemental
-reference evidence and is not a selectable production baseline for OpenCode
-1.18.31. The selected 3.0.88 package has not yet been re-measured through the
-complete adapter harness. That re-measurement is the bounded implementation-plan
-validation task in §6.2.4, not a pre-implementation architecture gate. The
-relevant primary sources are the
+**Baseline selection record (2026-09-16):** The selected OpenCode provider
+package identity is `@ai-sdk/openai`, selected through the exact
+`provider.npm` value `@ai-sdk/openai`. OpenCode `v1.18.31` bundles
+`@ai-sdk/openai@3.0.88`, and its provider specification is `LanguageModelV3`.
+The published OpenCode `v1.18.31` source imports and consumes `LanguageModelV3`
+for provider models, and its release manifest pins `@ai-sdk/openai@3.0.88`.
+The version-qualified `@ai-sdk/openai@4.0.67` runtime observation is retained
+only as supplemental reference evidence for the dynamic adapter path; it is
+not evidence for OpenCode's bundled identity-sensitive behavior and is not a
+selectable production baseline for OpenCode 1.18.31. The selected 3.0.88
+package has not yet been re-measured through the complete adapter harness. That
+re-measurement is the bounded implementation-plan validation task in §6.2.4,
+not a pre-implementation architecture gate. The relevant primary sources are the
 [OpenCode v1.18.31 provider implementation](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/provider/provider.ts)
 and its
-[release manifest](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/package.json).
+[release manifest](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/package.json),
+and its
+[provider transforms](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/provider/transform.ts).
 All package-specific captures from the former 4.0.67 spike below are
-**REFERENCE** evidence for selected-baseline closure until 3.0.88 is
+**REFERENCE** evidence for the version-qualified dynamic adapter path only;
+they do not close the selected identity-sensitive baseline until 3.0.88 is
 re-measured.
 
 **Final provider config shape to be recorded as measured values:**
@@ -213,13 +229,13 @@ re-measured.
 | Field                         | What it controls                                                                 | Required measured value                                                                                                                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `provider.id`                 | OpenCode provider identifier                                                     | `cf-ai-gw-relay`                                                                                                                                                                          |
-| `provider.npm`                | AI SDK provider package selected by OpenCode                                     | **SELECTED:** `@ai-sdk/openai@3.0.88`; 4.0.67 is supplemental reference evidence and the selected package still requires harness measurement                                              |
+| `provider.npm`                | AI SDK provider package identity selected by OpenCode                            | **SELECTED:** `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88`. Use the bare identity; harness measurement remains required; no version-qualified identity              |
 | model visible key             | User-selectable OpenCode model key                                               | **MEASURED locally:** `cf-ai-gw-relay/openai/visible-model`                                                                                                                               |
 | `model.id` / `model.api.id`   | Model ID resolved by OpenCode for the AI SDK call                                | **MEASURED locally:** `openai/visible-model` / `wire-model`                                                                                                                               |
 | provider options              | Object passed to the selected AI SDK factory                                     | **MEASURED locally:** `baseURL`, loader sentinel `apiKey`, custom `fetch`                                                                                                                 |
 | `baseURL`                     | Gateway base URL used by the AI SDK runtime                                      | Production target remains `https://gateway.ai.cloudflare.com/v1/{cloudflareAccountId}/{gatewayId}/custom-cf-ai-gw-relay/upstream/openai/v1`; local spike used `http://127.0.0.1:43133/v1` |
 | custom `fetch` source         | Path A: transport returned from `auth.loader()`; Path B: recorded injection path | **MEASURED locally:** `auth.loader()` after stored `api` auth via `client.auth.set({ path: { id: "cf-ai-gw-relay" }, ... })`; credential architecture remains open                        |
-| selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | **SELECTED:** `@ai-sdk/openai@3.0.88` / `LanguageModelV3`; the selected-contract harness and finite interval are implementation-plan validation tasks; credential lifecycle depends on §7 |
+| selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | **SELECTED:** OpenCode `1.18.31` + bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3`; bare identity; harness and finite interval required; §7 credential gate remains open.             |
 
 The final configuration fields above must be populated with concrete values for
 the selected implementation. §6.2 has three distinct evidence categories. The §7
@@ -235,10 +251,11 @@ implementation plan.
 **Target request contract for the initial model (runtime evidence and remaining
 production target):**
 
-The OpenCode runtime spike confirmed the local adapter contract with
-`@ai-sdk/openai@4.0.67`. The local server was not Cloudflare AI Gateway, the
-Deno relay, or Codex, so production URL routing and upstream acceptance remain
-open.
+The former OpenCode runtime spike observed a local adapter path using the
+version-qualified package `@ai-sdk/openai@4.0.67`. Because that value is not the
+native bundled package identity, the spike does not prove identity-sensitive
+OpenCode behavior. The local server was not Cloudflare AI Gateway, the Deno
+relay, or Codex, so production URL routing and upstream acceptance remain open.
 
 - OpenCode model identifier: `cf-ai-gw-relay/openai/<model>` (see §5). The exact
   `<model>` value accepted by Codex remains unverified; `o3-mini` is the value
@@ -359,16 +376,19 @@ relay-only mapping with the selected AI SDK baseline, fails acceptance and
 requires design re-approval before further implementation.
 
 1. **IMPLEMENTATION VALIDATION / MEASURED** — OpenCode version used: `1.18.31`
-   (CLI in the spike environment). The selected baseline's minimum candidate
-   boundary is this released version because its published source consumes
-   `LanguageModelV3`; the final supported interval is recorded by §6.2.4.
+   (CLI in the spike environment). The selected baseline boundary is the pair
+   OpenCode `1.18.31` + bundled `@ai-sdk/openai@3.0.88`, because its published
+   source consumes `LanguageModelV3`; the final supported interval is recorded
+   by §6.2.4.
 2. **IMPLEMENTATION VALIDATION / PARTIALLY MEASURED** — The former runtime spike
-   selected the explicitly configured `provider.npm` value
-   `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`. The selected baseline is now
-   `@ai-sdk/openai@3.0.88` / `LanguageModelV3`, based on the released OpenCode
-   1.18.31 source. The selected package has not yet completed the required
-   harness run. Without an explicit `provider.npm`, the fallback for this
-   unknown provider remains `@ai-sdk/openai-compatible`.
+   selected the explicitly configured, version-qualified `provider.npm` value
+   `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`. That observation covers only the
+   dynamic package adapter path. The selected baseline now uses the exact,
+   unqualified `provider.npm` value `@ai-sdk/openai`; OpenCode 1.18.31 bundles
+   `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The selected identity-sensitive
+   path has not yet completed the required harness run. Without an explicit
+   `provider.npm`, the fallback for this unknown provider remains
+   `@ai-sdk/openai-compatible`.
 3. **IMPLEMENTATION VALIDATION / PARTIALLY MEASURED** — The exercised versions
    are OpenCode `1.18.31`, `@opencode-ai/plugin@1.18.29`, and
    `@opencode-ai/sdk@1.18.29`. The minimum supported OpenCode version and the
@@ -419,26 +439,55 @@ requires design re-approval before further implementation.
 12. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** —
     Runtime `stream` value was `true` for both captured streaming requests.
 
+Items 9–12, 16, and 20–25 are usable only as evidence of the former
+version-qualified dynamic adapter path and its generic request/response shape.
+They do not establish the bundled-provider lookup, `cf-ai-gw-relay` to `openai`
+provider-options remapping, or any OpenAI/Responses-specific transform that
+depends on the exact `@ai-sdk/openai` identity.
+
 ### 6.2.4 Selected-baseline validation handoff
 
-The AI SDK package and provider specification are selected before implementation
-planning: `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The following task
-verifies that selected contract and determines the released support interval
-without reopening the selected architecture.
+The OpenCode provider package identity and provider specification are selected
+before implementation planning: `provider.npm = "@ai-sdk/openai"` /
+`LanguageModelV3`. OpenCode `1.18.31` bundles `@ai-sdk/openai@3.0.88`; this
+release-pinned version is recorded separately from the `provider.npm` identity.
+The following task verifies that selected contract and determines the released
+support interval without reopening the selected architecture.
 
 **Validation Task:** Re-measure the selected SDK contract with the selected §7
 credential lifecycle through the real `@opencode-ai/plugin` package. Record the
 minimum and maximum verified released OpenCode versions, each released OpenCode
-or plugin-SDK API boundary in that interval, and matching `engines.opencode` and
-`@opencode-ai/plugin` peerDependency ranges.
+or plugin-SDK API boundary in that interval, the bundled
+`@ai-sdk/openai` version for each OpenCode release, and matching
+`engines.opencode` and `@opencode-ai/plugin` peerDependency ranges. The finite
+compatibility interval is a set of `(OpenCode release, bundled @ai-sdk/openai
+version)` pairs, not an OpenCode-version-only range.
 
-**Why:** Confirm provider npm resolution, plugin initialization, `config` hook,
-credential acquisition or injection, model selection, and one request reaching
-mocked custom `fetch` under the already selected baseline.
+**Why:** Confirm exact provider identity resolution, the bundled provider path,
+plugin initialization, `config` hook, credential acquisition or injection, model
+selection, and one request reaching mocked custom `fetch` under the already
+selected baseline.
 
 **RED:** Run the selected-contract harness against OpenCode 1.18.31 and the
 selected credential path. Preserve secret-free captures for any provider
 resolution, lifecycle, request-generation, or custom-transport incompatibility.
+
+The selected-contract harness MUST assert all of the following:
+
+- The effective `model.api.npm` and configured `provider.npm` are exactly
+  `@ai-sdk/openai`, without a version qualifier.
+- OpenCode uses the bundled `@ai-sdk/openai` provider path rather than the
+  version-qualified dynamic `Npm.add(...)` path.
+- The runtime SDK version is the OpenCode 1.18.31 release pin
+  `@ai-sdk/openai@3.0.88` and the provider specification is `LanguageModelV3`.
+- The custom provider ID `cf-ai-gw-relay` is remapped to the `openai` key where
+  the AI SDK expects provider options.
+- OpenAI/Responses-specific identity-sensitive transforms, including applicable
+  reasoning-mode conversion, provider-options key remapping, and Responses
+  item-ID sanitation, are active under the exact identity and are not bypassed
+  by a version-qualified npm string.
+- The former `@ai-sdk/openai@4.0.67` spike is not used as evidence for any of
+  these bundled identity-sensitive assertions.
 
 **GREEN:** Exercise the minimum, maximum/reference, and every released API
 boundary in the intended finite interval. Record passing evidence and narrow the
@@ -474,7 +523,9 @@ the failure, return to design review for explicit re-approval.
 19. **PRE-IMPLEMENTATION / MEASURED** — `opencode models cf-ai-gw-relay`
     surfaced `cf-ai-gw-relay/openai/visible-model` for selection.
 20. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
-    provider npm package selected by the runtime was `@ai-sdk/openai@4.0.67`.
+    version-qualified provider npm value selected the dynamic package path as
+    `@ai-sdk/openai@4.0.67`; this is not evidence that the bundled
+    `@ai-sdk/openai` identity path was used.
 21. **PRE-IMPLEMENTATION / MEASURED** — OpenCode resolved `model.api.id` as
     `wire-model`.
 22. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — The
@@ -558,6 +609,13 @@ selected and the gate remains blocked.
 | --------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
 | Path A: dedicated public OAuth client                           | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
 | Path B0: reuse built-in OpenCode `openai` OAuth auth (rejected) | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
+
+No credential architecture is selected in this revision. The Path A contract in
+§7.1–§7.4 and every Path A-specific reference elsewhere in this document are
+conditional requirements only; they are not an implementation target while the
+credential-source gate is `BLOCKED`. A synthetic auth record can demonstrate an
+OpenCode transport seam, but it cannot select a ChatGPT credential architecture
+or establish credential ownership, permission, or account/residency semantics.
 
 Before selecting a replacement credential architecture, record every evaluated
 candidate in a decision table with these columns: candidate, credential owner,
@@ -1109,6 +1167,11 @@ Under `provider.cf-ai-gw-relay.options`:
 - `gatewayToken` — Cloudflare AI Gateway authentication token.
 - `relaySecret` — Shared relay bearer secret.
 
+No ChatGPT credential option or environment variable is selected while the §7
+credential-source gate is `BLOCKED`. Path A credential fields and lifecycle
+rules remain conditional on that gate; Path B fields MUST NOT be invented in
+this configuration contract before a concrete Path B candidate is selected.
+
 ### 10.2 Optional provider options
 
 - `collectLogPayload` — boolean, default `true`.
@@ -1287,6 +1350,11 @@ Under `provider.cf-ai-gw-relay.options`:
 
 ## 12. Secret Handling
 
+No credential acquisition, storage, refresh, or rotation contract is active
+while the §7 credential-source gate is `BLOCKED`. The Path A rules below are
+conditional only, and a future Path B contract must define its own secret
+boundary before any implementation or setup guidance is published.
+
 - Any secret credential selected by the §7 credential architecture MUST never be
   logged, emitted in errors, or included in public fixtures. This covers the
   concrete Path B credential form as well as Path A credentials.
@@ -1382,6 +1450,9 @@ model production-ready, verify:
   tests without candidate source or deployment. Post-implementation acceptance
   uses the implemented candidate and protected deployment. The latter is not a
   prerequisite for writing the implementation plan.
+- The synthetic stored `api` auth record used by the runtime spike is transport-
+  seam evidence only. It is not a ChatGPT credential and MUST NOT count as
+  evidence for credential ownership, permission, acquisition, or lifecycle.
 - **Shared tests** (required regardless of the selected §7 credential-source
   path):
   - configuration resolution, precedence, deferred validation, and secret
@@ -1394,6 +1465,11 @@ model production-ready, verify:
     shape recorded for the selected §7 path,
   - custom `fetch` does not change the request pathname,
   - custom `fetch` rejects a URL that does not match the expected Gateway shape,
+  - selected-baseline identity/version assertions from §6.2.4: bare
+    `provider.npm = "@ai-sdk/openai"`, bundled-provider loading under OpenCode
+    1.18.31, bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3`,
+    `cf-ai-gw-relay` to `openai` provider-options remapping, and activation of
+    the applicable OpenAI/Responses-specific identity-sensitive transforms,
   - Protocol contract tests (added per SRG-002):
     - the AI SDK-generated request body uses `input` (not `messages`) for the
       Responses API conversation field and matches the Codex endpoint contract
@@ -1667,6 +1743,9 @@ model production-ready, verify:
     document the selected credential setup flow instead; otherwise document that
     the provider currently has no verified credential source and cannot be used
     for ChatGPT-subscription traffic,
+  - when no viable credential candidate exists, explicitly retain the `BLOCKED`
+    status and provide no setup instruction that implies a usable ChatGPT
+    credential,
   - Cloudflare AI Gateway / relay configuration via options and environment
     variables,
   - fail-closed semantics,
@@ -1728,7 +1807,7 @@ whether the candidate may be declared production-ready.
 | Relay auth header                      | `x-relay-authorization`.                                                                                                                                                                                                                                                                                            |
 | Configuration precedence               | Environment variables > `opencode.json[c]`.                                                                                                                                                                                                                                                                         |
 | Old package/slug backward compat       | Not required.                                                                                                                                                                                                                                                                                                       |
-| AI SDK major/provider spec             | Selected: `@ai-sdk/openai@3.0.88` / `LanguageModelV3`, with OpenCode 1.18.31 as the minimum candidate boundary. The selected-contract harness and finite interval are §6.2.4 implementation-plan validation tasks. Live Codex/production-path evidence validates, but cannot replace, that baseline.                |
+| AI SDK major/provider spec             | Selected identity: `provider.npm = "@ai-sdk/openai"`. Selected compatibility tuple: OpenCode `1.18.31` bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. Selected harness and finite interval are §6.2.4 implementation-plan validation tasks. Live Codex evidence validates, but cannot replace, that baseline. |
 | AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                |
 | Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                |
 | Codex account/residency                | Conditional on the selected §7 credential path: that path defines whether account/residency metadata is required, its source, claim/storage semantics, precedence, and per-request derivation. Path A's OAuth `accountId` and §7.4 rules apply only if Path A closes; Path B must record its own concrete contract. |
@@ -1739,8 +1818,9 @@ whether the candidate may be declared production-ready.
 Implementation planning MAY start only when all of the following are true:
 
 1. §7 has selected and closed a credential architecture.
-2. The selected AI SDK package/version and provider specification are concrete,
-   rather than a candidate, list, or TBD value.
+2. The selected AI SDK provider identity, OpenCode release, bundled SDK version,
+   and provider specification are concrete, rather than a candidate, list, or
+   TBD value.
 3. No unresolved architecture choice can change component boundaries, public
    interfaces, wire-protocol responsibility, or the security model.
 4. The selected credential transport injection API is concrete rather than a
@@ -1753,7 +1833,7 @@ writing an implementation plan.
 
 | Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                                 |
 | -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AI SDK adapter                   | §6.2.4 validation handoff     | RESOLVED FOR PLANNING / VALIDATION REQUIRED — `@ai-sdk/openai@3.0.88` / `LanguageModelV3` and the 1.18.31 minimum candidate boundary are selected. The selected-contract harness, finite boundary, and §7 credential lifecycle are bounded implementation-plan validation work.                        |
+| AI SDK adapter                   | §6.2.4 validation handoff     | RESOLVED FOR PLANNING / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. Harness, interval, and §7 lifecycle remain bounded validation; credential gate remains the only architecture blocker before planned work.   |
 | Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                                                      |
 | Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. |
 | OpenCode version boundary        | §6.2.4 validation handoff     | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                          |
