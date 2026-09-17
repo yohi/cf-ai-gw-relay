@@ -1972,8 +1972,9 @@ validation.
 
 ### Current Re-review Disposition (2026-09-18)
 
-The review of commit `85bff22` confirms a documentation-only disposition update.
-It adds no new authoritative credential-source evidence and no target-runtime or
+The re-review of commit `3e8e07c`, compared with parent `85bff22`, confirms that
+this revision only records the gate disposition. It introduces no implementation
+plan, new authoritative credential-source evidence, or target-runtime or
 live-Codex protocol capture. This status is a review record, not technical
 evidence, and records no gate promotion:
 
