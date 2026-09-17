@@ -2,30 +2,35 @@
 
 ## Status
 
-Draft — implementation planning is blocked only until the §7 credential-source
-gate selects an implementable path. The post-implementation acceptance gate in
-§6.2 is not a prerequisite for implementation planning; it validates the
-implemented candidate. This revision preserves the resolved decisions from
-SRG-002, SRG-013, SRG-016 through SRG-020, SRG-023 through SRG-033, and the
-previously recorded SRG-029/SRG-030/SRG-031 contract. It resolves SRG-034 by
-separating the two gates. SRG-021 is RESOLVED FOR PLANNING and MUST NOT be
-reopened absent a concrete runtime contradiction. The selected identity is
-`@ai-sdk/openai`; OpenCode 1.18.31 bundles version `3.0.88` with
-provider specification `LanguageModelV3`. The configured `provider.npm` value
-MUST remain the unqualified package identity, not a version-qualified npm
+Draft — implementation planning is blocked until the §7 credential-source gate
+selects an implementable path and the credential-gated pre-implementation
+protocol gate in §6.2.3 closes. The post-implementation acceptance gate in
+§6.2.2 is not a prerequisite for implementation planning; it validates the
+implemented candidate against the contract fixed by the earlier gates. This
+revision preserves the resolved decisions from SRG-002, SRG-013, SRG-016 through
+SRG-020, SRG-023 through SRG-033, and the previously recorded
+SRG-029/SRG-030/SRG-031 contract. It resolves SRG-034 by separating the
+pre-implementation and post-implementation gates. SRG-021 is RESOLVED FOR
+PLANNING and MUST NOT be reopened absent a concrete runtime contradiction. The
+selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles version `3.0.88`
+with provider specification `LanguageModelV3`. The configured `provider.npm`
+value MUST remain the unqualified package identity, not a version-qualified npm
 specification. Its selected-contract harness and finite compatibility interval
-are bounded implementation-plan validation tasks, not architecture decisions.
-The 2026-09-16 runtime spike measured a version-qualified dynamic config-defined
-provider path through OpenCode 1.18.31, including provider/model mapping,
-`auth.loader()`, custom `fetch`, the generated Responses request, and synthetic
-Responses SSE consumption. It did not verify the selected bare-identity bundled
-path, the live Codex endpoint, the production Gateway/relay mapping, or the
-native Codex model ID. See §6.2 for the item-by-item status. SRG-022 remains
-PARTIALLY RESOLVED /
+are bounded implementation-plan validation tasks, not architecture decisions;
+the minimum exact-identity adapter behavior needed by §6.2.3 is measured as part
+of that protocol gate and MUST NOT reopen SRG-021. The 2026-09-16 runtime spike
+measured a version-qualified dynamic config-defined provider path through
+OpenCode 1.18.31, including provider/model mapping, `auth.loader()`, custom
+`fetch`, the generated Responses request, and synthetic Responses SSE
+consumption. It did not verify the selected bare-identity bundled path, the live
+Codex endpoint, the production Gateway/relay mapping, or the native Codex model
+ID. See §6.2 for the item-by-item status. SRG-022 remains PARTIALLY RESOLVED /
 BLOCKED: no verified implementable credential source has been identified and no
-concrete replacement candidate is under evaluation. The ChatGPT-subscription
-provider design is currently infeasible, and implementation planning MUST NOT
-start until a new candidate closes with concrete evidence.
+concrete replacement candidate is under evaluation. SRG-035 remains BLOCKED
+until the selected credential path establishes native Codex protocol viability
+within the relay-only adaptation boundary. The ChatGPT-subscription provider
+design is currently infeasible, and implementation planning MUST NOT start until
+both blockers close with concrete evidence.
 
 ## 1. Summary
 
@@ -106,13 +111,13 @@ intercept, or rewrite `openai/*` traffic.
 - Full OpenCode model identifier: `cf-ai-gw-relay/<upstream-provider>/<model>`.
 - Initial supported upstream provider: `openai`.
 - Initial standard model: `cf-ai-gw-relay/openai/<codex-model-id>`. The
-  pre-implementation design gate in §6.2 fixes the user-visible-to-AI-SDK
-  mapping mechanism and the model ID placed in the generated wire body. The
-  exact native Codex model ID is characterized by the bounded
-  post-implementation protocol task in §6.2. The implementation plan must not
-  assume that the generated wire model is accepted by Codex before that task
-  passes. A result requiring a plugin-side body rewrite or a component-boundary
-  change requires this design to be re-approved.
+  credential-gated pre-implementation protocol gate in §6.2.3 fixes the
+  user-visible-to-AI-SDK mapping mechanism, the native Codex model ID, and the
+  model ID placed in the generated wire body before writing the implementation
+  plan. Until that gate closes, the implementation plan must not assume that the
+  generated wire model is accepted by Codex. A result requiring a plugin-side
+  body rewrite or a component-boundary change requires this design to be
+  re-approved.
 - OpenCode 1.18.31 parses a model reference at the first `/` only. The visible
   key `cf-ai-gw-relay/openai/<model>` therefore resolves to a parsed `modelID`
   of `openai/<model>` inside the OpenCode runtime, not to `<model>`. The
@@ -203,26 +208,29 @@ confirm the bundled `@ai-sdk/openai` identity path, its identity-sensitive
 OpenCode transforms, or live Codex acceptance.
 
 **Baseline selection record (2026-09-16):** The selected OpenCode provider
-package identity is `@ai-sdk/openai`, selected through the exact
-`provider.npm` value `@ai-sdk/openai`. OpenCode `v1.18.31` bundles
-`@ai-sdk/openai@3.0.88`, and its provider specification is `LanguageModelV3`.
-The published OpenCode `v1.18.31` source imports and consumes `LanguageModelV3`
-for provider models, and its release manifest pins `@ai-sdk/openai@3.0.88`.
-The version-qualified `@ai-sdk/openai@4.0.67` runtime observation is retained
-only as supplemental reference evidence for the dynamic adapter path; it is
-not evidence for OpenCode's bundled identity-sensitive behavior and is not a
-selectable production baseline for OpenCode 1.18.31. The selected 3.0.88
-package has not yet been re-measured through the complete adapter harness. That
-re-measurement is the bounded implementation-plan validation task in §6.2.4,
-not a pre-implementation architecture gate. The relevant primary sources are the
+package identity is `@ai-sdk/openai`, selected through the exact `provider.npm`
+value `@ai-sdk/openai`. OpenCode `v1.18.31` bundles `@ai-sdk/openai@3.0.88`, and
+its provider specification is `LanguageModelV3`. The published OpenCode
+`v1.18.31` source imports and consumes `LanguageModelV3` for provider models,
+and its release manifest pins `@ai-sdk/openai@3.0.88`. The version-qualified
+`@ai-sdk/openai@4.0.67` runtime observation is retained only as supplemental
+reference evidence for the dynamic adapter path; it is not evidence for
+OpenCode's bundled identity-sensitive behavior and is not a selectable
+production baseline for OpenCode 1.18.31. The selected 3.0.88 package has not
+yet been re-measured through the complete adapter harness. The minimum
+exact-identity request-generation and transport behavior needed by the §6.2.3
+protocol gate must be measured before implementation planning; the broader
+adapter harness and finite compatibility interval remain the bounded
+implementation-plan validation task in §6.2.4. The relevant primary sources are
+the
 [OpenCode v1.18.31 provider implementation](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/provider/provider.ts)
 and its
 [release manifest](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/package.json),
 and its
 [provider transforms](https://github.com/anomalyco/opencode/blob/v1.18.31/packages/opencode/src/provider/transform.ts).
 All package-specific captures from the former 4.0.67 spike below are
-**REFERENCE** evidence for the version-qualified dynamic adapter path only;
-they do not close the selected identity-sensitive baseline until 3.0.88 is
+**REFERENCE** evidence for the version-qualified dynamic adapter path only; they
+do not close the selected identity-sensitive baseline until 3.0.88 is
 re-measured.
 
 **Final provider config shape to be recorded as measured values:**
@@ -239,15 +247,17 @@ re-measured.
 | selected AI SDK major/version | Contract compatibility with OpenCode runtime                                     | **SELECTED:** OpenCode `1.18.31` + bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3`; bare identity; harness and finite interval required; §7 credential gate remains open.             |
 
 The final configuration fields above must be populated with concrete values for
-the selected implementation. §6.2 has three distinct evidence categories. The §7
-credential-source decision is the only pre-implementation architecture gate. The
-selected-baseline validation handoff in §6.2.4 verifies the already selected SDK
-contract and support interval during implementation planning; its failure cannot
-silently change component boundaries, public interfaces, wire-protocol
-responsibility, or the security model. The post-implementation acceptance gate
-closes only after the candidate implementation passes its protected acceptance
-requirements. Neither validation nor acceptance blocks writing the
-implementation plan.
+the selected implementation. §6.2 has four distinct evidence categories. The §7
+credential-source gate and the credential-gated protocol gate in §6.2.3 are
+sequential pre-implementation architecture gates. The selected-baseline
+validation handoff in §6.2.4 verifies the already selected SDK contract and
+finite support interval during implementation planning; it cannot silently
+change component boundaries, public interfaces, wire-protocol responsibility, or
+the security model. If it exposes a failure that requires such a change,
+implementation stops and this design returns for explicit re-approval. The
+post-implementation acceptance gate closes only after the candidate
+implementation passes its protected acceptance requirements. The broader
+validation and acceptance tasks do not replace either pre-implementation gate.
 
 **Target request contract for the initial model (runtime evidence and remaining
 production target):**
@@ -310,9 +320,10 @@ relay, or Codex, so production URL routing and upstream acceptance remain open.
   are forwarded as generated by the AI SDK runtime.
 - Exact request schema sent to Codex: the local runtime body matches the OpenAI
   Responses API shape and the adapter spike performed no transformation. This is
-  not a conclusion that the relay requires no transformation. The bounded
-  post-implementation protocol task in §6.2.3 determines live Codex acceptance
-  and any minimum relay mapping.
+  not a conclusion that the relay requires no transformation. The
+  credential-gated pre-implementation protocol gate in §6.2.3 determines live
+  Codex acceptance and any minimum relay mapping before the implementation plan
+  is written.
 - Success response handling and SSE framing: a synthetic OpenAI Responses SSE
   stream was consumed successfully by the OpenCode runtime. Live Codex
   response/SSE compatibility remains open; see items 16 and 17 below.
@@ -323,11 +334,14 @@ relay, or Codex, so production URL routing and upstream acceptance remain open.
 
 Each item below belongs to exactly one gate after mixed observations are split.
 Evidence states are **MEASURED**, **FAILED**, **PENDING**, **NOT MEASURED**,
-**REFERENCE**, and **PARTIALLY MEASURED**. A pre-implementation item closes only
-as **MEASURED** or **FAILED** with the bounded resolution defined above. A
-post-implementation item passes only as **MEASURED** against the candidate
-implementation; a failure rejects the candidate and never permits fallback.
-Standalone package observations remain supplemental **REFERENCE** evidence.
+**REFERENCE**, and **PARTIALLY MEASURED**. Gate categories are
+**PRE-IMPLEMENTATION DESIGN**, **PRE-IMPLEMENTATION PROTOCOL GATE**,
+**IMPLEMENTATION VALIDATION**, and **POST-IMPLEMENTATION ACCEPTANCE**. A
+pre-implementation design or protocol-gate item closes only as **MEASURED** or
+**FAILED** with the bounded resolution defined above. A post-implementation item
+passes only as **MEASURED** against the candidate implementation; a failure
+rejects the candidate and never permits fallback. Standalone package
+observations remain supplemental **REFERENCE** evidence.
 
 ### 6.2.1 Pre-implementation design evidence
 
@@ -335,9 +349,11 @@ The following evidence may use a disposable harness, local temporary server,
 untracked files, and readonly external investigation. It must not require a
 candidate repository implementation, candidate deployment, production Gateway
 mapping, or Cloudflare resource mutation. Its purpose is to establish the
-OpenCode integration seam, request-generation contract, and credential
-architecture feasibility needed to write an implementation plan.
-Selected-baseline compatibility and the finite supported version interval are
+OpenCode integration seam, request-generation contract, credential architecture
+feasibility, and the selected-baseline behavior needed by the credential-gated
+protocol gate before writing an implementation plan. The §7 credential-source
+gate closes first; §6.2.3 then runs the protocol gate with the selected
+credential path. The broader selected-baseline compatibility interval remains
 the bounded validation handoff in §6.2.4.
 
 ### 6.2.2 Post-implementation acceptance evidence
@@ -345,10 +361,12 @@ the bounded validation handoff in §6.2.4.
 The following evidence validates the implemented candidate. It is planned and
 executed after the candidate provider, fixed relay route, and non-production or
 protected deployment exist. It is not a precondition for implementation
-planning. Protected acceptance covers streaming text delta delivery through
-completion; when tools are in the selected initial contract, a tool call,
-tool-result, and continuation; and caller abort through Gateway and relay with
-no retry, fallback, or continued downstream stream.
+planning. It verifies the native model ID, wire mapping, and protocol adaptation
+contract already fixed by §6.2.3; it does not discover or choose those
+architecture decisions. Protected acceptance covers streaming text delta
+delivery through completion; when tools are in the selected initial contract, a
+tool call, tool-result, and continuation; and caller abort through Gateway and
+relay with no retry, fallback, or continued downstream stream.
 
 Live abort evidence has two distinct parts. A deterministic relay integration
 test proves that the inbound abort signal aborts the upstream fetch and cancels
@@ -358,38 +376,71 @@ retry or fallback. Its record names an approved, secret-free correlation source.
 Unless an approved upstream-side cancellation signal is available, the live test
 does not claim direct observation of Codex resource release.
 
-### 6.2.3 Protocol characterization handoff
+### 6.2.3 Credential-gated pre-implementation protocol characterization
 
-The design selects **Option 3B: bounded implementation protocol spike**. A live
-Codex protocol probe cannot be required before planning because its availability
-depends on the unresolved §7 credential architecture. The implementation plan
-must include a bounded task that characterizes the native Codex model ID,
-request acceptance, response/SSE compatibility, and tool continuation using the
-selected credential path. Its RED step records a secret-free, sanitized fixture
-or observed incompatibility; its GREEN step implements only the minimum relay
-request and/or response mapping needed for that incompatibility; its REFACTOR
-step is omitted unless evidence requires it. The task may change only the Deno
-relay's fixed-route protocol mapping. It must not add a plugin body rewrite,
-change component boundaries, add a direct fallback, or broaden the route into a
-generic proxy. It must not switch the selected AI SDK package or major version.
-A result requiring any prohibited change, or a result that cannot be resolved by
-relay-only mapping with the selected AI SDK baseline, fails acceptance and
-requires design re-approval before further implementation.
+The design selects **Option 3C: credential-gated pre-implementation protocol
+characterization**. This gate runs only after §7 has selected and closed one
+credential architecture, and it MUST close before writing the implementation
+plan. The selected credential path is required to perform a target-runtime/live
+Codex probe; a disposable harness and readonly external investigation may be
+used for setup and sanitization, but synthetic-only evidence cannot close this
+gate. The probe must use the selected AI SDK identity and the concrete transport
+injection boundary already recorded in this design.
+
+The gate MUST establish all of the following before planning starts:
+
+1. The initial native Codex model ID and the explicit mapping from the visible
+   OpenCode model key to the AI SDK and wire-body model IDs.
+2. The selected AI SDK's generated request is accepted by the Codex endpoint.
+3. Any required request adaptation fits entirely within the fixed Deno relay
+   route and its relay-only responsibility.
+4. The response and SSE framing are compatible, or the minimum relay-only
+   response/SSE mapping is recorded.
+5. If tools are part of the initial contract, tool call, tool result, and
+   continuation semantics are compatible within the relay-only boundary.
+6. No plugin-side body rewrite is required.
+7. No plugin/relay component-boundary or public-interface change is required.
+8. No selected AI SDK family or major-version change is required.
+9. No credential or security-architecture change is required.
+
+The gate records the concrete native model ID, wire model mapping, request
+mapping, response/SSE mapping, and applicable tool-continuation mapping in a
+secret-free form. If the probe passes with direct forwarding, that fact is
+recorded explicitly. If it fails but a bounded relay-only mapping resolves the
+failure, the required mapping shape is recorded in the design and the
+implementation plan implements that mapping with TDD; the plan does not discover
+it. Exact helper decomposition and fixture values may remain plan details.
+
+If the probe fails and relay-only bounded mapping is sufficient, the design
+remains within the selected architecture and planning may start only after the
+mapping is recorded. If it requires any prohibited change, or cannot be resolved
+by relay-only mapping with the selected AI SDK baseline, the gate fails and this
+design returns for explicit re-approval before planning or implementation. The
+implementation agent MUST NOT choose a plugin body rewrite, component-boundary
+change, SDK family/major change, credential-architecture change, generic proxy,
+or direct fallback.
+
+This gate is architecture viability evidence, not production deployment
+acceptance. Production-shaped Gateway routing, deployment reachability, live
+end-to-end abort propagation, exactly-one-request correlation, observability,
+and performance remain §6.2.2 post-implementation acceptance items.
 
 1. **IMPLEMENTATION VALIDATION / MEASURED** — OpenCode version used: `1.18.31`
    (CLI in the spike environment). The selected baseline boundary is the pair
    OpenCode `1.18.31` + bundled `@ai-sdk/openai@3.0.88`, because its published
    source consumes `LanguageModelV3`; the final supported interval is recorded
    by §6.2.4.
-2. **IMPLEMENTATION VALIDATION / PARTIALLY MEASURED** — The former runtime spike
-   selected the explicitly configured, version-qualified `provider.npm` value
-   `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`. That observation covers only the
-   dynamic package adapter path. The selected baseline now uses the exact,
-   unqualified `provider.npm` value `@ai-sdk/openai`; OpenCode 1.18.31 bundles
-   `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The selected identity-sensitive
-   path has not yet completed the required harness run. Without an explicit
-   `provider.npm`, the fallback for this unknown provider remains
-   `@ai-sdk/openai-compatible`.
+2. **PRE-IMPLEMENTATION PROTOCOL GATE / PARTIALLY MEASURED** — The former
+   runtime spike selected the explicitly configured, version-qualified
+   `provider.npm` value `@ai-sdk/openai@4.0.67` for `cf-ai-gw-relay`. That
+   observation covers only the dynamic package adapter path. The selected
+   baseline now uses the exact, unqualified `provider.npm` value
+   `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` /
+   `LanguageModelV3`. The minimum exact-identity path required by §6.2.3 has not
+   yet completed its harness run and remains part of the protocol gate. Without
+   an explicit `provider.npm`, the fallback for this unknown provider remains
+   `@ai-sdk/openai-compatible`. The broader version and API-boundary validation
+   remains implementation-plan work under §6.2.4.
 3. **IMPLEMENTATION VALIDATION / PARTIALLY MEASURED** — The exercised versions
    are OpenCode `1.18.31`, `@opencode-ai/plugin@1.18.29`, and
    `@opencode-ai/sdk@1.18.29`. The minimum supported OpenCode version and the
@@ -452,17 +503,20 @@ The OpenCode provider package identity and provider specification are selected
 before implementation planning: `provider.npm = "@ai-sdk/openai"` /
 `LanguageModelV3`. OpenCode `1.18.31` bundles `@ai-sdk/openai@3.0.88`; this
 release-pinned version is recorded separately from the `provider.npm` identity.
-The following task verifies that selected contract and determines the released
-support interval without reopening the selected architecture.
+The minimum exact-identity request-generation and transport behavior required by
+§6.2.3 is measured as part of that pre-implementation protocol gate. The
+following broader task verifies the selected contract and determines the
+released support interval without reopening the selected architecture.
 
 **Validation Task:** Re-measure the selected SDK contract with the selected §7
 credential lifecycle through the real `@opencode-ai/plugin` package. Record the
 minimum and maximum verified released OpenCode versions, each released OpenCode
-or plugin-SDK API boundary in that interval, the bundled
-`@ai-sdk/openai` version for each OpenCode release, and matching
-`engines.opencode` and `@opencode-ai/plugin` peerDependency ranges. The finite
-compatibility interval is a set of `(OpenCode release, bundled @ai-sdk/openai
-version)` pairs, not an OpenCode-version-only range.
+or plugin-SDK API boundary in that interval, the bundled `@ai-sdk/openai`
+version for each OpenCode release, and matching `engines.opencode` and
+`@opencode-ai/plugin` peerDependency ranges. The finite compatibility interval
+is a set of `(OpenCode release, bundled @ai-sdk/openai
+version)` pairs, not an
+OpenCode-version-only range.
 
 **Why:** Confirm exact provider identity resolution, the bundled provider path,
 plugin initialization, `config` hook, credential acquisition or injection, model
@@ -494,15 +548,18 @@ The selected-contract harness MUST assert all of the following:
 boundary in the intended finite interval. Record passing evidence and narrow the
 declared support ranges to the versions actually verified.
 
-**Failure rule:** A failure may narrow the supported version interval or reject
-the candidate. It MUST NOT switch the selected AI SDK package or major version,
-change the credential architecture, alter component boundaries, or add plugin
-body rewriting. If relay-only work within the selected baseline cannot resolve
-the failure, return to design review for explicit re-approval.
+**Failure rule:** A failure may narrow the supported version interval or stop
+implementation against an unsupported release. It MUST NOT switch the selected
+AI SDK package or major version, change the credential architecture, alter
+component boundaries, or add plugin body rewriting. If the evidence exposes a
+failure that requires any of those changes, the pre-implementation protocol gate
+is not closed and this design returns to design review for explicit re-approval;
+the implementation plan must not make that choice.
 
-13. **POST-IMPLEMENTATION ACCEPTANCE / NOT MEASURED** — Exact native Codex model
-    ID accepted by `https://chatgpt.com/backend-api/codex/responses`: not
-    verified. It is characterized by the bounded protocol task in §6.2.3.
+13. **PRE-IMPLEMENTATION PROTOCOL GATE / NOT MEASURED** — Exact native Codex
+    model ID accepted by `https://chatgpt.com/backend-api/codex/responses`: not
+    verified. It is characterized with the selected credential path by §6.2.3
+    before writing the implementation plan.
 14. **PRE-IMPLEMENTATION / MEASURED** — The observed AI SDK model ID was
     `wire-model`, equal to the explicit config `model.api.id`; no automatic
     stripping of the `openai/` prefix occurred.
@@ -513,12 +570,12 @@ the failure, return to design review for explicit re-approval.
 16. **REFERENCE — measured on the former `@ai-sdk/openai@4.0.67` spike** — A
     synthetic OpenAI Responses SSE stream containing
     output-item/content-part/delta/completion events was consumed successfully
-    by the OpenCode runtime. Live Codex SSE acceptance is item 27.
-17. **POST-IMPLEMENTATION ACCEPTANCE / NOT MEASURED** — The local runtime
-    request matched the OpenAI Responses API and the synthetic response was
-    consumed without adapter transformation. The bounded protocol task in §6.2.3
-    must determine the final relay transformation decision from live Codex
-    behavior.
+    by the OpenCode runtime. It does not close the live Codex protocol gate.
+17. **PRE-IMPLEMENTATION PROTOCOL GATE / NOT MEASURED** — The selected AI SDK
+    request, Codex response/SSE framing, and any required relay-only request or
+    response mapping have not been verified against live Codex. The gate in
+    §6.2.3 must record the final mapping decision before the implementation plan
+    is written. Production-shaped streaming remains item 27.
 18. **PRE-IMPLEMENTATION / MEASURED** — The config hook injected the
     `cf-ai-gw-relay` provider into the OpenCode configuration.
 19. **PRE-IMPLEMENTATION / MEASURED** — `opencode models cf-ai-gw-relay`
@@ -556,10 +613,12 @@ the failure, return to design review for explicit re-approval.
     behavior is verified for production-shaped Gateway, relay, credential, and
     protocol failures.
 
-The §7 credential-source decision remains the only pre-implementation blocking
-gate. The **IMPLEMENTATION VALIDATION** items are mandatory implementation-plan
-tasks, and the **POST-IMPLEMENTATION ACCEPTANCE** items are mandatory candidate
-acceptance tasks. Neither category blocks writing the implementation plan.
+The §7 credential-source gate and the §6.2.3 credential-gated protocol gate are
+sequential pre-implementation blockers. The **IMPLEMENTATION VALIDATION** items
+are mandatory implementation-plan tasks after those gates close, and the
+**POST-IMPLEMENTATION ACCEPTANCE** items are mandatory candidate acceptance
+tasks. Neither validation category may replace or silently defer either
+pre-implementation gate.
 
 ### 6.3 Custom `fetch` responsibilities
 
@@ -1085,13 +1144,15 @@ methods, paths, and upstream slugs are rejected before any upstream fetch.
   named by the comma-separated `Connection` header tokens. This applies to
   success responses, `304 Not Modified`, Relay-origin errors, and converted
   `502 upstream_redirect_not_allowed` responses.
-- Body: forward the request body as received unless the bounded
-  post-implementation protocol task in §6.2.3 identifies a minimum required
-  relay request mapping. The task records that mapping before it is implemented.
+- Body: forward the request body as received unless the credential-gated
+  pre-implementation protocol gate in §6.2.3 records a minimum required relay
+  request mapping. The implementation plan MUST implement that recorded mapping
+  with TDD; it MUST NOT discover or expand the mapping during implementation.
 - Streaming / response body: forward the upstream response stream unchanged
-  unless the bounded post-implementation protocol task in §6.2.3 identifies a
-  minimum required response/SSE mapping. The task records that mapping before it
-  is implemented.
+  unless the credential-gated pre-implementation protocol gate in §6.2.3 records
+  a minimum required response/SSE mapping. The implementation plan MUST
+  implement that recorded mapping with TDD; it MUST NOT discover or expand the
+  mapping during implementation.
 - Abort: propagate the inbound abort signal to the upstream `fetch`.
 - Timeouts: preserve the existing connect/header timeout and SSE idle timeout
   behavior.
@@ -1389,15 +1450,20 @@ boundary before any implementation or setup guidance is published.
 
 The post-implementation acceptance gate is executed only after the candidate is
 implemented and deployed to a non-production or protected environment. It is not
-a prerequisite for implementation planning. Before declaring the new provider
-model production-ready, verify:
+a prerequisite for implementation planning. The §7 credential-source gate and
+the §6.2.3 credential-gated pre-implementation protocol gate MUST already be
+closed. Before declaring the new provider model production-ready, verify:
 
-- The §6.2 post-implementation acceptance gate is closed. The §7 credential-
+- The §6.2.2 post-implementation acceptance gate is closed. The §7 credential-
   source path is closed:
   - Path A: §7.1 dedicated OAuth-client gate is satisfied.
   - Path B: the replacement credential architecture is fully specified,
     measured, and approved, including the `auth.loader()` dependency decision
     recorded in §6.3.
+- The §6.2.3 protocol gate is closed with a concrete native Codex model ID, wire
+  model mapping, request mapping, response/SSE mapping, and applicable
+  tool-continuation mapping. Production-shaped acceptance verifies this fixed
+  contract; it does not discover a new model ID or adaptation boundary.
 - Request isolation between `openai/*` and `cf-ai-gw-relay/*` traffic.
 - Credential handling (shared): secret-free errors, storage/refresh/rotation
   ownership, and outbound header sources are recorded for the selected §7 path.
@@ -1448,9 +1514,12 @@ model production-ready, verify:
 
 - Plugin tests use Vitest. Relay tests use Deno built-in test runner.
 - Pre-implementation design evidence uses disposable harnesses and real-package
-  tests without candidate source or deployment. Post-implementation acceptance
-  uses the implemented candidate and protected deployment. The latter is not a
-  prerequisite for writing the implementation plan.
+  tests without candidate source or deployment. After the §7 credential gate
+  closes, the §6.2.3 protocol characterization uses the selected credential path
+  and closes the native model, request, response/SSE, and applicable tool
+  contract before planning. Post-implementation acceptance uses the implemented
+  candidate and protected deployment to verify that fixed contract. The latter
+  is not a prerequisite for writing the implementation plan.
 - The synthetic stored `api` auth record used by the runtime spike is transport-
   seam evidence only. It is not a ChatGPT credential and MUST NOT count as
   evidence for credential ownership, permission, acquisition, or lifecycle.
@@ -1472,12 +1541,11 @@ model production-ready, verify:
     `cf-ai-gw-relay` to `openai` provider-options remapping, and activation of
     the applicable OpenAI/Responses-specific identity-sensitive transforms,
   - Protocol contract tests (added per SRG-002):
-    - the AI SDK-generated request body uses `input` (not `messages`) for the
-      Responses API conversation field and matches the Codex endpoint contract
-      directly **if** the compatibility spike determines that no transformation
-      is required;
-    - **or**, if the spike determines that transformation is required, the exact
-      relay field mapping transforms it correctly and the spike records the
+    - the §6.2.3 protocol gate records whether the AI SDK-generated request body
+      uses `input` (not `messages`) for the Responses API conversation field and
+      matches the Codex endpoint contract directly;
+    - if the protocol gate records a transformation requirement, the exact relay
+      field mapping transforms it correctly and the design records the
       before/after contract, response/SSE transformation, tool semantics,
       streaming/abort implications, and error behavior on transformation
       failure;
@@ -1716,7 +1784,8 @@ model production-ready, verify:
   pre-implementation design gate closes, the implementation plan MUST create
   tasks for all of the following:
   - dedicated provider implementation;
-  - fixed `POST /upstream/openai/v1/responses` relay-route implementation;
+  - fixed `POST /upstream/openai/v1/responses` relay-route implementation,
+    including the exact request/response/SSE mapping recorded by §6.2.3, if any;
   - deterministic relay abort integration test;
   - provisioning and fixed custom-provider-slug update;
   - non-production or protected deployment;
@@ -1727,13 +1796,21 @@ model production-ready, verify:
   - abort acceptance with secret-free correlation; and
   - verification that retry and fallback are absent.
 
-  Each task specifies a RED test or characterization step, runs it and records
-  the failure or incompatibility, implements the minimum GREEN change, runs and
-  records the passing result, and commits the completed task. These are
-  post-implementation acceptance obligations; none is a prerequisite for writing
-  the implementation plan.
+  Each implementation task uses the protocol contract already recorded by
+  §6.2.3. A task that implements a recorded relay mapping specifies a RED
+  regression fixture, implements the minimum GREEN change, runs and records the
+  passing result, and commits the completed task. Deployment and live-path tasks
+  remain post-implementation acceptance obligations; the protocol
+  characterization itself is not deferred into the implementation plan.
 
 ## 15. Documentation and Migration
+
+Documentation that describes an implementable provider, credential setup, or
+production-ready protocol is conditional on both the §7 credential-source gate
+and the §6.2.3 pre-implementation protocol gate being closed. While either gate
+is blocked, documentation MUST retain the `BLOCKED` status and MUST NOT provide
+setup instructions or implementation claims that imply a usable ChatGPT
+credential or an unverified Codex wire contract.
 
 - Update the root `README.md` with:
   - installation of `@yohi/cf-ai-gw-relay` as an OpenCode plugin,
@@ -1787,64 +1864,80 @@ model production-ready, verify:
 ## 16. Decisions and Gate Taxonomy
 
 This section lists decisions that are already resolved and the remaining
-credential, validation, and acceptance gates. Evidence is not interchangeable
-between categories. The credential-source gate controls when implementation
-planning may start; selected-baseline validation verifies the plan without
-reopening its architecture; the post-implementation acceptance gate controls
-whether the candidate may be declared production-ready.
+credential, protocol, validation, and acceptance gates. Evidence is not
+interchangeable between categories. The §7 credential-source gate closes first;
+the credential-gated §6.2.3 protocol gate then closes the native Codex wire
+contract and relay-only responsibility before implementation planning. Selected-
+baseline validation verifies the already selected SDK contract without reopening
+its architecture; the post-implementation acceptance gate controls whether the
+candidate may be declared production-ready.
 
 ### Resolved decisions and conditional invariants
 
-| Topic                                  | Decision                                                                                                                                                                                                                                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reuse built-in OpenAI OAuth credential | No — public API does not safely support it today. A dedicated `cf-ai-gw-relay` OAuth flow is the intended design only if a legitimate public client is obtained; until then the provider has no verified credential source.                                                                                         |
-| Provider/model namespace               | `cf-ai-gw-relay/<upstream-provider>/<model>`; initial upstream `openai` only.                                                                                                                                                                                                                                       |
-| Plugin package name                    | `@yohi/cf-ai-gw-relay`.                                                                                                                                                                                                                                                                                             |
-| Repository package path                | `packages/cf-ai-gw-relay` (renamed from `packages/opencode-plugin`).                                                                                                                                                                                                                                                |
-| Provider registration path             | `config` hook is primary; `provider` hook is optional/future.                                                                                                                                                                                                                                                       |
-| Transport layer                        | Path A: thin custom `fetch` returned from `auth.loader()`. Path B: transport injection path recorded for the chosen credential architecture.                                                                                                                                                                        |
-| Relay route                            | `POST /upstream/openai/v1/responses` exactly; other methods/paths are rejected before upstream fetch. Legacy `/v1/responses` removed.                                                                                                                                                                               |
-| Gateway custom provider slug           | Fixed to `cf-ai-gw-relay` end-to-end; see §8 and §10.4 for the invariant and provisioning alignment obligation.                                                                                                                                                                                                     |
-| Relay auth header                      | `x-relay-authorization`.                                                                                                                                                                                                                                                                                            |
-| Configuration precedence               | Environment variables > `opencode.json[c]`.                                                                                                                                                                                                                                                                         |
-| Old package/slug backward compat       | Not required.                                                                                                                                                                                                                                                                                                       |
-| AI SDK major/provider spec             | Selected identity: `provider.npm = "@ai-sdk/openai"`. Selected compatibility tuple: OpenCode `1.18.31` bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. Selected harness and finite interval are §6.2.4 implementation-plan validation tasks. Live Codex evidence validates, but cannot replace, that baseline. |
-| AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                |
-| Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                |
-| Codex account/residency                | Conditional on the selected §7 credential path: that path defines whether account/residency metadata is required, its source, claim/storage semantics, precedence, and per-request derivation. Path A's OAuth `accountId` and §7.4 rules apply only if Path A closes; Path B must record its own concrete contract. |
-| Built-in OpenAI credential claim paths | Reference only: built-in `openai` access-token JWT contains `https://api.openai.com/auth.chatgpt_account_id` and `https://api.openai.com/auth.chatgpt_compute_residency`. Not reused.                                                                                                                               |
+| Topic                                  | Decision                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reuse built-in OpenAI OAuth credential | No — public API does not safely support it today. A dedicated `cf-ai-gw-relay` OAuth flow is the intended design only if a legitimate public client is obtained; until then the provider has no verified credential source.                                                                                                                                                                                               |
+| Provider/model namespace               | `cf-ai-gw-relay/<upstream-provider>/<model>`; initial upstream `openai` only.                                                                                                                                                                                                                                                                                                                                             |
+| Plugin package name                    | `@yohi/cf-ai-gw-relay`.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Repository package path                | `packages/cf-ai-gw-relay` (renamed from `packages/opencode-plugin`).                                                                                                                                                                                                                                                                                                                                                      |
+| Provider registration path             | `config` hook is primary; `provider` hook is optional/future.                                                                                                                                                                                                                                                                                                                                                             |
+| Transport layer                        | Path A: thin custom `fetch` returned from `auth.loader()`. Path B: transport injection path recorded for the chosen credential architecture.                                                                                                                                                                                                                                                                              |
+| Relay route                            | `POST /upstream/openai/v1/responses` exactly; other methods/paths are rejected before upstream fetch. Legacy `/v1/responses` removed.                                                                                                                                                                                                                                                                                     |
+| Gateway custom provider slug           | Fixed to `cf-ai-gw-relay` end-to-end; see §8 and §10.4 for the invariant and provisioning alignment obligation.                                                                                                                                                                                                                                                                                                           |
+| Relay auth header                      | `x-relay-authorization`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Configuration precedence               | Environment variables > `opencode.json[c]`.                                                                                                                                                                                                                                                                                                                                                                               |
+| Old package/slug backward compat       | Not required.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| AI SDK major/provider spec             | Selected identity: `provider.npm = "@ai-sdk/openai"`. Selected compatibility tuple: OpenCode `1.18.31` bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The minimum exact-identity behavior needed by §6.2.3 is measured in the protocol gate; the broader selected harness and finite interval remain §6.2.4 implementation-plan validation tasks. Live Codex evidence validates, but cannot replace, that baseline. |
+| AI SDK `apiKey` bootstrap              | Path A: non-secret sentinel from `auth.loader()`; OAuth token injected by custom `fetch`. `OPENAI_API_KEY` is not used. Path B: bootstrap mechanism recorded for the chosen credential architecture.                                                                                                                                                                                                                      |
+| Error inspection boundary              | Pass-through for all success/SSE and Gateway/upstream errors; bounded inspection only for exact Relay-origin errors.                                                                                                                                                                                                                                                                                                      |
+| Codex account/residency                | Conditional on the selected §7 credential path: that path defines whether account/residency metadata is required, its source, claim/storage semantics, precedence, and per-request derivation. Path A's OAuth `accountId` and §7.4 rules apply only if Path A closes; Path B must record its own concrete contract.                                                                                                       |
+| Built-in OpenAI credential claim paths | Reference only: built-in `openai` access-token JWT contains `https://api.openai.com/auth.chatgpt_account_id` and `https://api.openai.com/auth.chatgpt_compute_residency`. Not reused.                                                                                                                                                                                                                                     |
 
 ### Pre-implementation architecture gate
 
-Implementation planning MAY start only when all of the following are true:
+Implementation planning MAY start only when all of the following are true, in
+this order:
 
-1. §7 has selected and closed a credential architecture.
-2. The selected AI SDK provider identity, OpenCode release, bundled SDK version,
+1. §7 has selected and closed exactly one credential architecture.
+2. Using that selected credential path, the §6.2.3 protocol gate has closed with
+   a concrete native Codex model ID, request acceptance, response/SSE contract,
+   applicable tool continuation contract, and any required relay-only mapping.
+3. The selected AI SDK provider identity, OpenCode release, bundled SDK version,
    and provider specification are concrete, rather than a candidate, list, or
-   TBD value.
-3. No unresolved architecture choice can change component boundaries, public
-   interfaces, wire-protocol responsibility, or the security model.
+   TBD value. SRG-021 remains resolved and is not reopened by this sequence.
 4. The selected credential transport injection API is concrete rather than a
    candidate, list, or TBD value.
+5. No unresolved architecture choice can change component boundaries, public
+   interfaces, wire-protocol responsibility, or the security model.
+
+The selected SRG-021 provider identity and transport seam are inputs to the
+§6.2.3 protocol gate, not decisions made by that gate. The protocol probe MUST
+not reopen or replace them; it only verifies that the selected baseline and
+credential path satisfy the fixed relay-only architecture.
 
 Candidate implementation or deployment, Gateway mapping, protected live
-acceptance, candidate abort propagation, selected-contract harness execution,
-and finite OpenCode compatibility-interval measurement are not preconditions for
-writing an implementation plan.
+acceptance, candidate abort propagation, and finite OpenCode compatibility-
+interval measurement are not preconditions for writing an implementation plan.
+The minimum selected-baseline request-generation and transport behavior needed
+to run §6.2.3 is a precondition and is part of that protocol gate; the broader
+§6.2.4 harness and interval measurement remain bounded implementation-plan
+validation.
 
-| Topic                            | Gate                          | Status                                                                                                                                                                                                                                                                                                 |
-| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AI SDK adapter                   | §6.2.4 validation handoff     | RESOLVED FOR PLANNING / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. Harness, interval, and §7 lifecycle remain bounded validation; credential gate remains the only architecture blocker before planned work.   |
-| Protocol responsibility          | §6.2.3 bounded task           | RESOLVED — the relay is the only permitted adaptation boundary. Native Codex protocol characterization is a bounded post-implementation task and cannot require plugin body rewriting, component-boundary changes, fallback, or generic proxying.                                                      |
-| Credential source / OAuth client | §7 credential-source decision | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. |
-| OpenCode version boundary        | §6.2.4 validation handoff     | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                          |
+| Topic                            | Gate                                             | Status                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The minimum exact-identity behavior needed by §6.2.3 is measured in the protocol gate; the broader harness, interval, and §7 lifecycle remain bounded validation.                                               |
+| Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
+| Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
+| OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
 
 ### Re-review finding discipline
 
 Re-review assesses whether the design is ready for implementation planning; it
 does not block until every unknown is eliminated. Do not promote a bounded
 implementation validation task to a Blocker or Major merely because additional
-measurement would be useful.
+measurement would be useful. The §6.2.3 protocol gate is different: it is a
+pre-implementation blocker because its failure can change component boundaries,
+public interfaces, wire-protocol responsibility, or the security model.
 
 A new Blocker or Major requires one of the following:
 
@@ -1863,11 +1956,12 @@ it identifies an independent design decision or failure mode.
 
 ### Post-implementation acceptance gate
 
-The implementation plan MUST execute §6.2 **POST-IMPLEMENTATION ACCEPTANCE**
+The implementation plan MUST execute §6.2.2 **POST-IMPLEMENTATION ACCEPTANCE**
 items after candidate provider and relay implementation, fixed-slug
-provisioning, and a non-production or protected deployment. This gate includes
-Gateway-to-relay routing, native Codex model and protocol characterization, live
-streaming and applicable tool continuation, abort propagation,
-exactly-one-request correlation, no retry or fallback, and fail-closed behavior.
-It does not authorize production use until every required acceptance requirement
-passes.
+provisioning, and a non-production or protected deployment. This gate verifies
+the native Codex model and protocol contract already fixed by §6.2.3 through the
+production-shaped path; it does not discover or choose that contract. It
+includes Gateway-to-relay routing, live streaming and applicable tool
+continuation, abort propagation, exactly-one-request correlation, no retry or
+fallback, and fail-closed behavior. It does not authorize production use until
+every required acceptance requirement passes.
