@@ -36,9 +36,12 @@ both blockers close with concrete evidence.
 
 The initial tools scope is also not selected. Choosing decision A (tools in the
 initial contract) or decision B (tools explicitly out of initial scope) is a
-design decision independent of discovering a credential candidate, but the
-§6.2.3 gate MUST record exactly one decision before the protocol gate closes. The
-implementation plan MUST NOT make that decision.
+design decision independent of discovering a credential candidate and MAY be
+recorded before §7 closes. Under decision A, however, live tool-call, tool-result,
+and continuation compatibility can be characterized only after the selected
+credential path is available. The §6.2.3 gate MUST record exactly one decision
+before the protocol gate closes. The implementation plan MUST NOT make that
+decision.
 
 ## 1. Summary
 
@@ -398,9 +401,11 @@ injection boundary already recorded in this design.
 The gate MUST establish all of the following before planning starts:
 
 The initial tools scope is an explicit gate decision, not an implementation
-choice. It is currently **NOT SELECTED** because the §7 credential-source gate
-is blocked. Before §6.2.3 closes, the design MUST record exactly one of these
-decisions:
+choice. It is currently **NOT SELECTED** because the design has not recorded a
+decision, while the §7 credential-source gate is blocked. The A/B selection
+itself does not require a credential candidate; the selected credential path is
+required for the live compatibility characterization under decision A. Before
+§6.2.3 closes, the design MUST record exactly one of these decisions:
 
 - **A: tools are in the initial contract:** the probe measures tool call, tool
   result, and continuation semantics and records the relay-only contract.
@@ -1959,16 +1964,16 @@ validation.
 
 | Topic                            | Gate                                             | Status                                                                                                                                                                                                                                                                                                                                                                |
 | -------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED / VALIDATION REQUIRED — selected identity is `@ai-sdk/openai`; OpenCode 1.18.31 bundles `@ai-sdk/openai@3.0.88` / `LanguageModelV3`. The minimum exact-identity behavior needed by §6.2.3 is measured in the protocol gate; the broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4. |
+| AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED FOR PLANNING / VALIDATION REQUIRED — the selected identity is `@ai-sdk/openai`, separate from OpenCode 1.18.31's bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3` release pin. This resolves the identity-versus-version decision only; exact-identity runtime behavior remains a §6.2.3 protocol-gate requirement. The broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4. |
 | Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 BLOCKED BY §7 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and must be recorded as decision A or B before the gate closes. The gate resolves when relay-only viability is recorded; any architecture change requires design re-approval. |
 | Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
 
 ### Current Re-review Disposition (2026-09-17)
 
-This revision adds no new authoritative credential-source evidence and no
-target-runtime or live-Codex protocol capture. It therefore records no gate
-promotion:
+This documentation revision changes only the recorded gate disposition. It adds
+no new authoritative credential-source evidence and no target-runtime or
+live-Codex protocol capture. It therefore records no gate promotion:
 
 - `SRG-021` remains **RESOLVED FOR PLANNING** for provider identity and
   release-pinned SDK separation only. Exact-identity runtime behavior remains a
@@ -1976,8 +1981,10 @@ promotion:
 - `SRG-022` remains **PARTIALLY RESOLVED / BLOCKED**. No implementable
   credential architecture is selected.
 - `SRG-035` remains **PARTIALLY RESOLVED / BLOCKED**. The native model ID,
-  selected-baseline request acceptance, response/SSE compatibility, relay-only
-  mappings, and the tools A/B decision are not closed.
+  selected-baseline request acceptance, response/SSE compatibility, and
+  relay-only mappings are not closed. The tools A/B decision is also not yet
+  recorded; that decision may be made independently of credential discovery,
+  while live tool semantics under decision A remain credential-gated.
 
 This status record is not technical evidence. Writing an implementation plan or
 starting implementation remains prohibited until §7 and §6.2.3 close in order.
