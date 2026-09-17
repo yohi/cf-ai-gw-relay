@@ -1970,11 +1970,12 @@ validation.
 | Credential source / OAuth client | §7 credential-source decision                    | PARTIALLY RESOLVED / BLOCKED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start.                                                                |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                         |
 
-### Current Re-review Disposition (2026-09-17)
+### Current Re-review Disposition (2026-09-18)
 
-This documentation revision changes only the recorded gate disposition. It adds
-no new authoritative credential-source evidence and no target-runtime or
-live-Codex protocol capture. It therefore records no gate promotion:
+The review of commit `85bff22` confirms a documentation-only disposition update.
+It adds no new authoritative credential-source evidence and no target-runtime or
+live-Codex protocol capture. This status is a review record, not technical
+evidence, and records no gate promotion:
 
 - `SRG-021` remains **RESOLVED FOR PLANNING** for provider identity and
   release-pinned SDK separation only. Exact-identity runtime behavior remains a
@@ -1987,8 +1988,9 @@ live-Codex protocol capture. It therefore records no gate promotion:
   recorded; that decision may be made independently of credential discovery,
   while live tool semantics under decision A remain credential-gated.
 
-This status record is not technical evidence. Writing an implementation plan or
-starting implementation remains prohibited until §7 and §6.2.3 close in order.
+No implementation plan or implementation work is authorized by this status
+record. Writing an implementation plan remains prohibited until §7 and §6.2.3
+close in order with the required technical evidence.
 
 ### Re-review finding discipline
 
