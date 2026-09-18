@@ -1974,14 +1974,14 @@ validation.
 | Credential source / OAuth client | §7 credential-source decision                    | UNRESOLVED — EVIDENCE REQUIRED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. The document correctly records the blocked state and gate order.                                                                                                                                                                                                       |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                                                                                                                                                                                                                                   |
 
-### Current Re-review Disposition (2026-09-18)
+### Latest Completed Re-review Disposition (2026-09-18)
 
-The re-review of commit `8f63f1b`, compared with parent `97ec9ff`, confirms that
-this documentation-only revision updates the recorded finding states and adds
-the re-review convergence rules. It introduces no implementation plan, new
-authoritative credential-source evidence, target-runtime credential evidence, or
-live-Codex protocol capture. This status is a review record, not technical
-evidence, and records no gate promotion:
+The re-review of commit `0da5d40`, compared with parent `8f63f1b`, confirms that
+the reviewed documentation-only revision updates the recorded re-review target
+and finding states. It introduces no implementation plan, new authoritative
+credential-source evidence, target-runtime credential evidence, or live-Codex
+protocol capture. This status is a review record, not technical evidence, and
+records no gate promotion:
 
 - `SRG-021` remains **RESOLVED FOR PLANNING — UNCHANGED** for provider identity
   and release-pinned SDK separation only. Exact-identity runtime behavior
@@ -1997,6 +1997,13 @@ evidence, and records no gate promotion:
   discovery; live tool semantics under decision A remain dependent on SRG-022.
   There is no new independent contradiction, and this re-review requests no
   document fix for the evidence-dependent portion.
+- `SRG-036` is **NOT APPLICABLE**. Requiring this document to contain the SHA of
+  the commit that contains this record would be non-convergent: changing the
+  document changes that SHA and makes the record stale. This record identifies
+  the latest completed review target and its parent; the external review record
+  identifies the current review head. SRG-036 is therefore a reviewer-side
+  provenance-criterion error, not a design defect, and requires no further
+  document correction.
 
 No implementation plan or implementation work is authorized by this status
 record. Writing an implementation plan remains prohibited until §7 and §6.2.3
