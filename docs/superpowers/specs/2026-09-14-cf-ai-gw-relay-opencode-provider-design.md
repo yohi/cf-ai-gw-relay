@@ -1976,20 +1976,21 @@ validation.
 
 ### Current Re-review Disposition (2026-09-18)
 
-The re-review of commit `3e8e07c`, compared with parent `85bff22`, confirms that
-this revision only records the gate disposition. It introduces no implementation
-plan, new authoritative credential-source evidence, or target-runtime or
+The re-review of commit `8f63f1b`, compared with parent `97ec9ff`, confirms that
+this documentation-only revision updates the recorded finding states and adds
+the re-review convergence rules. It introduces no implementation plan, new
+authoritative credential-source evidence, target-runtime credential evidence, or
 live-Codex protocol capture. This status is a review record, not technical
 evidence, and records no gate promotion:
 
 - `SRG-021` remains **RESOLVED FOR PLANNING — UNCHANGED** for provider identity
   and release-pinned SDK separation only. Exact-identity runtime behavior
   remains a §6.2.3 protocol-gate requirement.
-- `SRG-022` remains **UNRESOLVED — EVIDENCE REQUIRED**. No implementable
+- `SRG-022` remains **UNRESOLVED — EVIDENCE REQUIRED — UNCHANGED**. No implementable
   credential architecture is selected. The document correctly records the
   blocked state, the missing evidence, and the gate order; this re-review
   requests no document fix for the evidence gap.
-- `SRG-035` remains **UNRESOLVED — WAITING ON SRG-022** for the
+- `SRG-035` remains **UNRESOLVED — WAITING ON SRG-022 — UNCHANGED** for the
   credential-dependent native model ID, selected-baseline request acceptance,
   response/SSE compatibility, and relay-only mappings. The tools A/B decision is
   also not yet recorded, but it may be made independently of credential
