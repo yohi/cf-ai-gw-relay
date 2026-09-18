@@ -27,16 +27,18 @@ OpenCode 1.18.31, including provider/model mapping, `auth.loader()`, custom
 consumption. It did not verify the selected bare-identity bundled path, the live
 Codex endpoint, the production Gateway/relay mapping, or the native Codex model
 ID. See §6.2 for the item-by-item status. SRG-022 remains UNRESOLVED — EVIDENCE
-REQUIRED: no verified implementable credential source has been identified and no
-concrete replacement candidate is under evaluation. The document records the
-blocked state, the missing evidence, and the §7 gate order; this status does not
-require repeated document edits until a concrete credential candidate or
-authoritative credential evidence exists. SRG-035 remains UNRESOLVED — WAITING
+REQUIRED: no verified implementable credential source has been identified.
+Path B1 (an OpenAI Codex personal access token) is now a concrete candidate under
+evaluation but remains UNVERIFIED because third-party plugin/Gateway/relay
+permission, residency semantics, and target-runtime integration are not closed.
+The document records the blocked state, the missing evidence, and the §7 gate
+order; this status does not permit implementation planning. SRG-035 remains UNRESOLVED — WAITING
 ON SRG-022 for the credential-dependent native Codex protocol characterization.
 Its independent tools-scope decision is still NOT SELECTED and may be recorded
 before §7 closes; live tool semantics under decision A remain dependent on
-SRG-022. The ChatGPT-subscription provider design is currently infeasible, and
-implementation planning MUST NOT start until both blockers close with concrete
+SRG-022. No viable credential architecture has been selected, so the
+ChatGPT-subscription provider design remains blocked. Implementation planning
+MUST NOT start until the credential and protocol blockers close with concrete
 evidence.
 
 The initial tools scope is also not selected. Choosing decision A (tools in the
@@ -698,14 +700,15 @@ design gate. Until a concrete path closes with measured evidence, the design is
 BLOCKED and must not proceed to implementation planning. Candidate deployment
 and post-implementation acceptance are not credential-gate prerequisites.
 
-**Candidate decision table (2026-09-16):** The following are every credential
-candidate evaluated to date. No entry is **VIABLE**, so neither path can be
-selected and the gate remains blocked.
+**Candidate decision table (updated 2026-09-18):** The following are every
+credential candidate evaluated to date. No entry is **VIABLE**, so no
+credential architecture can be selected and the gate remains blocked.
 
 | Candidate                                                       | Credential owner                                      | Acquisition method             | Public OpenCode API                              | Stored auth        | Storage                       | Refresh/rotation       | Authorization source                                                    | `chatgptAccountId` source           | Residency source                    | Transport injection                          | User setup              | Failure behavior                               | Permission authority                      | Permission scope                                                 | Result         |
 | --------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------ | ----------------------------- | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- | ----------------------------------- | -------------------------------------------- | ----------------------- | ---------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------- |
 | Path A: dedicated public OAuth client                           | No client owner identified                            | No legitimate client available | N/A                                              | N/A                | N/A                           | N/A                    | No authoritative third-party authorization identified                   | Unknown                             | Unknown                             | N/A                                          | N/A                     | Reject before request                          | No client owner or authorization evidence | No demonstrated permission for the plugin or Gateway/relay route | **NOT VIABLE** |
 | Path B0: reuse built-in OpenCode `openai` OAuth auth (rejected) | OpenCode built-in provider and the subscriber account | Built-in `openai` login        | No safe public read/rebind API for this provider | Built-in auth only | OpenCode built-in auth record | Built-in provider only | Built-in client contract is reference-only and does not authorize reuse | Built-in-token reference claim only | Built-in-token reference claim only | No supported injection into `cf-ai-gw-relay` | Built-in `openai` login | Reject candidate; do not fall back to `openai` | The public API boundary excludes reuse    | No third-party provider, Gateway, or relay permission            | **NOT VIABLE** |
+| Path B1: OpenAI Codex personal access token (Codex-scoped)      | Token creator and their ChatGPT Business/Enterprise workspace | ChatGPT Access tokens admin console; Codex scope; finite expiry | `auth` hook API method + stored sentinel + `auth.loader()`; exact token source/injection remains to be measured in the target runtime | Minimal non-secret `api` record | OpenCode auth storage for sentinel; token remains in user-managed environment/secret storage | Manual replacement and revocation; no refresh token | OpenAI Codex auth/access-token docs authorize trusted Codex local workflows, app-server automation, and LLM-proxy use; explicit third-party plugin/Gateway/relay permission not found | Official Codex source hydrates `chatgpt_account_id` from token metadata; target behavior not measured here | No residency claim in official personal-access-token metadata; backend/header semantics unverified | Candidate custom `fetch` from `auth.loader()` reading the external token; public seam measured only with synthetic auth | User creates the token and configures secret storage; exact setup not selected | Fail closed on missing, expired, or invalid token; no retry or fallback | OpenAI workspace/admin permission for Codex access-token creation; third-party intermediary authority not explicit | Codex scope plus local Codex permission; Gateway/relay scope and third-party plugin use unverified | **UNVERIFIED** |
 
 In this table, **NOT VIABLE** means not selectable for the current design based
 on the evidence evaluated to date. It does not claim that no future credential
@@ -716,9 +719,29 @@ boundary evidence required below before it can be marked **VIABLE**.
 No credential architecture is selected in this revision. The Path A contract in
 §7.1–§7.4 and every Path A-specific reference elsewhere in this document are
 conditional requirements only; they are not an implementation target while the
-credential-source gate is `BLOCKED`. A synthetic auth record can demonstrate an
-OpenCode transport seam, but it cannot select a ChatGPT credential architecture
+credential-source gate is `BLOCKED`. Path B1 is a concrete candidate under
+evaluation, not a selected architecture. A synthetic auth record can demonstrate
+an OpenCode transport seam, but it cannot select a ChatGPT credential architecture
 or establish credential ownership, permission, or account/residency semantics.
+
+**Path B1 evidence record (2026-09-18):** OpenAI's [Codex authentication
+documentation](https://developers.openai.com/codex/auth) distinguishes ChatGPT
+subscription authentication from API-key authentication, documents Codex access
+tokens for trusted scripts and app-server automation, and states that OpenAI
+authentication can be used when a custom provider reaches OpenAI models through
+an LLM proxy. The [access-token
+documentation](https://learn.chatgpt.com/docs/enterprise/access-tokens) limits
+the feature to ChatGPT Business and Enterprise workspaces, requires the Codex
+scope and local Codex permission, assigns the token to its creator/workspace,
+and documents finite expiry, rotation, revocation, and secret-storage rules.
+The official [Codex personal-access-token implementation](https://raw.githubusercontent.com/openai/codex/main/codex-rs/login/src/auth/personal_access_token.rs)
+hydrates `chatgpt_account_id` through token metadata, but it does not establish
+a public third-party protocol contract or expose residency semantics for this
+design. The public OpenCode `AuthHook` API and the measured synthetic stored
+`api` record establish a possible technical seam, not permission to use the
+credential through this plugin and Cloudflare Gateway/relay. B1 therefore
+remains **UNVERIFIED** until authoritative permission scope, residency behavior,
+and target-runtime/live Codex integration are confirmed.
 
 Before selecting a replacement credential architecture, record every evaluated
 candidate in a decision table with these columns: candidate, credential owner,
@@ -783,12 +806,13 @@ unmeasured injection path rejects the candidate.
   updated to remove any unconditional Path A contract. This includes §6.1, §6.3,
   §7, §8, §9, §10, §11, §12, §13, §14, §15, and §16.
 
-With the current information, Path A and Path B0 are not viable, and no concrete
-replacement candidate is under evaluation. No verified implementable credential
-architecture is available. Therefore the ChatGPT-subscription provider design is
-currently infeasible, and implementation planning MUST NOT start. Do not repeat
-credential-candidate review unless new authoritative external evidence yields a
-concrete candidate.
+With the current information, Path A and Path B0 are **NOT VIABLE**, while Path
+B1 is **UNVERIFIED**. No verified implementable credential architecture is
+available. Therefore the ChatGPT-subscription provider design remains blocked,
+and implementation planning MUST NOT start. B1 requires authoritative
+permission evidence for the third-party plugin and Gateway/relay intermediary,
+a concrete residency contract, and target-runtime/live Codex evidence before it
+can be selected.
 
 The 2026-09-16 runtime spike separately measured the public auth-loader seam
 using a synthetic stored `api` auth record. The record was created with
@@ -1971,7 +1995,7 @@ validation.
 | -------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AI SDK adapter                   | §6.2.3 protocol gate / §6.2.4 validation handoff | SRG-021 RESOLVED FOR PLANNING / VALIDATION REQUIRED — the selected identity is `@ai-sdk/openai`, separate from OpenCode 1.18.31's bundled `@ai-sdk/openai@3.0.88` / `LanguageModelV3` release pin. This resolves the identity-versus-version decision only; exact-identity runtime behavior remains a §6.2.3 protocol-gate requirement. The broader exact-identity harness and finite interval remain bounded validation after the pre-implementation gates close. The §7 credential lifecycle is governed by the credential-source gate and is not deferred to §6.2.4.         |
 | Protocol responsibility          | §6.2.3 pre-implementation gate                   | SRG-035 UNRESOLVED — WAITING ON SRG-022 / PRE-IMPLEMENTATION VALIDATION REQUIRED — the relay is the only permitted adaptation boundary, but native Codex model ID, request acceptance, response/SSE compatibility, and applicable tool continuation are not yet measured. The initial tools scope is also NOT SELECTED and may be recorded independently as decision A or B; live tool semantics under decision A remain dependent on SRG-022. The credential-dependent protocol gate remains frozen until SRG-022 closes. Any architecture change requires design re-approval. |
-| Credential source / OAuth client | §7 credential-source decision                    | UNRESOLVED — EVIDENCE REQUIRED — Path A and Path B0 are NOT VIABLE. No concrete replacement candidate is under evaluation and no verified implementable credential source has been identified. The ChatGPT-subscription provider design is currently infeasible; implementation planning MUST NOT start. The document correctly records the blocked state and gate order.                                                                                                                                                                                                       |
+| Credential source / OAuth client | §7 credential-source decision                    | UNRESOLVED — EVIDENCE REQUIRED — Path A and Path B0 are NOT VIABLE; Path B1 (OpenAI Codex personal access token) is UNVERIFIED. No verified implementable credential source has been identified. The ChatGPT-subscription provider design remains blocked; implementation planning MUST NOT start. B1 still requires authoritative third-party plugin/Gateway/relay permission, a concrete residency contract, and target-runtime/live Codex evidence.                                                                                                                                                                                                       |
 | OpenCode version boundary        | §6.2.4 validation handoff                        | VALIDATION REQUIRED — environment versions are recorded, and the final finite OpenCode and plugin-SDK compatibility interval must match the credential lifecycle chosen in §7. Measuring it is bounded implementation-plan work, not an architecture blocker.                                                                                                                                                                                                                                                                                                                   |
 
 ### Latest Completed Re-review Disposition (2026-09-18)
@@ -2004,6 +2028,25 @@ records no gate promotion:
   identifies the current review head. SRG-036 is therefore a reviewer-side
   provenance-criterion error, not a design defect, and requires no further
   document correction.
+
+### Post-review external evidence update (2026-09-18)
+
+After the completed re-review above, new primary evidence was obtained from
+OpenAI's Codex authentication and access-token documentation and the official
+OpenAI Codex source. This is an evidence update, not a re-review disposition, and
+it promotes no gate:
+
+- OpenAI documents Codex-scoped personal access tokens for ChatGPT Business and
+  Enterprise workspaces, trusted local scripts, app-server automation, finite
+  expiry, rotation, revocation, and secret storage.
+- OpenAI's Codex authentication documentation describes OpenAI authentication for
+  custom providers reached through an LLM proxy.
+- The official Codex implementation resolves the personal access token's
+  `chatgpt_account_id` through token metadata. It does not establish this
+  project's third-party plugin/Gateway/relay permission or a residency-header
+  contract.
+- The evidence supports recording Path B1 as a concrete **UNVERIFIED** candidate.
+  It does not make B1 **VIABLE**, close `SRG-022`, or unblock `SRG-035`.
 
 No implementation plan or implementation work is authorized by this status
 record. Writing an implementation plan remains prohibited until §7 and §6.2.3
