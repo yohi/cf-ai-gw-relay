@@ -10,7 +10,7 @@ changes, or implementation planning.
 Current gate state:
 
 ```text
-SRG-022: READY FOR RE-REVIEW
+SRG-022: RESOLVED
 SRG-035: ACTIVE / UNRESOLVED
 writing-plans: BLOCKED
 production implementation: NOT STARTED
@@ -481,18 +481,142 @@ still `POST /v1/responses`.
 
 ## 11. SRG-035 Boundary
 
-SRG-035 is active but unresolved. It remains the owner of the following three
-deferred decisions:
+SRG-035 is active but unresolved. It remains the owner of the following deferred
+decisions and their target-runtime evidence:
 
 1. Final production Codex model, including any `model.api.id` and wire model ID.
 2. Authenticated request/response protocol characterization after upstream dispatch.
 3. Live response streaming, SSE, and tools characterization.
 
+SRG-035 MUST NOT be marked `RESOLVED` until the following closure contract is
+complete and its evidence is recorded:
+
+### 11.1 SRG-035 closure contract
+
+**A. Production model mapping**
+
+The production mapping MUST identify each stage explicitly:
+
+```text
+OpenCode-visible model
+  -> model.api.id
+  -> AI SDK model
+  -> wire-body model ID
+```
+
+The validation model `openai/gpt-5.6-sol` MUST NOT be promoted automatically to
+the production model.
+
+**B. Authenticated request acceptance**
+
+An actual authenticated request using OpenCode 1.18.31 MUST be accepted across
+the complete path:
+
+```text
+OpenCode 1.18.31
+  -> Cloudflare AI Gateway
+  -> Deno Deploy relay
+  -> Codex
+```
+
+The evidence MUST identify acceptance at each boundary without recording secret
+values or request payloads.
+
+**C. Request protocol ownership**
+
+Request handling MUST be resolved to exactly one of the following:
+
+```text
+DIRECT FORWARDING
+```
+
+or:
+
+```text
+RELAY-ONLY MAPPING:
+<exact request mapping>
+```
+
+Plugin-side body rewriting remains prohibited. Any relay-only mapping MUST state
+the exact fields, headers, and transformations owned by the relay.
+
+**D. Response protocol ownership**
+
+For non-streaming responses, handling MUST be resolved to exactly one of the
+following:
+
+```text
+DIRECT FORWARDING
+```
+
+or:
+
+```text
+RELAY-ONLY MAPPING:
+<exact response mapping>
+```
+
+Any relay-only mapping MUST state the exact response fields, headers, and
+transformations owned by the relay.
+
+**E. Streaming and SSE**
+
+The characterization MUST establish all of the following for the selected
+architecture:
+
+- Live streaming acceptance.
+- SSE event shape.
+- Stream termination behavior.
+- Stream error behavior.
+- Required abort behavior.
+
+**F. Initial tools scope**
+
+The initial scope MUST be resolved to exactly one of:
+
+```text
+TOOLS INCLUDED
+```
+
+or:
+
+```text
+TOOLS EXCLUDED
+```
+
+If tools are included, characterization MUST cover the tool call, tool result,
+continuation request, and continuation response.
+
+### 11.2 SRG-035 failure policy
+
+If characterization requires a change to any of the following, SRG-035 MUST
+remain unresolved and the result MUST be recorded as:
+
+```text
+DESIGN RE-APPROVAL REQUIRED
+```
+
+```text
+provider identity
+credential architecture
+OpenCode public extension point
+component boundary
+security model
+protocol owner
+SDK family or major version
+```
+
+The result MAY be sent to `writing-plans` or implementation validation without
+design re-approval only when it is limited to the same architecture, such as an
+exact wire field, fixture detail, helper split, or implementation-specific edge
+case. This exception does not close SRG-035 until the closure contract above is
+complete.
+
 These are not SRG-022 defects. SRG-022 only establishes the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed
 policy needed before SRG-035 can run.
 
-### 11.1 Characterization attempt status
+### 11.3 Characterization attempt status
 
 The first characterization attempt stopped before an authenticated request was
 sent. The process-local OpenCode configuration probe used malformed JSON, and
@@ -500,11 +624,28 @@ OpenCode expanded `{env:...}` references before reporting the parse error. The
 probe was therefore treated as a credential-safety failure rather than runtime
 protocol evidence.
 
-No conclusion was added for the production model, authenticated request or
-response shape, streaming or SSE behavior, or tools behavior. The affected
-Gateway and relay credentials must be rotated before any authenticated probe is
-repeated. Until that occurs, SRG-035 remains unresolved and `writing-plans`
-remains blocked.
+The current evidence status is:
+
+```text
+authenticated request: NOT SENT
+production model evidence: NONE
+request/response evidence: NONE
+streaming/SSE evidence: NONE
+tools evidence: NONE
+```
+
+Before any next authenticated probe, all of the following are mandatory
+preconditions:
+
+```text
+Gateway credential (`RELAY_CF_AIG_TOKEN`): ROTATE
+Relay credential (`RELAY_SECRET`): ROTATE
+malformed JSON probe: MUST NOT be reused
+secret values in logs or documents: MUST NOT be recorded
+```
+
+No authenticated request may be sent until these preconditions are confirmed.
+Until then, SRG-035 remains unresolved and `writing-plans` remains blocked.
 
 ## 12. Scope and Definition of Done
 
@@ -512,7 +653,7 @@ This revision changes only this design document. It does not change production
 source, tests, dependencies, package metadata, lockfiles, CI, deployment,
 Cloudflare settings, or writing-plans artifacts.
 
-SRG-022 is ready for re-review when all of the following remain true:
+SRG-022 remains resolved while all of the following remain true:
 
 - Provider identity is `openai`.
 - The public OpenCode extension point is `Hooks.config(input: Config) => Promise<void>` on the target OpenCode 1.18.31 runtime.
@@ -529,8 +670,8 @@ SRG-022 is ready for re-review when all of the following remain true:
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
 - The validation model is explicitly non-production.
 - Stale credential, Gateway-route, Gateway-auth, relay-route, and relay-auth blockers are not current design blockers.
-- SRG-035 is active and remains unresolved pending authenticated protocol
-  characterization.
+- SRG-035 is active and remains unresolved pending the complete §11 closure
+  contract and target-runtime characterization.
 - `writing-plans` has not started and remains blocked.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
@@ -538,3 +679,8 @@ route-construction, header-ownership, error-boundary, fail-closed, streaming,
 and no-retry/no-cache/no-payload-persistence constraints in this document. The
 plan may choose only the concrete source patch for migrating away from the
 legacy interposer; it may not choose a different routing mechanism.
+
+Before `writing-plans` may start, the design document and implementation plan
+MUST be checked for zero divergence in specification, terminology,
+types/interfaces, error handling, test strategy, and non-functional requirements.
+Any unresolved divergence keeps `writing-plans` blocked.
