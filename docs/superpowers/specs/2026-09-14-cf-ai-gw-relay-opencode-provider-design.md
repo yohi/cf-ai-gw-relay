@@ -34,6 +34,12 @@ OpenCode uses its built-in `openai` provider and its built-in ChatGPT OAuth
 credential. The relay is reached by configuring the OpenAI transport base URL;
 it is not represented as a second OpenCode provider identity.
 
+This revision defines the target architecture for OpenCode 1.18.31. It does
+not claim that the current repository source has already migrated to this
+architecture. The current plugin entrypoint still installs
+`installFetchInterposer()`. That existing path is migration input, not the
+selected target transport owner.
+
 ```text
 OpenCode 1.18.31
   provider: openai
@@ -43,21 +49,75 @@ OpenCode 1.18.31
       -> Codex upstream
 ```
 
+### 1.1 Selected OpenCode extension point
+
+The selected public OpenCode extension point is the plugin `config` hook. The
+hook is the only plugin-side owner of OpenAI transport routing and control
+header injection.
+
+```text
+Target runtime: OpenCode 1.18.31
+OpenCode public extension point: plugin config hook
+Hook signature: Hooks.config(input: Config) => Promise<void>
+```
+
+The hook MUST configure the existing `openai` provider in place. Its normative
+mutation contract is:
+
+```text
+config.provider.openai.options.baseURL = <exact Gateway Custom Provider route>
+config.provider.openai.options.headers = merge(existing headers, control headers)
+```
+
+The hook MUST preserve unrelated provider options and OpenCode-owned request
+headers. It MUST NOT acquire, parse, replace, or take ownership of the
+OpenCode ChatGPT OAuth credential. In particular, `Authorization` and
+`ChatGPT-Account-Id` remain owned by OpenCode's built-in `openai` provider.
+
 The transport contract is:
 
 ```text
 OpenCode provider: openai
-OpenCode options.baseURL: Cloudflare AI Gateway Custom Provider endpoint
+OpenCode extension point: public plugin config hook
+OpenCode options.baseURL: <gateway-origin>/v1/<account-id>/<gateway-id>/custom-<provider-slug>
+AI SDK request suffix: /responses
 Custom Provider base_url: https://cf-ai-gw-relay.yohi.deno.net/v1
 Relay route: POST /v1/responses
 ```
 
-The Gateway endpoint used by `options.baseURL` is configured through the
-existing repository configuration and secret-injection mechanism. This design
-does not invent a new secret-management subsystem or record secret values.
+The production `options.baseURL` shape is therefore:
+
+```text
+https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway-id}/custom-{provider-slug}
+```
+
+The account ID, Gateway ID, and provider slug are configuration path
+components and MUST be encoded as individual path components. The
+`options.baseURL` value MUST NOT include `/v1/responses` or `/responses`. The
+AI SDK appends `/responses`, producing the Gateway request path
+`.../custom-{provider-slug}/responses`. The Custom Provider `base_url` then
+maps that suffix to the relay's `POST /v1/responses` route.
+
+The values used to construct `options.baseURL`, the control headers, and the
+Custom Provider endpoint are resolved through the existing repository
+configuration and secret-injection mechanism. This design does not invent a
+new secret-management subsystem or record secret values.
 
 The relay remains fail-closed. There is no direct Codex or ChatGPT fallback,
 retry loop, payload persistence, or silent credential substitution.
+
+### 1.2 Legacy fetch interposer boundary
+
+The current source uses `installFetchInterposer()` together with
+`buildGatewayUrl()` and `request-rewrite.ts` to rewrite a matching global
+`fetch` request. Its current URL shape ends in `/v1/responses`. Those symbols
+are legacy implementation details that must not be reused as the target
+`options.baseURL` contract.
+
+The selected architecture MUST NOT retain global fetch interception as a
+second routing owner for the OpenAI request. A later implementation plan may
+remove the interposer, disable it, or reduce it to a non-routing responsibility,
+but it MUST NOT run it in parallel with the config-hook transport path.
 
 ## 2. Provider Identity and Model Boundary
 
@@ -134,7 +194,7 @@ credential.
 | Configuration owner | Deployment/operator configuration using the existing repository secret path |
 | Existing configuration input | `RELAY_CF_AIG_TOKEN` or its existing equivalent |
 | Existing precedence | `RELAY_CF_AIG_TOKEN` -> plugin `apiKey` |
-| Header producer | OpenCode configuration / secret injection boundary |
+| Header producer | Plugin `config` hook using the resolved existing configuration |
 | Header consumer | Cloudflare AI Gateway |
 | Header validator | Cloudflare AI Gateway |
 | OpenAI credential relationship | Must not be treated as an OpenAI credential |
@@ -158,7 +218,7 @@ x-chatgpt-relay-authorization: Bearer <relay secret>
 | Configuration owner | Existing relay deployment secret configuration |
 | Existing configuration input | `RELAY_SECRET` or its existing equivalent |
 | Existing precedence | `RELAY_SECRET` -> plugin `relayToken` |
-| Header producer | OpenCode configuration / secret injection boundary |
+| Header producer | Plugin `config` hook using the resolved existing configuration |
 | Header validator | Deno relay |
 | Header consumer | Deno relay |
 | Upstream behavior | The header terminates at the relay and must not reach Codex |
@@ -166,6 +226,29 @@ x-chatgpt-relay-authorization: Bearer <relay secret>
 
 `x-relay-authorization` is non-canonical. It is sanitized or removed as an
 untrusted header and is never an authentication alias.
+
+### 4.3 Config-hook control-header responsibility
+
+The plugin `config` hook is the unique producer of the Gateway and relay
+control headers in the selected architecture. It MUST merge the following
+headers into `config.provider.openai.options.headers` without replacing
+OpenCode-owned `Authorization`, `ChatGPT-Account-Id`, or unrelated provider
+options:
+
+```text
+cf-aig-authorization
+x-chatgpt-relay-authorization
+cf-aig-collect-log
+cf-aig-collect-log-payload
+cf-aig-metadata
+cf-aig-skip-cache
+cf-aig-max-attempts
+```
+
+`cf-aig-authorization` and `x-chatgpt-relay-authorization` are the required
+control credentials. The remaining `cf-aig-*` values preserve the existing
+Gateway control behavior. No global fetch interposer may inject a competing
+set of routing or control headers for the same OpenAI request.
 
 ## 5. Header Boundary
 
@@ -176,9 +259,9 @@ architecture:
 | --- | --- | --- | --- |
 | `Authorization` | OpenCode | Codex/OpenAI upstream | OpenCode-owned credential; preserve as opaque transport data; no intermediary substitutes it |
 | `ChatGPT-Account-Id` | OpenCode | Codex/OpenAI upstream | OpenCode-owned account routing metadata; preserve when supplied by OpenCode |
-| `cf-aig-authorization` | OpenCode config/secret injection | Cloudflare AI Gateway | Gateway credential only; stop at the Gateway boundary; never treat as OpenAI credential |
-| `x-chatgpt-relay-authorization` | OpenCode config/secret injection | Deno relay | Relay credential only; validate at relay; never forward to Codex |
-| `cf-aig-metadata` | Existing OpenCode/Gateway configuration | Cloudflare AI Gateway | Preserve existing behavior when configured; not an authentication header and not a required OAuth substitute |
+| `cf-aig-authorization` | Plugin `config` hook using resolved configuration | Cloudflare AI Gateway | Gateway credential only; stop at the Gateway boundary; never treat as OpenAI credential |
+| `x-chatgpt-relay-authorization` | Plugin `config` hook using resolved configuration | Deno relay | Relay credential only; validate at relay; never forward to Codex |
+| `cf-aig-metadata` | Plugin `config` hook using existing Gateway configuration | Cloudflare AI Gateway | Preserve existing behavior when configured; not an authentication header and not a required OAuth substitute |
 | `X-OpenAI-Fedramp` | OpenCode, only when its applicability is established | Codex/OpenAI upstream | Do not infer or add it for an unverified account mode |
 | `x-openai-internal-codex-residency` | No producer in the initial scope | None in the initial scope | Do not add it by inference |
 | `x-relay-authorization` | Untrusted caller input | None | Sanitize/remove; never accept for authentication |
@@ -191,14 +274,34 @@ routing metadata required by the selected OpenCode request contract.
 
 ### 6.1 OpenCode to Gateway
 
-OpenCode uses `provider: openai` and sends the Responses request through the
-Cloudflare AI Gateway Custom Provider endpoint configured as `options.baseURL`.
-The Gateway Custom Provider's configured origin is:
+OpenCode uses `provider: openai`. The plugin `config` hook sets the exact
+Cloudflare AI Gateway Custom Provider route as `options.baseURL`:
 
 ```text
-https://cf-ai-gw-relay.yohi.deno.net/v1
+https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway-id}/custom-{provider-slug}
 ```
 
+The route construction policy is normative:
+
+```text
+options.baseURL =
+  <gateway-origin>/v1/<account-id>/<gateway-id>/custom-<provider-slug>
+
+AI SDK appends:
+  /responses
+
+Gateway request path:
+  .../custom-<provider-slug>/responses
+
+Custom Provider base_url:
+  https://cf-ai-gw-relay.yohi.deno.net/v1
+
+Relay request:
+  POST /v1/responses
+```
+
+Neither `/v1/responses` nor `/responses` may be included in
+`options.baseURL`, and the config hook MUST NOT append either suffix itself.
 The custom-provider route must preserve the request method, request body,
 authorization, account routing metadata, response body, and abort signal. The
 Gateway auth header and relay auth header remain control credentials for their
@@ -224,6 +327,20 @@ not established by the transport spike remain under SRG-035.
 - Do not add retry loops, caching, or payload persistence.
 - Do not add a generic `/upstream/*` contract.
 - Do not perform plugin-side body rewriting to choose a production model or protocol.
+- Treat the public `config` hook as the sole plugin-side transport-routing owner.
+- Do not use a global fetch interposer to route the same OpenAI request.
+
+### 6.4 Legacy global fetch interposer
+
+`installFetchInterposer()`, `buildGatewayUrl()`, and `request-rewrite.ts` remain
+the current source implementation's legacy transport path until a later
+implementation change. Their existing `/v1/responses` URL construction is not
+the target `options.baseURL` shape.
+
+The implementation plan may specify whether those legacy symbols are deleted,
+disabled, or reduced to a non-routing responsibility. It MUST not select global
+fetch interception as an alternative transport owner or allow it to run in
+parallel with the config hook.
 
 ## 7. Error Ownership
 
@@ -232,6 +349,7 @@ Errors are owned by the boundary that can classify them without guessing:
 | Error | Owning boundary |
 | --- | --- |
 | `UNKNOWN_MODEL` or model resolution failure | OpenCode model-resolution boundary |
+| Plugin configuration, route construction, or control-header injection failure | OpenCode plugin `config` hook / plugin configuration boundary |
 | Cloudflare authentication failure | Cloudflare AI Gateway boundary |
 | Relay authentication failure | Deno relay boundary |
 | OpenAI/Codex OAuth authentication failure | Codex/OpenAI upstream authentication boundary |
@@ -249,6 +367,10 @@ no OAuth token extraction fallback
 The plugin must not misclassify a Gateway or relay error as a successful
 upstream response, and it must not translate an authentication error into a
 different credential flow.
+
+The config hook must fail closed when required configuration or control
+credentials cannot be resolved. It must not leave a direct upstream route or a
+second fetch-interception fallback active after a configuration failure.
 
 ## 8. Managed Residency
 
@@ -379,6 +501,11 @@ Cloudflare settings, or writing-plans artifacts.
 SRG-022 is ready for re-review when all of the following remain true:
 
 - Provider identity is `openai`.
+- The public OpenCode extension point is `Hooks.config(input: Config) => Promise<void>` on the target OpenCode 1.18.31 runtime.
+- The config hook sets `config.provider.openai.options.baseURL` to the Gateway route ending at `custom-<provider-slug>`, with no `/responses` suffix.
+- The AI SDK-owned `/responses` suffix and the Custom Provider `base_url` together produce relay `POST /v1/responses`.
+- The config hook merges `cf-aig-authorization` and `x-chatgpt-relay-authorization`, plus the existing Gateway control headers, into `options.headers`.
+- Global `fetch` interception is not a selected transport owner and cannot run as a parallel routing path.
 - ChatGPT OAuth is acquired, stored, refreshed, and injected by OpenCode.
 - PAT architecture is removed from the current design and marked superseded only in history.
 - `cf-aig-authorization` has explicit Gateway ownership and termination.
@@ -390,3 +517,9 @@ SRG-022 is ready for re-review when all of the following remain true:
 - Stale credential, Gateway-route, Gateway-auth, relay-route, and relay-auth blockers are not current design blockers.
 - SRG-035 remains waiting on SRG-022.
 - `writing-plans` has not started and remains blocked.
+
+Any future implementation plan and its tests MUST preserve the extension-point,
+route-construction, header-ownership, error-boundary, fail-closed, streaming,
+and no-retry/no-cache/no-payload-persistence constraints in this document. The
+plan may choose only the concrete source patch for migrating away from the
+legacy interposer; it may not choose a different routing mechanism.
