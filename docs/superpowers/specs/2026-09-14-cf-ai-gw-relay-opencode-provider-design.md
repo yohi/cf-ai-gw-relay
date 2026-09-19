@@ -11,7 +11,7 @@ Current gate state:
 
 ```text
 SRG-022: READY FOR RE-REVIEW
-SRG-035: WAITING ON SRG-022
+SRG-035: ACTIVE / UNRESOLVED
 writing-plans: BLOCKED
 production implementation: NOT STARTED
 ```
@@ -481,8 +481,8 @@ still `POST /v1/responses`.
 
 ## 11. SRG-035 Boundary
 
-SRG-035 has not started. It remains the owner of the following three deferred
-decisions:
+SRG-035 is active but unresolved. It remains the owner of the following three
+deferred decisions:
 
 1. Final production Codex model, including any `model.api.id` and wire model ID.
 2. Authenticated request/response protocol characterization after upstream dispatch.
@@ -491,6 +491,20 @@ decisions:
 These are not SRG-022 defects. SRG-022 only establishes the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed
 policy needed before SRG-035 can run.
+
+### 11.1 Characterization attempt status
+
+The first characterization attempt stopped before an authenticated request was
+sent. The process-local OpenCode configuration probe used malformed JSON, and
+OpenCode expanded `{env:...}` references before reporting the parse error. The
+probe was therefore treated as a credential-safety failure rather than runtime
+protocol evidence.
+
+No conclusion was added for the production model, authenticated request or
+response shape, streaming or SSE behavior, or tools behavior. The affected
+Gateway and relay credentials must be rotated before any authenticated probe is
+repeated. Until that occurs, SRG-035 remains unresolved and `writing-plans`
+remains blocked.
 
 ## 12. Scope and Definition of Done
 
@@ -515,7 +529,8 @@ SRG-022 is ready for re-review when all of the following remain true:
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
 - The validation model is explicitly non-production.
 - Stale credential, Gateway-route, Gateway-auth, relay-route, and relay-auth blockers are not current design blockers.
-- SRG-035 remains waiting on SRG-022.
+- SRG-035 is active and remains unresolved pending authenticated protocol
+  characterization.
 - `writing-plans` has not started and remains blocked.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
