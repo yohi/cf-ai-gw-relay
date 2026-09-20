@@ -29,6 +29,12 @@ The required order remains:
 7. writing-plans
 ```
 
+SRG-035 reviewer confirmation approves the target-runtime protocol
+characterization recorded here. It does not approve the current plugin source as
+already migrated, authorize production readiness, or replace the implementation
+validation required by the later writing plan. The current source remains the
+legacy fetch-interposer implementation described below.
+
 ## 1. Architecture Decision
 
 OpenCode uses its built-in `openai` provider and its built-in ChatGPT OAuth
@@ -260,6 +266,13 @@ control credentials. The remaining `cf-aig-*` values preserve the existing
 Gateway control behavior. No global fetch interposer may inject a competing
 set of routing or control headers for the same OpenAI request. Header
 configuration is separate from the `provider.models` route owner.
+
+`cf-aig-collect-log-payload` preserves the existing Gateway observability
+configuration and may expose request payloads to the Gateway observability
+boundary. The implementation plan MUST preserve its explicit configuration
+control and document the applicable retention and access boundary. This design
+does not change the existing default or claim that Gateway observability is
+payload-free.
 
 ## 5. Header Boundary
 
@@ -583,6 +596,40 @@ provider.models hook
   -> relay POST /v1/responses
 ```
 
+### Evidence and implementation boundary
+
+The closure decision is about the selected target-runtime architecture, not the
+current repository implementation. The target-runtime probe loaded a
+process-local plugin using the public `provider.models` hook and observed the
+callback execution and effective `model.api.url`. The repository's current
+`plugin.ts` still starts `installFetchInterposer()`; that source path is not
+evidence that the target hook architecture is already implemented.
+
+The exact callback type and header-injection lifecycle belong to the installed
+OpenCode 1.18.31 host API and MUST be pinned during implementation validation.
+The implementation plan MUST specify all of the following without introducing a
+second routing owner:
+
+```text
+provider.models callback:
+  select only the fixed production model openai/gpt-5.6-luna
+  preserve model.api.id = gpt-5.6-luna
+  set model.api.url to the Gateway Custom Provider endpoint
+  fail closed when the target model or required route configuration is absent
+
+control-header path:
+  retain the existing Gateway and relay credential configuration ownership
+  preserve OpenCode-owned Authorization and ChatGPT-Account-Id
+  define the public hook-compatible injection seam before implementation
+```
+
+The characterization does not claim that the current package manifest already
+depends on `@ai-sdk/openai`. Version `3.0.88` is the AI SDK version observed in
+the target runtime and is recorded here as an architecture input. This revision
+does not add a dependency or change package metadata. Existing repository
+fixtures, including legacy payload fixtures, are not normative evidence for the
+target mapping and were not changed by this revision.
+
 1. Final production Codex model, including `model.api.id` and wire model ID.
 2. Authenticated request/response protocol characterization after upstream dispatch.
 3. Live response streaming, SSE, and tools characterization.
@@ -888,6 +935,31 @@ SRG-022: RESOLVED
 SRG-035: RESOLVED CANDIDATE — PENDING REVIEW
 writing-plans: BLOCKED — REVIEWER CONFIRMATION REQUIRED
 ```
+
+### 11.5 Evidence traceability
+
+The integrated observation was performed on 2026-09-20 with the following
+secret-safe record:
+
+```text
+target runtime: OpenCode 1.18.31
+validation command shape:
+  opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."
+process-local provider.models callback: EXECUTED
+model catalog: gpt-5.6-luna available
+Gateway and relay origins: REACHABLE
+credential checks: presence only; values not recorded
+observed path: Gateway -> POST /v1/responses -> Codex upstream
+observed upstream status: HTTP 200
+observed OpenCode result: non-empty; non-zero usage
+```
+
+No request payload, response content, credential, account identifier, or raw
+probe log is persisted in this repository. This bounded record makes the
+observation and its limitations reviewable without turning secrets or payloads
+into artifacts; it is not a replay fixture. The live public OpenCode run emitted
+`stream=true`, so non-stream behavior remains an implementation-validation item,
+not a claim of separately observed non-stream output.
 
 Direct fallback, retry loops, credential extraction, private OpenCode APIs, and
 silent credential substitution remain prohibited.
