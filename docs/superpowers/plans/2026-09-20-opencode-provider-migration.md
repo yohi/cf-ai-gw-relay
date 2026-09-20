@@ -23,6 +23,14 @@ stream, and tool continuations.
 **Tech Stack:** TypeScript, `@opencode-ai/plugin` 1.18.31, `@opencode-ai/sdk/v2`
 model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
+**Pre-implementation gate:** `BLOCKED` pending the exact protected acceptance
+credential-provisioning contract and the design-to-plan re-review. No Task 1
+through Task 8 may start until an organization-managed ephemeral runner with
+the `protected-opencode-oauth` label is available, its runner provisioning
+evidence is recorded, and a fresh review marks this plan `READY`. If that
+prerequisite cannot be provided, stop with `BLOCKED / DESIGN RE-APPROVAL
+REQUIRED`; do not choose a different credential source during implementation.
+
 ## Global Constraints
 
 - Target runtime is OpenCode `1.18.31`; pin implementation validation to that
@@ -47,6 +55,17 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 - OpenCode exclusively acquires, stores, refreshes, and injects ChatGPT OAuth.
   The plugin and relay must not extract, inspect for ownership, persist,
   refresh, substitute, or log it.
+- Protected acceptance runs only on an ephemeral organization-managed runner
+  with label `protected-opencode-oauth`. The runner provisioning service mounts
+  the native OpenCode 1.18.31 auth store at
+  `$HOME/.local/share/opencode/auth.json` through a read-write job-scoped
+  encrypted volume before the workflow starts. Any refresh remains inside that
+  volume and is never synchronized back by the workflow. The workflow must not
+  receive the OAuth state as a GitHub secret, environment value, command
+  argument, artifact, cache, or serialized file; it must not parse the store.
+  Missing runner admission, mount, ownership, permissions, or `opencode auth
+  list` recognition is a hard blocked prerequisite with no PAT or OAuth-token
+  extraction fallback.
 - `chat.headers` configures `cf-aig-authorization`,
   `x-chatgpt-relay-authorization`, `cf-aig-collect-log`,
   `cf-aig-collect-log-payload`, `cf-aig-metadata`, `cf-aig-skip-cache`, and
@@ -96,12 +115,15 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   `src/request-rewrite.ts` with their routing tests after the plugin no longer
   imports them.
 - Modify `apps/deno-relay/relay_test.ts` for explicit non-stream Responses JSON
-  byte/header pass-through; change `apps/deno-relay/relay.ts` only if that
-  regression test exposes a direct-forwarding defect.
+  byte/header pass-through and the existing streaming/cancellation/tool
+  regressions. This task does not modify `apps/deno-relay/relay.ts`; a failing
+  characterization is a plan blocker that requires a separately approved
+  relay defect task.
 - Create `.github/scripts/opencode_provider_acceptance_test.ts`; modify
   `.github/workflows/acceptance.yml`, `docs/configuration.md`, and
   `docs/operations.md` for a secret-safe, manually dispatched OpenCode
-  acceptance gate and the Gateway payload-observability boundary.
+  acceptance gate on `protected-opencode-oauth`, explicit Gateway/relay
+  boundary probes, and the Gateway payload-observability boundary.
 - Modify `SPEC.md`, `README.md`, `README.ja.md`,
   `packages/opencode-plugin/README.md`, and the design document after migration
   so canonical documentation distinguishes the migrated current route from the
@@ -143,7 +165,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   expect(pkg.dependencies["@ai-sdk/openai"]).toBeUndefined();
   ```
 
-- [ ] **Step 2: Run the focused test to confirm the old range fails it**
+- [ ] **Step 2: RED — run the focused test to confirm the old range fails it**
 
   Run from `packages/opencode-plugin`:
 
@@ -155,7 +177,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   Expected: FAIL because the current range accepts `1.18.29` and the package
   still resolves `@opencode-ai/plugin` 1.18.29.
 
-- [ ] **Step 3: Pin the host package and supported range**
+- [ ] **Step 3: Minimum GREEN — pin the host package and supported range**
 
   Set `@opencode-ai/plugin` in `devDependencies` to exact `1.18.31`, update the
   lockfile through `npm install --package-lock-only --ignore-scripts`, and set
@@ -167,7 +189,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   export const SUPPORTED_OPENCODE_RANGE = "1.18.31";
   ```
 
-- [ ] **Step 4: Typecheck the public callback surface**
+- [ ] **Step 4: GREEN — typecheck the public callback surface**
 
   Create `src/hooks.ts` so TypeScript compiles the exact public callback types
   from the pinned package. Later tasks must use these aliases instead of
@@ -189,7 +211,10 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
   Expected: PASS using only declarations provided by OpenCode 1.18.31.
 
-- [ ] **Step 5: Commit the pinned contract**
+- [ ] **Step 5: Record the refactor decision and commit the pinned contract**
+
+  Refactor decision: none. The callback aliases remain in `src/hooks.ts` so all
+  later tasks consume the pinned host declarations without recreating them.
 
   ```bash
   git add packages/opencode-plugin/package.json packages/opencode-plugin/package-lock.json packages/opencode-plugin/src/host-version.ts packages/opencode-plugin/src/hooks.ts packages/opencode-plugin/test/host-version.test.ts packages/opencode-plugin/test/package-consistency.test.ts
@@ -234,7 +259,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   Add rejection cases for provider ID `anthropic` and an OpenAI provider missing
   `gpt-5.6-luna`.
 
-- [ ] **Step 2: Run focused tests to confirm they fail**
+- [ ] **Step 2: RED — run focused tests to confirm they fail**
 
   ```bash
   npm test -- --run test/gateway-url.test.ts test/provider-models.test.ts
@@ -243,7 +268,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   Expected: FAIL because `buildGatewayModelUrl()` and `createProviderModels()`
   do not exist.
 
-- [ ] **Step 3: Implement the suffix-free URL builder**
+- [ ] **Step 3: Minimum GREEN — implement the suffix-free URL builder**
 
   Preserve `buildGatewayUrl()` only until Task 4 removes its last caller. Add
   the model URL helper with the existing allowlisted base origin and one
@@ -258,7 +283,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   }
   ```
 
-- [ ] **Step 4: Implement the public provider callback**
+- [ ] **Step 4: Minimum GREEN — implement the public provider callback**
 
   In `provider-models.ts`, reject a non-OpenAI provider or a missing target
   model with `PluginConfigurationError`. Clone only
@@ -280,11 +305,22 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   };
   ```
 
-- [ ] **Step 5: Verify and commit the route owner**
+- [ ] **Step 5: GREEN — verify the route owner**
 
   ```bash
   npm run typecheck
   npm test -- --run test/gateway-url.test.ts test/provider-models.test.ts
+  ```
+
+  Expected: PASS with the suffix-free Gateway URL and exactly one fixed model
+  owner.
+
+- [ ] **Step 6: Record the refactor decision and commit the route owner**
+
+  Refactor decision: none. Keep URL construction and model selection in the two
+  named helpers; do not introduce another route owner or a compatibility alias.
+
+  ```bash
   git add packages/opencode-plugin/src/gateway-url.ts packages/opencode-plugin/src/provider-models.ts packages/opencode-plugin/test/gateway-url.test.ts packages/opencode-plugin/test/provider-models.test.ts
   git commit -m "feat: add OpenCode provider model routing"
   ```
@@ -295,8 +331,10 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
 - Create: `packages/opencode-plugin/src/control-headers.ts`
 - Create: `packages/opencode-plugin/test/control-headers.test.ts`
-- Modify: `packages/opencode-plugin/src/config.ts` only if the typed hook needs
-  a read-only configuration type adjustment
+- Modify: `packages/opencode-plugin/test/config.test.ts` for the existing
+  configuration-precedence assertions
+- Do not modify: `packages/opencode-plugin/src/config.ts`; consume its existing
+  `ResolvedConfig` type read-only
 
 **Interfaces:**
 
@@ -333,7 +371,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   `x-openai-internal-codex-residency` nor `X-OpenAI-Fedramp` nor changes either
   header when the host already supplied it.
 
-- [ ] **Step 2: Run the focused test to confirm it fails**
+- [ ] **Step 2: RED — run the focused test to confirm it fails**
 
   ```bash
   npm test -- --run test/control-headers.test.ts
@@ -341,7 +379,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
   Expected: FAIL because the `chat.headers` hook has not been implemented.
 
-- [ ] **Step 3: Implement model-scoped header injection**
+- [ ] **Step 3: Minimum GREEN — implement model-scoped header injection**
 
   Move `METADATA_HEADER_VALUE` and the exact seven control values into
   `control-headers.ts`. Assign only those lower-case control-header keys on the
@@ -357,7 +395,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
     : "false";
   ```
 
-- [ ] **Step 4: Verify header isolation and configuration precedence**
+- [ ] **Step 4: GREEN — verify header isolation and configuration precedence**
 
   Add tests proving the hook receives the exact resolved configuration for both
   credential precedence paths and never writes OpenCode-owned headers. Keep
@@ -371,10 +409,14 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
   Expected: PASS; no test fixture contains a real credential or request body.
 
-- [ ] **Step 5: Commit the public header seam**
+- [ ] **Step 5: Record the refactor decision and commit the public header seam**
+
+  Refactor decision: none. Keep the existing `ResolvedConfig` producer and
+  isolate the public `chat.headers` consumer in `control-headers.ts`; do not
+  alter configuration resolution or add an OAuth-facing seam.
 
   ```bash
-  git add packages/opencode-plugin/src/control-headers.ts packages/opencode-plugin/test/control-headers.test.ts packages/opencode-plugin/src/config.ts packages/opencode-plugin/test/config.test.ts
+  git add packages/opencode-plugin/src/control-headers.ts packages/opencode-plugin/test/control-headers.test.ts packages/opencode-plugin/test/config.test.ts
   git commit -m "feat: inject Gateway control headers through OpenCode"
   ```
 
@@ -418,7 +460,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   expect(globalThis.fetch).toBe(fetchBeforeActivation);
   ```
 
-- [ ] **Step 2: Run the integration test to confirm the interposer fails it**
+- [ ] **Step 2: RED — run the integration test to confirm the interposer fails it**
 
   ```bash
   npm test -- --run test/plugin.test.ts
@@ -427,7 +469,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   Expected: FAIL because the current plugin returns `{}` and mutates global
   `fetch` after successful activation.
 
-- [ ] **Step 3: Integrate one resolved configuration into both hooks**
+- [ ] **Step 3: Minimum GREEN — integrate one resolved configuration into both hooks**
 
   Retain host validation first, resolve configuration exactly once, then return
   the two selected public hooks. Do not defer configuration to a request-time
@@ -442,7 +484,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   };
   ```
 
-- [ ] **Step 4: Remove every legacy routing symbol and its tests**
+- [ ] **Step 4: Minimum GREEN — remove every legacy routing symbol and its tests**
 
   Delete the three legacy source files and their tests. Remove their exports
   from `index.ts`; export `buildGatewayModelUrl`, `createProviderModels`,
@@ -455,12 +497,24 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
   Expected: no matches.
 
-- [ ] **Step 5: Run the full plugin gate and commit**
+- [ ] **Step 5: GREEN — run the full plugin gate**
 
   ```bash
   npm run typecheck
   npm test
   npm run build
+  ```
+
+  Expected: PASS, with no global mutation and no legacy routing symbol on the
+  selected source path.
+
+- [ ] **Step 6: Record the refactor decision and commit the owner migration**
+
+  Refactor decision: none. The selected hooks remain the only routing and
+  control-header owners; do not retain a compatibility wrapper around the
+  deleted interposer.
+
+  ```bash
   git add packages/opencode-plugin/src packages/opencode-plugin/test
   git commit -m "refactor: remove legacy OpenCode fetch routing"
   ```
@@ -470,7 +524,7 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 **Files:**
 
 - Modify: `apps/deno-relay/relay_test.ts`
-- Modify only if a new test fails: `apps/deno-relay/relay.ts`
+- Do not modify: `apps/deno-relay/relay.ts`
 
 **Interfaces:**
 
@@ -481,13 +535,15 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   removes relay-only, Gateway-only, hop-by-hop, and forwarding request headers
   before the fixed Codex upstream.
 
-- [ ] **Step 1: Add a failing non-stream Responses response test**
+- [ ] **Step 1: Add characterization/regression coverage for non-stream Responses**
 
   Create an authenticated relay request with an opaque `Authorization`,
   `ChatGPT-Account-Id`, Gateway headers, and relay credential. Return synthetic
   `application/json` upstream responses with status `200` and `429` plus opaque,
   non-secret Responses-shaped bodies. Assert each status/body remains unchanged
-  so an upstream protocol error remains visible at its owning boundary.
+  so an upstream protocol error remains visible at its owning boundary. This is
+  a characterization/regression test for the already selected direct-forwarding
+  contract, not a RED test for a planned relay source change.
 
   ```ts
   const body = '{"object":"response","status":"completed"}';
@@ -499,15 +555,15 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   assertEquals(upstream.headers.get("cf-aig-authorization"), null);
   ```
 
-- [ ] **Step 2: Run the relay test to confirm the current behavior**
+- [ ] **Step 2: Confirm the characterization is GREEN before source changes**
 
   ```bash
   deno test apps/deno-relay/relay_test.ts
   ```
 
-  Expected: PASS if the existing direct-forwarding relay satisfies the new
-  regression. If it fails, preserve byte-for-byte body forwarding and repair
-  only the failing header or lifecycle behavior in `relay.ts`.
+  Expected before any production change: PASS. If it fails, stop Task 5 and
+  record the exact failing assertion as a separate relay defect requiring a new
+  approved RED/GREEN task; do not edit `relay.ts` under this plan.
 
 - [ ] **Step 3: Add Responses stream and tool-continuation regression fixtures**
 
@@ -531,10 +587,13 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   Expected: PASS with no generic `/upstream/*` test enabled and no retry,
   caching, body normalization, or payload persistence introduced.
 
-- [ ] **Step 5: Commit relay contract coverage**
+- [ ] **Step 5: Record the refactor decision and commit relay contract coverage**
+
+  Refactor decision: none. The relay source remains unchanged because this task
+  locks existing direct forwarding rather than introducing a new implementation.
 
   ```bash
-  git add apps/deno-relay/relay_test.ts apps/deno-relay/relay.ts
+  git add apps/deno-relay/relay_test.ts
   git commit -m "test: lock relay Responses forwarding contract"
   ```
 
@@ -550,42 +609,110 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
 **Interfaces:**
 
-- Consumes protected environment values for the Gateway and relay controls plus
-  an already-authenticated OpenCode runtime; it must not read or print OAuth
-  credential values.
-- Produces `CommandResult = { code: number; stdout: string; stderr: string }`
-  and
-  `CommandRunner = (command: readonly string[], env: Readonly<Record<string, string | undefined>>) => Promise<CommandResult>`.
+- Consumes the existing protected Gateway and relay control values plus the
+  native OpenCode auth store already mounted by the
+  `protected-opencode-oauth` runner; it must not read or print OAuth credential
+  values.
+- Produces the following process and boundary interfaces:
+
+  ```ts
+  type CommandResult = {
+    readonly code: number | null;
+    readonly signal: string | null;
+    readonly stdout: string;
+    readonly stderr: string;
+  };
+
+  type RunningCommand = {
+    readonly result: Promise<CommandResult>;
+    readonly cancel: (reason?: string) => Promise<void>;
+  };
+
+  type CommandRunner = (
+    command: readonly string[],
+    env: Readonly<Record<string, string | undefined>>,
+    options: {
+      readonly signal: AbortSignal;
+      readonly maxOutputBytes: number;
+    },
+  ) => Promise<RunningCommand>;
+
+  type BoundaryScenario =
+    | "valid-gateway-invalid-relay"
+    | "invalid-gateway-valid-relay";
+
+  type BoundaryProbeResult = {
+    readonly status: number;
+    readonly responseClass: "gateway-rejected" | "relay-rejected";
+  };
+
+  type BoundaryProbe = (
+    scenario: BoundaryScenario,
+    env: Readonly<Record<string, string | undefined>>,
+  ) => Promise<BoundaryProbeResult>;
+
+  type AcceptanceDependencies = {
+    readonly env: Readonly<Record<string, string | undefined>>;
+    readonly run: CommandRunner;
+    readonly probe: BoundaryProbe;
+  };
+
+  runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
+  ```
+
+  `CommandRunner` starts argv directly without a shell, captures stdout/stderr
+  with a fixed bound, and never inherits them to workflow output. Its
+  `AbortSignal` invokes `cancel` at most once. `cancel` sends SIGTERM, waits
+  two seconds, sends SIGKILL if needed, and resolves the result with the
+  terminating signal; it never retries or starts a fallback command. Pass
+  `maxOutputBytes = 65536` for each stream; exceeding the bound fails the
+  acceptance result rather than being treated as a successful truncation.
 - Produces
-  `runProviderAcceptance(deps: { env: Readonly<Record<string, string | undefined>>; run: CommandRunner }): Promise<void>`
-  and
-  `deno run --allow-run --allow-env .github/scripts/opencode_provider_acceptance.ts`,
-  which exit non-zero if the required OpenCode 1.18.31 route, direct-forwarding
-  stream, tool continuation, or fail-closed boundary is not observed.
+  `deno run --allow-run --allow-env --allow-net .github/scripts/opencode_provider_acceptance.ts`,
+  which exits non-zero unless the protected auth-store precondition, OpenCode
+  1.18.31 model route, streamed completion, and both explicit boundary probes
+  pass. Non-stream forwarding, cancellation, tool continuation, direct-route
+  exclusion, and invalid configuration are owned by Tasks 4 and 5 as shown in
+  the design document's verification matrix.
 - Produces no stored transcript, request payload, response content, account
   identifier, or secret.
 
-- [ ] **Step 1: Write the failing acceptance-command contract**
+- [ ] **Step 1: RED — write the failing acceptance-command contract**
 
-  Add `opencode_provider_acceptance_test.ts` before the runner exists. Define
-  `CommandRunner` as a dependency that returns only process status and bounded
-  JSON output; test all required configuration names and secret presence without
-  printing their values. The command must invoke the fixed model, route with a
-  process-local plugin configuration, and use a constant non-sensitive prompt.
+  Add `opencode_provider_acceptance_test.ts` before the runner exists. Test the
+  exact `CommandRunner`, `BoundaryProbe`, and `AcceptanceDependencies` seams,
+  including cancellation, bounded output, required configuration names, and
+  the two boundary scenarios. Use only non-secret sentinels in fake values.
+  The OpenCode command must invoke the fixed model with a constant prompt and
+  must use a process-local plugin configuration whose JSON contains no
+  `{env:...}` references.
 
   ```ts
   const testEnvironment = {
     RELAY_CF_ACCOUNT_ID: "acct",
     RELAY_CF_GATEWAY_ID: "gateway",
-    RELAY_CF_AIG_TOKEN: "gateway-test-token",
-    RELAY_SECRET: "relay-test-token",
+    RELAY_CF_PROVIDER_SLUG: "relay-chatgpt",
+    RELAY_CF_AIG_TOKEN: "gateway-sentinel",
+    RELAY_SECRET: "relay-sentinel",
   };
-  const run: CommandRunner = async (command) => {
+  const run: CommandRunner = async (command, _env, _options) => {
     assertEquals(command[0], "opencode");
     assert(command.includes("openai/gpt-5.6-luna"));
-    return { code: 0, stdout: '{"usage":{"total":1}}', stderr: "" };
+    return {
+      result: Promise.resolve({
+        code: 0,
+        signal: null,
+        stdout: '{"modelID":"gpt-5.6-luna","output":"OK","usage":{"total_tokens":1}}',
+        stderr: "",
+      }),
+      cancel: async () => undefined,
+    };
   };
-  await runProviderAcceptance({ env: testEnvironment, run });
+  const probe: BoundaryProbe = async (scenario) => scenario ===
+      "valid-gateway-invalid-relay"
+    ? { status: 401, responseClass: "relay-rejected" }
+    : { status: 403, responseClass: "gateway-rejected" };
+  await runProviderAcceptance({ env: testEnvironment, run, probe });
 
   const command = [
     "opencode",
@@ -599,40 +726,85 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   ```
 
   The test must also require rejection for a missing configuration name, a
-  non-zero command status, or JSON output with zero usage. The runner may check
-  exit status and bounded JSON structure such as non-zero usage, but it must not
-  print command output or persist it.
+  non-zero command status, a terminating signal, empty output, zero usage, a
+  wrong model ID, a wrong boundary status/class, or a command that does not
+  expose a cancel handle. The runner may inspect bounded JSON in memory, but it
+  must not print command output or persist it. Add a hanging fake process that
+  records `cancel` calls; abort its signal and assert one SIGTERM/SIGKILL
+  cancellation path, no retry invocation, and a terminating signal in the
+  result.
 
-- [ ] **Step 2: Extend the protected workflow prerequisites**
+- [ ] **Step 2: RED confirmation and protected workflow prerequisites**
 
-  Add Node.js 22 and the pinned OpenCode CLI installation to
-  `.github/workflows/acceptance.yml`. Require a protected mechanism that makes
-  the already-authorized OpenCode credential available to that runtime without
-  echoing, serializing, or uploading it. If the protected environment cannot
-  supply an OpenCode-owned OAuth session without exporting its credential, stop
-  this task and record `DESIGN RE-APPROVAL REQUIRED`; do not add a PAT or
-  OAuth-token extraction path. Build the plugin in the job, construct the
-  process-local plugin config with `JSON.stringify`, and pass the configuration
-  only as valid JSON without `{env:...}` references. The plugin continues to
-  read its control configuration from the protected process environment.
+  Run the focused Deno test to confirm the old interface is absent and the
+  contract is RED. Then modify `.github/workflows/acceptance.yml` to use
+  `runs-on: [self-hosted, protected-opencode-oauth]`, retain the
+  `protected-acceptance` Environment, install Node.js 22 and pinned OpenCode
+  `1.18.31`, and build the plugin in the job.
 
-- [ ] **Step 3: Implement bounded acceptance assertions**
+  The runner provisioning service MUST have mounted
+  `$HOME/.local/share/opencode/auth.json` before the workflow starts. Add a
+  secret-free precondition using `opencode --version` and `opencode auth list`;
+  require version `1.18.31`, exit code 0, and recognition of the `OpenAI oauth`
+  entry without printing command output.
+  The workflow must not receive OAuth state through GitHub secrets, env vars,
+  command arguments, generated files, artifacts, or caches. If runner
+  admission, mount, ownership, permissions, or recognition fails, stop with
+  `BLOCKED / DESIGN RE-APPROVAL REQUIRED`; do not add PAT or OAuth-token
+  extraction. Pass only the secret-free process-local plugin configuration as
+  valid `JSON.stringify` output, while the plugin reads existing Gateway/relay
+  controls from the protected process environment.
 
-  Make the script verify all of the following through command status, selected
-  model ID, and non-sensitive boundary observations: Gateway authentication,
-  relay authentication, no direct `chatgpt.com` route, stream completion,
-  `function_call`/`function_call_output` continuation, cancellation propagation,
-  non-stream relay JSON forwarding, and fail-closed invalid configuration.
-  Redact all subprocess output on both success and failure; report only named
-  check outcomes and exit status.
+  The `protected-acceptance` GitHub Environment gates manual dispatch and
+  supplies only the existing Gateway/relay controls; it is not an OAuth state
+  store and performs no OAuth retrieval. The runner manager's pre-job volume
+  mount is the sole credential-provisioning mechanism.
+
+  The workflow inputs for this gate are explicit: protected-acceptance
+  variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and
+  `RELAY_CF_PROVIDER_SLUG`; existing plugin secrets `RELAY_CF_AIG_TOKEN` and
+  `RELAY_SECRET`; and the existing non-OAuth acceptance variables retained for
+  the relay checks. The job uses these existing plugin names in memory and
+  never maps or persists the native OpenCode auth store. No control value is
+  printed.
+
+  Record the runner owner's bounded attestation before proceeding: runner label,
+  `opencode --version`, native-store path, file owner/mode check result,
+  `opencode auth list` exit status/provider label, encrypted-volume lifetime,
+  teardown result, and rotation/revocation owner. The attestation must contain
+  no auth-store bytes, token, account identifier, command transcript, or request
+  payload.
+
+- [ ] **Step 3: Minimum GREEN — implement bounded acceptance assertions**
+
+  Implement the script in this order: verify the runner auth-store
+  precondition; run `BoundaryProbe("valid-gateway-invalid-relay")` and require
+  HTTP 401 with the relay rejection class; run
+  `BoundaryProbe("invalid-gateway-valid-relay")` and require HTTP 401/403 with
+  the Gateway rejection class; then run the fixed OpenCode command and require
+  the selected model ID, non-empty output, non-zero usage, no terminating
+  signal, and exit code 0 after the raw JSON event stream reaches EOF. Process
+  completion after EOF is the live stream-completion observation; do not require
+  the CLI to expose an upstream SSE event name.
+  The probe uses the exact non-sensitive body
+  `{"model":"gpt-5.6-luna","input":[],"stream":false}` and retains only
+  status/class. The command runner redacts/discards bounded output and reports
+  only named check outcomes and exit status.
+
+  Do not add live assertions for non-stream forwarding, cancellation, tool
+  choice, direct `chatgpt.com` exclusion, or invalid configuration here; those
+  are already owned by the deterministic interfaces in Tasks 4 and 5.
 
 - [ ] **Step 4: Document the payload and access boundary**
 
   In `docs/configuration.md` and `docs/operations.md`, keep
   `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` default `true`, state that payload logging
   is controlled at the Cloudflare Gateway boundary, and direct operators to
-  their Gateway retention/access policy. State that the repository does not
-  store payloads, raw probes, or OpenCode credentials.
+  their Gateway retention/access policy. Document the exact
+  `protected-opencode-oauth` runner prerequisite, the runner-managed native
+  auth-store mount, its job lifetime, cleanup, rotation/revocation owner, and
+  the fact that the workflow does not receive the OAuth state. State that the
+  repository does not store payloads, raw probes, or OpenCode credentials.
 
 - [ ] **Step 5: Validate workflow syntax and commit**
 
@@ -643,6 +815,12 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   git add .github/scripts/opencode_provider_acceptance.ts .github/scripts/opencode_provider_acceptance_test.ts .github/workflows/acceptance.yml docs/configuration.md docs/operations.md
   git commit -m "test: add protected OpenCode provider acceptance"
   ```
+
+  Expected: all acceptance unit tests and deterministic checks pass, the
+  workflow selects only `protected-opencode-oauth`, and no credential or raw
+  output appears in logs, artifacts, caches, fixtures, or summaries. Refactor
+  decision: none; this task adds only the bounded acceptance driver and its
+  explicitly owned probes.
 
 ## Task 7: Update Canonical Current-Path Documentation
 
@@ -706,10 +884,10 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
 **Files:**
 
-- Inspect: source, tests, workflow, package metadata, and canonical
+- Inspect only: source, tests, workflow, package metadata, and canonical
   documentation
-- Modify only if verification exposes an unimplemented requirement: the owning
-  source/test/documentation file from Tasks 1-7
+- Modify: none. A failed verification returns to the owning task and requires
+  a plan revision before any source or documentation repair.
 
 **Interfaces:**
 
@@ -746,35 +924,46 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
   through `chat.headers`. The relay may retain `x-relay-authorization` only in
   its untrusted-header sanitization denylist.
 
-- [ ] **Step 3: Run protected acceptance manually**
+- [ ] **Step 3: Run the protected acceptance manually**
 
-  Dispatch `.github/workflows/acceptance.yml` only after its protected
-  environment is configured. Verify the bounded results from Task 6 without
-  displaying secrets or raw request/response data. A missing host capability,
-  inability to inject headers through `chat.headers`, direct upstream request,
-  or failed control boundary blocks supported production use.
+  Dispatch `.github/workflows/acceptance.yml` only after the
+  `protected-opencode-oauth` runner admission, native auth-store mount, and
+  `opencode auth list` precondition are evidenced. Verify the bounded results
+  from Task 6 without displaying secrets or raw request/response data. A
+  missing host capability, inability to inject headers through `chat.headers`,
+  failed Gateway/relay boundary probe, or failed streamed completion blocks
+  supported production use. Do not add a live non-stream, cancellation, or
+  tool-choice assertion here.
 
-- [ ] **Step 4: Perform the design-to-plan consistency review**
+- [ ] **Step 4: Perform the design-to-plan consistency review without edits**
 
   Compare this implementation and all test outcomes against every global
   constraint at the top of this plan and §§1-12 of
   `docs/superpowers/specs/2026-09-14-cf-ai-gw-relay-opencode-provider-design.md`.
-  Record only the reviewed command names, runtime version, pass/fail status, and
-  bounded error category in canonical documentation. If any divergence changes
+  Produce only a review note containing command names, runtime version,
+  pass/fail status, and bounded error categories; Task 8 must not edit source,
+  tests, workflow, configuration, or documentation. If any divergence changes
   provider identity, credential architecture, public extension point, component
   boundary, security model, protocol owner, or SDK family/major version, record
-  `DESIGN RE-APPROVAL REQUIRED` and stop.
+  `DESIGN RE-APPROVAL REQUIRED`, stop, and return to the owning task for an
+  explicit plan revision.
 
-- [ ] **Step 5: Commit the verified migration result**
+- [ ] **Step 5: Hand off the verified migration result**
 
   ```bash
   git status --short
   git diff --check
-  git add apps packages .github SPEC.md README.md README.ja.md docs
-  git commit -m "feat: route OpenCode through Cloudflare Gateway provider"
   ```
 
+  Expected: Task 8 creates no catch-all source or documentation change and no
+  commit. It requests the fresh review only after every owning task has its own
+  verified commit boundary.
+
 ## Handoff
+
+Current handoff state is `BLOCKED`: production implementation MUST NOT start
+until the runner-provisioning attestation is available and a fresh
+design-to-plan review marks both documents `READY`.
 
 Request a fresh code review after Task 8. Do not claim supported production use
 unless the exact host contract, deterministic checks, protected acceptance, and

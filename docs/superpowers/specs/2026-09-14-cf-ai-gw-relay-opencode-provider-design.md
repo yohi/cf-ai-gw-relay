@@ -4,20 +4,25 @@
 
 This revision records the architecture validated by the target-runtime spike and
 the integrated SRG-035 protocol characterization. It is a design-document
-change only. It permits the next `writing-plans` stage, but it does not
-authorize source changes, tests, dependency changes, deployment changes,
-Cloudflare configuration changes, or production implementation.
+change only. The implementation plan has been generated, but the
+design-to-plan consistency review is currently blocked by the protected
+acceptance credential-provisioning and verification-ownership closure recorded
+below. This document does not authorize source changes, tests, dependency
+changes, deployment changes, Cloudflare configuration changes, or production
+implementation.
 
 Current gate state:
 
 ```text
 SRG-022: RESOLVED
 SRG-035: RESOLVED
-writing-plans: ALLOWED
-production implementation: NOT STARTED
+writing-plans: COMPLETED
+RG-001/RG-002/RG-003/RG-004: ADDRESSED IN THIS DOCUMENT/PLAN REVISION
+design-to-plan consistency review: BLOCKED pending fresh re-review
+production implementation: NOT STARTED and BLOCKED pending re-review
 ```
 
-The completed and permitted order is:
+The completed and required order is:
 
 ```text
 1. SRG-022 design update
@@ -26,8 +31,8 @@ The completed and permitted order is:
 4. SRG-035 protocol characterization
 5. SRG-035 = RESOLVED
 6. writing-plans
-7. design-to-plan consistency review
-8. production implementation after plan approval
+7. design-to-plan consistency review: BLOCKED pending fresh re-review
+8. production implementation only after a fresh review marks the plan READY
 ```
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
@@ -197,6 +202,74 @@ following are removed from the current design and MUST NOT be implemented:
 - PAT `whoami` hydration as a required production flow.
 - PAT permission gates or real-PAT pre-implementation blockers.
 - OAuth-token extraction fallback or conversion outside OpenCode.
+
+### 3.3 Protected acceptance credential provisioning
+
+Protected acceptance is an acceptance-only environment and is not a second
+production credential architecture. Its OpenCode-owned OAuth state is supplied
+through one fixed mechanism:
+
+```text
+GitHub Actions protected-acceptance job
+  -> ephemeral organization-managed runner
+     label: protected-opencode-oauth
+  -> runner provisioning service attaches a job-scoped encrypted volume
+  -> native OpenCode auth store at $HOME/.local/share/opencode/auth.json
+  -> OpenCode 1.18.31 built-in openai provider
+```
+
+The workflow MUST run only on the `protected-opencode-oauth` runner label. The
+runner provisioning service, not the workflow, is the credential source and
+injection boundary. It MUST attach the native auth store before the job starts,
+with owner-only permissions, and MUST NOT expose the store through a GitHub
+Environment variable, command argument, generated workflow file, artifact,
+cache, or log. The workflow MUST NOT parse the auth store or read an access or
+refresh token from it. OpenCode reads the store through its normal built-in
+authentication path; the plugin still sees only OpenCode-owned opaque request
+headers.
+
+The GitHub `protected-acceptance` Environment gates manual dispatch and exposes
+only the existing Gateway/relay control configuration. It does not store or
+retrieve the OpenCode OAuth state; the runner manager's pre-job volume mount is
+the sole acceptance provisioning mechanism.
+
+The target-runtime credential-safe observation on OpenCode `1.18.31` identified
+the native store as `~/.local/share/opencode/auth.json` through
+`opencode auth list`; only the provider label and path were observed, and no
+credential value was recorded. The acceptance prerequisite is pinned to this
+path and MUST fail closed if the file is absent, unreadable, owned by the wrong
+user, or not recognized by `opencode auth list`.
+
+The provisioning contract is:
+
+| Concern | Fixed decision |
+| --- | --- |
+| Credential owner | The OpenCode built-in `openai` provider and the authorized ChatGPT account; the runner manager only transports the native store for acceptance |
+| State source | Runner provisioning service's encrypted, job-scoped volume populated from the operator-managed OpenCode `1.18.31` native auth store |
+| GitHub retrieval | None; the workflow receives no OAuth secret and cannot retrieve, serialize, or parse the store |
+| OpenCode injection | Read-write job-scoped volume mounted at `$HOME/.local/share/opencode/auth.json` before `opencode` starts; refreshes remain inside the volume and are never synced back by the workflow |
+| Runner lifetime | One ephemeral runner instance and one acceptance job |
+| Cleanup | Runner teardown destroys the encrypted volume; the workflow removes only its temporary build/config files and uploads no runner state |
+| Rotation and revocation owner | The protected-acceptance environment owner rotates the native store through the OpenCode login lifecycle and revokes the associated ChatGPT session through the account owner; the runner manager replaces the volume before the next job |
+| Minimum permission | Manual dispatch approval for `protected-acceptance`, runner-label admission, `contents: read`, and read-only use of the existing Gateway/relay controls |
+| Existing acceptance controls | Protected non-OAuth variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and `RELAY_CF_PROVIDER_SLUG` plus existing plugin controls `RELAY_CF_AIG_TOKEN` and `RELAY_SECRET`; the job uses these existing names in memory and retains separate legacy acceptance inputs where needed |
+| Non-exposure boundary | No OAuth value may appear in stdout, stderr, command-line arguments, environment variables, artifacts, caches, fixtures, summaries, or subprocess diagnostics |
+
+If the organization cannot provide this exact runner provisioning contract and
+its credential-safe evidence before implementation, the result is
+`BLOCKED / DESIGN RE-APPROVAL REQUIRED`. No PAT, OAuth-token extraction,
+alternate OAuth client, GitHub secret copy, or direct-fetch fallback may be
+introduced to bypass that result. This is a hard prerequisite, not an
+implementation-time design choice.
+
+The required pre-implementation evidence is a bounded attestation from the
+runner provisioning owner containing only the runner label, OpenCode version,
+native-store path, file owner/mode check result, `opencode auth list` exit
+status/provider label, encrypted-volume job lifetime, teardown result, and
+rotation/revocation owner. It MUST contain no auth-store bytes, token, account
+identifier, command transcript, or request payload. Until this attestation is
+available, the plan remains blocked even though the provisioning mechanism is
+already selected.
 
 ## 4. Cloudflare and Relay Credentials
 
@@ -637,8 +710,9 @@ target mapping and were not changed by this revision.
 3. Live response streaming, SSE, and tools characterization.
 
 SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was being
-completed. The contract and its evidence are now resolved. `writing-plans` may
-start, but production implementation remains unstarted:
+completed. The contract and its evidence are now resolved. `writing-plans` is
+complete, but production implementation remains unstarted and blocked pending
+the protected acceptance and design-to-plan gates below:
 
 ### 11.1 SRG-035 closure contract
 
@@ -801,9 +875,10 @@ SDK family or major version
 The result MAY proceed to implementation validation without design re-approval
 only when it is limited to the same architecture, such as an exact wire field,
 fixture detail, helper split, or implementation-specific edge case. The
-integrated result satisfies the closure contract. `writing-plans` may start now.
-After an implementation plan is generated, the plan MUST undergo the
-design-to-plan consistency check in §12 before production implementation.
+integrated result satisfies the SRG-035 closure contract. `writing-plans` was
+subsequently generated and is complete, but production implementation remains
+blocked until the protected acceptance provisioning contract and the
+design-to-plan consistency check in §12 pass.
 
 These are not SRG-022 defects. SRG-022 established the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed
@@ -936,7 +1011,10 @@ The integrated result is:
 ```text
 SRG-022: RESOLVED
 SRG-035: RESOLVED
-writing-plans: ALLOWED
+writing-plans: COMPLETED
+RG-001/RG-002/RG-003/RG-004: ADDRESSED; fresh re-review pending
+design-to-plan consistency review: BLOCKED pending fresh re-review
+production implementation: NOT STARTED
 ```
 
 ### 11.5 Evidence traceability
@@ -961,8 +1039,9 @@ No request payload, response content, credential, account identifier, or raw
 probe log is persisted in this repository. This bounded record makes the
 observation and its limitations reviewable without turning secrets or payloads
 into artifacts; it is not a replay fixture. The live public OpenCode run emitted
-`stream=true`, so non-stream behavior remains an implementation-validation item,
-not a claim of separately observed non-stream output.
+`stream=true`, so non-stream behavior remains the Task 5 deterministic
+implementation-validation item, not a claim of separately observed non-stream
+output from the protected OpenCode run.
 
 ### 11.6 Post-characterization gate review (2026-09-20)
 
@@ -975,11 +1054,112 @@ production readiness, or protected acceptance.
 Direct fallback, retry loops, credential extraction, private OpenCode APIs, and
 silent credential substitution remain prohibited.
 
+### 11.7 Acceptance and deterministic verification ownership
+
+The protected acceptance gate does not own every protocol assertion. The
+following split is normative and closes the driver/observer boundary before
+implementation:
+
+```ts
+type CommandResult = {
+  readonly code: number | null;
+  readonly signal: string | null;
+  readonly stdout: string;
+  readonly stderr: string;
+};
+
+type RunningCommand = {
+  readonly result: Promise<CommandResult>;
+  readonly cancel: (reason?: string) => Promise<void>;
+};
+
+type CommandRunner = (
+  command: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  options: {
+    readonly signal: AbortSignal;
+    readonly maxOutputBytes: number;
+  },
+) => Promise<RunningCommand>;
+
+type BoundaryScenario =
+  | "valid-gateway-invalid-relay"
+  | "invalid-gateway-valid-relay";
+
+type BoundaryProbeResult = {
+  readonly status: number;
+  readonly responseClass: "gateway-rejected" | "relay-rejected";
+};
+
+type BoundaryProbe = (
+  scenario: BoundaryScenario,
+  env: Readonly<Record<string, string | undefined>>,
+) => Promise<BoundaryProbeResult>;
+
+type AcceptanceDependencies = {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly run: CommandRunner;
+  readonly probe: BoundaryProbe;
+};
+
+runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
+```
+
+`CommandRunner` MUST start the command without a shell, capture stdout and
+stderr with a fixed bound, and never inherit them to the workflow log. An
+`AbortSignal` abort MUST call `cancel` at most once. `cancel` sends SIGTERM,
+waits two seconds, sends SIGKILL if the process is still alive, and resolves the
+result with the terminating signal; it MUST NOT retry or launch a fallback
+command. The acceptance script may inspect the bounded output in memory to
+derive a named result, but MUST discard it after the result and MUST never
+persist or print it.
+
+The acceptance driver passes `maxOutputBytes = 65536` for each stream. Exceeding
+that bound is a failed acceptance result, not a truncation that may be treated
+as a successful completion.
+
+`BoundaryProbe` is the only live boundary observer. It sends a fixed,
+non-sensitive `POST /v1/responses` request through the configured Gateway
+Custom Provider route. For `valid-gateway-invalid-relay`, it uses the protected
+Gateway token and a fixed invalid relay sentinel; PASS is HTTP 401 with the
+relay's fixed `{"error":"unauthorized"}` response class. For
+`invalid-gateway-valid-relay`, it uses a fixed invalid Gateway sentinel and the
+protected relay token; PASS is a Gateway rejection (HTTP 401 or 403) that is
+not the relay's fixed unauthorized envelope. The probe retains only the status
+and response class, never the response body or credentials. These two negative
+controls, together with a successful OpenCode run, are the concrete observers
+for Gateway authentication and relay authentication; they do not introduce a
+second production route or credential flow.
+
+The ownership matrix is:
+
+| Requirement | Driver | Observation point / interface | Command | Expected PASS | Failure owner |
+| --- | --- | --- | --- | --- | --- |
+| OpenCode OAuth state available | Protected runner admission and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `~/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Runner provisioning owner; remain blocked, no fallback |
+| OpenCode 1.18.31 and model selection | Fixed CLI run | `CommandRunner`; bounded JSON summary containing selected model ID, non-empty output, and non-zero usage; process EOF is the completion observation | `opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."` | Exit code 0 with no terminating signal, model `gpt-5.6-luna`, and a completed streamed result | Plugin/provider-models or host compatibility owner |
+| Gateway authentication | `BoundaryProbe("valid-gateway-invalid-relay")` | HTTP status plus `responseClass` only | Fixed Gateway `POST /v1/responses` probe with valid Gateway token and invalid relay sentinel | HTTP 401 and `relay-rejected` | Gateway configuration or Gateway route owner |
+| Relay authentication | Valid OpenCode run plus both boundary probes | Successful OpenCode result and relay rejection class from `BoundaryProbe` | Same fixed run and probes | Valid run reaches a usable completion; invalid relay is rejected before upstream | Relay authentication or plugin header owner |
+| Stream completion | Fixed OpenCode CLI run | Bounded JSON event summary and process EOF from `CommandRunner` | Fixed OpenCode run above | Exit code 0, no terminating signal, non-empty output, and non-zero usage after the raw JSON event stream ends | Relay streaming/upstream owner |
+| Non-stream JSON forwarding | Synthetic relay request | Status, body bytes, and allowed headers in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Status/body/header forwarding is byte-preserving | Relay contract owner |
+| `function_call_output` continuation forwarding | Synthetic relay request | Raw request bytes and SSE bytes in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Function-call continuation body and response stream are unchanged | Relay contract owner |
+| Cancellation propagation | Synthetic downstream abort | `Request.signal`, upstream `AbortSignal`, and `ReadableStream.cancel` in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Upstream request and body are cancelled; no retry/fallback | Relay streaming owner |
+| No direct `chatgpt.com` route | Plugin integration and source ownership checks | `globalThis.fetch` identity, no legacy interposer symbol, and one `provider.models` owner | `npm test -- --run test/plugin.test.ts`; source grep in Task 8 | No global route mutation or second route owner | Plugin integration/host fail-closed owner |
+| Fail-closed invalid configuration | Plugin activation tests with missing route/control configuration | Rejection type, no returned hooks, and no direct route mutation | `npm test -- --run test/plugin.test.ts test/config.test.ts` | Configuration/host failure rejects before dispatch | Plugin configuration owner |
+
+Non-stream forwarding, tool continuation, cancellation, and direct-route
+exclusion therefore belong to deterministic tests and source-level ownership
+checks, not to a second live OpenCode transport. The previously recorded live
+SRG-035 tool continuation remains architecture evidence; the byte-preserving
+relay regression is the implementation gate. Task 6 MUST NOT claim to prove
+non-stream output, cancellation, or tool choice from the public OpenCode run
+surface. A future requirement for a new live tool-registration seam would
+require an explicit design review rather than an implementation-time guess.
+
 ## 12. Scope and Definition of Done
 
-This revision changes only this design document. It does not change production
-source, tests, dependencies, package metadata, lockfiles, CI, deployment,
-Cloudflare settings, or writing-plans artifacts.
+This design-and-plan correction changes only the two review documents. It does
+not change production source, tests, dependencies, package metadata, lockfiles,
+CI, deployment, Cloudflare settings, or runtime configuration.
 
 SRG-022 is resolved. SRG-035 is resolved. The
 selected architecture is defined by all of the following:
@@ -1009,7 +1189,12 @@ selected architecture is defined by all of the following:
 - `openai/gpt-5.6-sol` remains validation evidence only.
 - Gateway and relay authentication were validated without recording secret values.
 - SRG-035 satisfies the closure contract as `RESOLVED`.
-- `writing-plans` is allowed and has not started.
+- `writing-plans` is `COMPLETED`.
+- Protected acceptance uses only the `protected-opencode-oauth` ephemeral runner
+  and runner-managed native OpenCode auth volume defined in §3.3; inability to
+  provide that contract is `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
+- The design-to-plan consistency review is `BLOCKED` until the verification
+  ownership and plan corrections in §11.7 are re-reviewed.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
@@ -1018,9 +1203,10 @@ plan may choose only the concrete source patch that implements the
 `provider.models` -> `model.api.url` route and plugin control-header
 configuration; it may not choose a different routing mechanism.
 
-After `writing-plans` generates an implementation plan, and before production
-implementation may start, the design document and implementation plan MUST be
-checked for zero divergence in specification, terminology, types/interfaces,
-error handling, test strategy, and non-functional requirements. Any unresolved
-divergence keeps production implementation blocked. It does not block generation
-of the implementation plan.
+The implementation plan now exists. Before production implementation may start,
+the design document and implementation plan MUST be checked for zero divergence
+in specification, terminology, types/interfaces, error handling, test strategy,
+and non-functional requirements. Any unresolved divergence, missing
+runner-provisioning evidence, or failed ownership mapping keeps production
+implementation blocked. A fresh review MUST mark the pair `READY`; this document
+does not self-approve production implementation.
