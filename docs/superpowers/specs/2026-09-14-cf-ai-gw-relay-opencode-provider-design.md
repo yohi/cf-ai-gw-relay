@@ -12,8 +12,8 @@ Current gate state:
 
 ```text
 SRG-022: RESOLVED
-SRG-035: RESOLVED CANDIDATE — PENDING REVIEW
-writing-plans: BLOCKED — REVIEWER CONFIRMATION REQUIRED
+SRG-035: RESOLVED — REVIEWER CONFIRMED
+writing-plans: UNBLOCKED — NOT STARTED
 production implementation: NOT STARTED
 ```
 
@@ -29,7 +29,7 @@ The required order remains:
 7. writing-plans
 ```
 
-SRG-035 reviewer confirmation approves the target-runtime protocol
+The reviewer confirmation recorded in §11.6 approves the target-runtime protocol
 characterization recorded here. It does not approve the current plugin source as
 already migrated, authorize production readiness, or replace the implementation
 validation required by the later writing plan. The current source remains the
@@ -584,8 +584,8 @@ still `POST /v1/responses`.
 
 SRG-035 owns the final production model mapping and the request, response,
 streaming, and tools characterization for the selected architecture. The
-integrated result below records those decisions as a resolved candidate pending
-reviewer confirmation.
+integrated result below records those decisions as a reviewer-confirmed
+resolution for the target-runtime architecture.
 
 The transport premise for SRG-035 is now:
 
@@ -634,9 +634,10 @@ target mapping and were not changed by this revision.
 2. Authenticated request/response protocol characterization after upstream dispatch.
 3. Live response streaming, SSE, and tools characterization.
 
-SRG-035 is a `RESOLVED CANDIDATE` when the following closure contract is
-complete and its evidence is recorded. Reviewer confirmation is still required
-before `writing-plans` may start:
+SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was being
+completed. The contract and its evidence are now reviewer-confirmed in §11.6;
+the later writing plan may start, but production implementation remains
+unstarted:
 
 ### 11.1 SRG-035 closure contract
 
@@ -932,8 +933,8 @@ The integrated result is:
 
 ```text
 SRG-022: RESOLVED
-SRG-035: RESOLVED CANDIDATE — PENDING REVIEW
-writing-plans: BLOCKED — REVIEWER CONFIRMATION REQUIRED
+SRG-035: RESOLVED — REVIEWER CONFIRMED
+writing-plans: UNBLOCKED — NOT STARTED
 ```
 
 ### 11.5 Evidence traceability
@@ -961,6 +962,15 @@ into artifacts; it is not a replay fixture. The live public OpenCode run emitted
 `stream=true`, so non-stream behavior remains an implementation-validation item,
 not a claim of separately observed non-stream output.
 
+### 11.6 Reviewer confirmation (2026-09-20)
+
+The post-characterization review used five independent lanes covering goal and
+constraint compliance, documentation QA, design quality, security, and repository
+context. All lanes passed after the evidence-boundary correction in `d41c611`.
+The confirmation scope is limited to the target-runtime characterization and
+architecture boundary. It does not approve source migration, dependency changes,
+production readiness, or protected acceptance.
+
 Direct fallback, retry loops, credential extraction, private OpenCode APIs, and
 silent credential substitution remain prohibited.
 
@@ -970,8 +980,8 @@ This revision changes only this design document. It does not change production
 source, tests, dependencies, package metadata, lockfiles, CI, deployment,
 Cloudflare settings, or writing-plans artifacts.
 
-SRG-022 is resolved. SRG-035 is a resolved candidate pending reviewer
-confirmation. The selected architecture is defined by all of the following:
+SRG-022 is resolved. SRG-035 is resolved with reviewer confirmation. The
+selected architecture is defined by all of the following:
 
 - Provider identity is `openai`.
 - The public OpenCode extension point is the `provider.models` hook on the target OpenCode 1.18.31 runtime.
@@ -997,8 +1007,8 @@ confirmation. The selected architecture is defined by all of the following:
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
 - `openai/gpt-5.6-sol` remains validation evidence only.
 - Gateway and relay authentication were validated without recording secret values.
-- SRG-035 satisfies the closure contract as `RESOLVED CANDIDATE — PENDING REVIEW`.
-- `writing-plans` has not started and remains blocked pending reviewer confirmation.
+- SRG-035 satisfies the closure contract as `RESOLVED — REVIEWER CONFIRMED`.
+- `writing-plans` is unblocked but has not started.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
