@@ -647,6 +647,59 @@ secret values in logs or documents: MUST NOT be recorded
 No authenticated request may be sent until these preconditions are confirmed.
 Until then, SRG-035 remains unresolved and `writing-plans` remains blocked.
 
+### 11.4 Integrated characterization result (2026-09-20)
+
+The credential-safety preconditions were re-confirmed before the integrated
+attempt. OpenCode `1.18.31` was present, OpenAI OAuth was configured, the
+available OpenAI model catalog contained `gpt-5.6-luna`, `gpt-5.6-sol`, and
+`gpt-5.6-terra`, and the Gateway and relay origins were reachable. The Gateway
+and relay credentials were confirmed as rotated after the previous safety
+incident. No credential values, account identifiers, or request payloads were
+recorded.
+
+A process-local plugin implementing only the selected public `config` hook was
+loaded by OpenCode, and its hook callback executed. The hook set
+`config.provider.openai.options.baseURL` to a local redacted observer. The
+observer received no request. OpenCode instead emitted an HTTP `403` response
+from the direct `chatgpt.com` route. The same direct route was observed when a
+process-local dummy API key was also supplied; it did not make the local
+observer effective for the active ChatGPT OAuth path.
+
+This is an architecture-changing failure, not a bounded protocol or fixture
+issue:
+
+```text
+DESIGN RE-APPROVAL REQUIRED
+SRG-035: UNRESOLVED
+```
+
+The selected public `config` hook is not the effective route owner for the
+OpenCode `1.18.31` ChatGPT OAuth transport. Continuing to Gateway, relay, or
+Codex protocol characterization would require allowing a direct bypass or
+changing a fixed architecture boundary. Direct fallback remains prohibited.
+
+Remaining blocker:
+
+```text
+Blocker:
+  OpenCode 1.18.31 ignores the config-hook baseURL override for the active
+  ChatGPT OAuth transport and sends the request directly to chatgpt.com.
+
+Why architecture-critical:
+  The selected public extension point cannot own routing. Resolution therefore
+  requires changing the extension point, provider/credential boundary, SDK or
+  host capability, or explicitly re-approving a different architecture.
+
+Owner:
+  HUMAN
+
+Exact next action:
+  Confirm from the target OpenCode 1.18.31 implementation or an approved host
+  capability a supported public route override for ChatGPT OAuth. If none
+  exists, approve a design re-review of the routing owner before any further
+  authenticated probe or production implementation.
+```
+
 ## 12. Scope and Definition of Done
 
 This revision changes only this design document. It does not change production
