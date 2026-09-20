@@ -2,17 +2,18 @@
 
 ## Status
 
-This revision records the architecture validated by the target-runtime spike.
-It is a design-document change only. It does not authorize source changes,
-tests, dependency changes, deployment changes, Cloudflare configuration
-changes, or implementation planning.
+This revision records the architecture validated by the target-runtime spike and
+the integrated SRG-035 protocol characterization. It is a design-document
+change only. It does not authorize source changes, tests, dependency changes,
+deployment changes, Cloudflare configuration changes, or implementation
+planning.
 
 Current gate state:
 
 ```text
-SRG-022: RESOLVED CANDIDATE — PENDING REVIEW
-SRG-035: WAITING ON SRG-022 RE-REVIEW
-writing-plans: BLOCKED
+SRG-022: RESOLVED
+SRG-035: RESOLVED CANDIDATE — PENDING REVIEW
+writing-plans: BLOCKED — REVIEWER CONFIRMATION REQUIRED
 production implementation: NOT STARTED
 ```
 
@@ -22,9 +23,9 @@ The required order remains:
 1. SRG-022 design update
 2. SRG-022 re-review
 3. SRG-022 reviewer decision
-4. SRG-035 = ACTIVE after SRG-022 re-review
-5. protocol characterization
-6. SRG-035 = RESOLVED
+4. SRG-035 protocol characterization
+5. SRG-035 = RESOLVED CANDIDATE
+6. reviewer confirmation
 7. writing-plans
 ```
 
@@ -139,15 +140,19 @@ is not an independent OpenCode provider identity. The current design does not
 define a second provider/model namespace.
 
 OpenCode's normal `openai/<model>` selection remains the model-resolution
-boundary. This revision does not decide any of the following:
+boundary. The integrated characterization fixes the initial production mapping
+to one model:
 
-- Final production Codex model.
-- `model.api.id`.
-- Wire-body model ID.
-- Final model namespace or model alias.
+```text
+OpenCode-visible model: openai/gpt-5.6-luna
+model.api.id: gpt-5.6-luna
+AI SDK model identifier: gpt-5.6-luna via @ai-sdk/openai 3.0.88
+wire-body model: gpt-5.6-luna
+```
 
-The validation model `openai/gpt-5.6-sol` is a transport-validation model only.
-It is not a production model decision.
+The validation model `openai/gpt-5.6-sol` remains transport-validation evidence
+only. It is not the initial production model. No second production model, alias,
+or namespace is retained by this revision.
 
 ## 3. Credential Architecture
 
@@ -324,9 +329,9 @@ POST /v1/responses
 ```
 
 The authenticated request continues from the relay to the Codex upstream
-boundary. Whether that boundary uses direct forwarding or a relay-only
-protocol mapping remains under SRG-035. The relay may perform protocol
-adaptation only if SRG-035 proves that it is required.
+boundary. SRG-035 characterizes this boundary as direct forwarding. The relay
+does not parse, normalize, or reconstruct the request body or response body for
+the selected initial scope.
 
 ### 6.3 Component responsibilities
 
@@ -364,7 +369,7 @@ Custom Provider routing
 ```text
 relay authentication
 /v1/responses ownership
-protocol adaptation if SRG-035 proves it is required
+direct request/response/SSE forwarding
 fail closed
 ```
 
@@ -405,7 +410,10 @@ Errors are owned by the boundary that can classify them without guessing:
 | Cloudflare authentication failure | Cloudflare AI Gateway boundary |
 | Relay authentication failure | Deno relay boundary |
 | OpenAI/Codex OAuth authentication failure | Codex/OpenAI upstream authentication boundary |
-| Authenticated upstream dispatch followed by model, protocol, body, SSE, or tools failure | SRG-035 protocol-characterization boundary |
+| Request protocol incompatibility after authenticated dispatch | Relay protocol boundary; explicit unsupported boundary if direct forwarding cannot accept it |
+| Response protocol incompatibility | Relay response protocol boundary |
+| SSE incompatibility, stream error, or cancellation failure | Relay streaming boundary |
+| Tools unsupported outside the initial contract | Explicit initial-scope unsupported boundary; no fallback |
 
 Common policy:
 
@@ -424,6 +432,11 @@ The plugin's route and control-header configuration must fail closed when
 required configuration or control credentials cannot be resolved. It must not
 leave a direct upstream route or a second fetch-interception fallback active
 after a configuration failure.
+
+The integrated characterization found no protocol mapping requirement. An
+authenticated dispatch followed by a model, body, response, SSE, or tools
+failure remains visible at the owning protocol boundary; it does not trigger a
+direct fallback, retry loop, or silent credential substitution.
 
 ## 8. Managed Residency
 
@@ -556,8 +569,10 @@ still `POST /v1/responses`.
 
 ## 11. SRG-035 Boundary
 
-SRG-035 is waiting on SRG-022 re-review. It remains the owner of the following
-deferred decisions and their target-runtime evidence:
+SRG-035 owns the final production model mapping and the request, response,
+streaming, and tools characterization for the selected architecture. The
+integrated result below records those decisions as a resolved candidate pending
+reviewer confirmation.
 
 The transport premise for SRG-035 is now:
 
@@ -568,12 +583,13 @@ provider.models hook
   -> relay POST /v1/responses
 ```
 
-1. Final production Codex model, including any `model.api.id` and wire model ID.
+1. Final production Codex model, including `model.api.id` and wire model ID.
 2. Authenticated request/response protocol characterization after upstream dispatch.
 3. Live response streaming, SSE, and tools characterization.
 
-SRG-035 MUST NOT be marked `RESOLVED` until the following closure contract is
-complete and its evidence is recorded:
+SRG-035 is a `RESOLVED CANDIDATE` when the following closure contract is
+complete and its evidence is recorded. Reviewer confirmation is still required
+before `writing-plans` may start:
 
 ### 11.1 SRG-035 closure contract
 
@@ -588,8 +604,17 @@ OpenCode-visible model
   -> wire-body model ID
 ```
 
-The validation model `openai/gpt-5.6-sol` MUST NOT be promoted automatically to
-the production model.
+The integrated mapping is:
+
+```text
+OpenCode-visible model: openai/gpt-5.6-luna
+model.api.id: gpt-5.6-luna
+AI SDK model identifier: gpt-5.6-luna via @ai-sdk/openai 3.0.88
+wire-body model ID: gpt-5.6-luna
+```
+
+The validation model `openai/gpt-5.6-sol` remains evidence only and is not the
+initial production model.
 
 **B. Authenticated request acceptance**
 
@@ -603,73 +628,107 @@ OpenCode 1.18.31
   -> Codex
 ```
 
-The evidence MUST identify acceptance at each boundary without recording secret
-values or request payloads.
+The integrated request was accepted at each boundary without recording secret
+values or request payloads:
+
+```text
+Gateway reached: YES
+Gateway auth: PASS
+Relay reached: YES
+Relay path: POST /v1/responses
+Relay auth: PASS
+Upstream request emitted: YES
+Upstream status: HTTP 200
+OpenCode usable result: YES
+```
 
 **C. Request protocol ownership**
 
-Request handling MUST be resolved to exactly one of the following:
+Request handling is resolved to:
 
 ```text
-DIRECT FORWARDING
+REQUEST_PROTOCOL = DIRECT_FORWARDING
 ```
 
-or:
+The observed OpenCode request was `POST` with `Content-Type: application/json`
+and an OpenAI Responses body containing `model`, `input`, `instructions`,
+`stream`, `tools`, `tool_choice`, `include`, `reasoning`, `store`, `text`, and
+`prompt_cache_key`. The selected production mapping sends
+`model=gpt-5.6-luna`; `input` is a Responses input array, with
+`function_call`/`function_call_output` items on tool continuation. OpenCode's
+public run surface emitted `stream=true` and `tool_choice=auto`.
 
-```text
-RELAY-ONLY MAPPING:
-<exact request mapping>
-```
+OpenCode-owned `Authorization` and `ChatGPT-Account-Id` remain opaque upstream
+headers. Gateway control headers authenticate the Gateway, and
+`x-chatgpt-relay-authorization` authenticates the relay. The relay removes
+Gateway-only, relay-only, hop-by-hop, and forwarding headers before the fixed
+upstream while preserving the upstream authorization and account-routing
+headers. No body field or tool field is rewritten, normalized, or dropped by
+the relay. No unsupported field was observed.
 
 Plugin-side body rewriting remains prohibited. Any relay-only mapping MUST state
 the exact fields, headers, and transformations owned by the relay.
 
 **D. Response protocol ownership**
 
-For non-streaming responses, handling MUST be resolved to exactly one of the
-following:
+Response handling is resolved to:
 
 ```text
-DIRECT FORWARDING
+RESPONSE_PROTOCOL = DIRECT_FORWARDING
 ```
 
-or:
+The relay passes upstream status, remaining headers, and body through without
+semantic transformation. The live success response reached OpenCode as HTTP
+`200` and produced a usable non-empty result with non-zero usage. The observed
+Responses stream contained `response.created`, `response.in_progress`,
+`response.output_item.added/done`, `response.content_part.added/done`,
+`response.output_text.delta/done`, and `response.completed`. The response
+boundary exposed no error event in the successful probes. Request and response
+IDs remain pass-through metadata and no ID values are recorded here.
 
-```text
-RELAY-ONLY MAPPING:
-<exact response mapping>
-```
-
-Any relay-only mapping MUST state the exact response fields, headers, and
-transformations owned by the relay.
+The public OpenCode `run` surface generated `stream=true` for the authenticated
+requests used here. A separate non-stream fixture was not emitted without
+rewriting the body or changing the selected transport, both of which are
+prohibited. The non-stream response owner is nevertheless fixed by the same
+relay contract: upstream Responses JSON, status, and headers are directly
+forwarded; exact fixture values remain implementation validation detail.
 
 **E. Streaming and SSE**
 
-The characterization MUST establish all of the following for the selected
-architecture:
+The streaming owner is resolved to:
+
+```text
+STREAMING_PROTOCOL = DIRECT_FORWARDING
+```
+
+The characterization established:
 
 - Live streaming acceptance.
 - SSE event shape.
 - Stream termination behavior.
 - Stream error behavior.
-- Required abort behavior.
+- Required abort behavior: the relay's request signal aborts the upstream
+  fetch; downstream cancellation cancels the upstream response body and
+  aborts the upstream request; no retry or fallback occurs.
+
+The Gateway response at the OpenCode boundary had an absent `content-type`
+header while carrying the live SSE body. This is preserved as an observed
+upstream/header detail; the relay does not synthesize or map it.
 
 **F. Initial tools scope**
 
-The initial scope MUST be resolved to exactly one of:
+The initial scope is resolved to:
 
 ```text
-TOOLS INCLUDED
+TOOLS = INCLUDED
 ```
 
-or:
-
-```text
-TOOLS EXCLUDED
-```
-
-If tools are included, characterization MUST cover the tool call, tool result,
-continuation request, and continuation response.
+The live probe emitted a Responses `function_call` item for `read`, submitted a
+`function_call_output` item in the continuation request, and received a
+successful continuation response ending in `response.completed`. Tool
+arguments and results are opaque request data; the relay forwards them without
+body mapping. Tool calls are therefore part of the initial contract, not an
+unsupported path.
 
 ### 11.2 SRG-035 failure policy
 
@@ -690,15 +749,15 @@ protocol owner
 SDK family or major version
 ```
 
-The result MAY be sent to `writing-plans` or implementation validation without
-design re-approval only when it is limited to the same architecture, such as an
-exact wire field, fixture detail, helper split, or implementation-specific edge
-case. This exception does not close SRG-035 until the closure contract above is
-complete.
+The result MAY proceed to implementation validation without design re-approval
+only when it is limited to the same architecture, such as an exact wire field,
+fixture detail, helper split, or implementation-specific edge case. The
+integrated result satisfies the closure contract, but `writing-plans` remains
+blocked until a reviewer confirms this candidate.
 
-These are not SRG-022 defects. SRG-022 only establishes the provider identity,
+These are not SRG-022 defects. SRG-022 established the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed
-policy needed before SRG-035 can run.
+policy needed before this characterization could run.
 
 ### 11.3 Characterization attempt status
 
@@ -713,44 +772,41 @@ The current evidence status is:
 
 ```text
 transport seam: VALIDATED
-authenticated upstream request: OBSERVED
+authenticated upstream request: ACCEPTED
 upstream status: HTTP 200
-production model evidence: NONE
-request/response protocol evidence: NONE
-streaming/SSE evidence: NONE
-tools evidence: NONE
+production model evidence: OPENAI/GPT-5.6-LUNA
+request protocol: DIRECT_FORWARDING
+response protocol: DIRECT_FORWARDING
+streaming/SSE protocol: DIRECT_FORWARDING
+tools: INCLUDED
 ```
-
-Before any additional authenticated protocol probe, all of the following are
-mandatory preconditions:
-
-```text
-Gateway and relay credential safety: CONFIRM
-malformed JSON probe: MUST NOT be reused
-secret values in logs or documents: MUST NOT be recorded
-```
-
-Until these preconditions are confirmed for a future probe, no additional
-authenticated protocol characterization may be sent. SRG-035 remains
-unresolved and `writing-plans` remains blocked.
 
 ### 11.4 Integrated characterization result (2026-09-20)
 
 The credential-safety preconditions were re-confirmed before the integrated
-attempt. OpenCode `1.18.31` was present, OpenAI OAuth was configured, the
-available OpenAI model catalog contained `gpt-5.6-luna`, `gpt-5.6-sol`, and
-`gpt-5.6-terra`, and the Gateway and relay origins were reachable. The Gateway
-and relay credentials were confirmed as rotated after the previous safety
-incident. No credential values, account identifiers, or request payloads were
-recorded.
+attempt. OpenCode `1.18.31` was present, OpenAI OAuth was active, the available
+OpenAI model catalog contained `gpt-5.6-luna`, `gpt-5.6-sol`, and
+`gpt-5.6-terra`, and the Gateway and relay origins were reachable. Credential
+presence was checked without printing values. No credential values, account
+identifiers, request payloads, or response contents were recorded.
 
 A process-local plugin implementing the selected public `provider.models` hook
-was loaded by OpenCode, and its hook callback executed. The hook set the target
+was loaded by OpenCode, and its callback executed. The hook set the target
 model's `model.api.url` to the Cloudflare AI Gateway Custom Provider endpoint.
+The unique production mapping was:
+
+```text
+OpenCode-visible model: openai/gpt-5.6-luna
+model.api.id: gpt-5.6-luna
+AI SDK model identifier: gpt-5.6-luna via @ai-sdk/openai 3.0.88
+wire-body model: gpt-5.6-luna
+```
+
 The override was effective: the request reached Cloudflare AI Gateway, passed
 Gateway authentication, reached relay `POST /v1/responses`, passed relay
 authentication, and emitted an upstream request that received HTTP `200`.
-No direct `chatgpt.com` rewrite occurred.
+OpenCode received a non-empty result with non-zero usage. No direct
+`chatgpt.com` rewrite occurred.
 
 The validated transport seam is:
 
@@ -765,21 +821,76 @@ provider.models hook
   -> Codex upstream
 ```
 
-The integrated result supports `SRG-022: RESOLVED CANDIDATE — PENDING REVIEW`.
-It does not resolve SRG-035. Production model mapping, request protocol,
-response protocol, streaming/SSE behavior, and tools scope remain deferred.
-Direct fallback remains prohibited.
-
-Remaining SRG-022 action:
+The request characterization is:
 
 ```text
-SRG-022:
-  Review the provider.models -> model.api.url transport architecture and the
-  evidence above. The reviewer owns the final RESOLVED decision.
-
-SRG-035:
-  WAITING ON SRG-022 RE-REVIEW
+REQUEST_PROTOCOL = DIRECT_FORWARDING
+HTTP method = POST
+Gateway request suffix = /responses
+Relay path = POST /v1/responses
+Request content-type = application/json
+Request body = OpenAI Responses input; model, input, instructions, stream,
+  tools, tool_choice, include, reasoning, store, text, prompt_cache_key
+stream = true on the public OpenCode run path
+tool_choice = auto
+body rewrite = none
 ```
+
+The response characterization is:
+
+```text
+RESPONSE_PROTOCOL = DIRECT_FORWARDING
+HTTP status propagation = 200 observed
+success body = OpenAI Responses stream consumed by @ai-sdk/openai
+usage = non-zero OpenCode usage observed
+request IDs = pass-through headers; values not recorded
+error body/status = owning boundary remains visible; no translation selected
+```
+
+The streaming characterization is:
+
+```text
+STREAMING_PROTOCOL = DIRECT_FORWARDING
+event families = response.created, response.in_progress,
+  response.output_item.added/done, response.content_part.added/done,
+  response.output_text.delta/done, response.function_call_arguments.delta/done,
+  response.completed
+content delta = observed
+termination = response.completed
+upstream error = no error event in successful probes; relay closes on stream error
+abort/cancel = request and response cancellation propagate upstream; no retry/fallback
+```
+
+The live tools characterization is:
+
+```text
+TOOLS = INCLUDED
+tool call emitted = YES
+tool call representation = Responses function_call SSE item
+tool result submitted = YES
+tool result representation = function_call_output input item
+continuation request = PASS
+continuation response = PASS; response.completed
+```
+
+The Gateway response at the OpenCode boundary had no `content-type` header while
+carrying the live SSE body. The relay preserves this observed header state and
+does not synthesize a mapping. The public OpenCode `run` surface generated
+`stream=true` for the authenticated requests; a separate non-stream fixture was
+not emitted without body rewriting or a different transport owner. The
+non-stream owner remains direct forwarding, with exact fixture values left to
+implementation validation.
+
+The integrated result is:
+
+```text
+SRG-022: RESOLVED
+SRG-035: RESOLVED CANDIDATE — PENDING REVIEW
+writing-plans: BLOCKED — REVIEWER CONFIRMATION REQUIRED
+```
+
+Direct fallback, retry loops, credential extraction, private OpenCode APIs, and
+silent credential substitution remain prohibited.
 
 ## 12. Scope and Definition of Done
 
@@ -787,8 +898,8 @@ This revision changes only this design document. It does not change production
 source, tests, dependencies, package metadata, lockfiles, CI, deployment,
 Cloudflare settings, or writing-plans artifacts.
 
-SRG-022 is a resolved candidate pending reviewer confirmation. The selected
-architecture is defined by all of the following:
+SRG-022 is resolved. SRG-035 is a resolved candidate pending reviewer
+confirmation. The selected architecture is defined by all of the following:
 
 - Provider identity is `openai`.
 - The public OpenCode extension point is the `provider.models` hook on the target OpenCode 1.18.31 runtime.
@@ -804,14 +915,18 @@ architecture is defined by all of the following:
 - `cf-aig-authorization` has explicit Gateway ownership and termination.
 - `x-chatgpt-relay-authorization` is the sole relay auth header.
 - Relay transport is `POST /v1/responses`.
-- Relay request/response/SSE protocol adaptation is not selected before SRG-035 proves it is required.
+- `REQUEST_PROTOCOL = DIRECT_FORWARDING`.
+- `RESPONSE_PROTOCOL = DIRECT_FORWARDING`.
+- `STREAMING_PROTOCOL = DIRECT_FORWARDING`.
+- `TOOLS = INCLUDED`, with Responses `function_call` and `function_call_output` continuation.
+- Initial production mapping is `openai/gpt-5.6-luna` -> `gpt-5.6-luna` -> `@ai-sdk/openai 3.0.88` -> `gpt-5.6-luna`.
+- Error ownership is fixed at the model-resolution, Gateway, relay, upstream OAuth, response, streaming, and explicit unsupported boundaries.
 - Direct fallback and credential extraction are prohibited.
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
-- The validation model is explicitly non-production.
+- `openai/gpt-5.6-sol` remains validation evidence only.
 - Gateway and relay authentication were validated without recording secret values.
-- SRG-035 is waiting on SRG-022 re-review and remains unresolved pending the
-  complete §11 closure contract and target-runtime characterization.
-- `writing-plans` has not started and remains blocked.
+- SRG-035 satisfies the closure contract as `RESOLVED CANDIDATE — PENDING REVIEW`.
+- `writing-plans` has not started and remains blocked pending reviewer confirmation.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
