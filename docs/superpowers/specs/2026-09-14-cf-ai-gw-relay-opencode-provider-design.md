@@ -3,27 +3,26 @@
 ## Status
 
 This revision records the architecture validated by the target-runtime spike and
-the integrated SRG-035 protocol characterization. It is a design-document
-change only. The implementation plan has been generated, but the
-design-to-plan consistency review is currently blocked by the protected
-acceptance credential-provisioning and verification-ownership closure recorded
-below. This document does not authorize source changes, tests, dependency
-changes, deployment changes, Cloudflare configuration changes, or production
-implementation.
+the integrated SRG-035 protocol characterization. It is a design-document change
+only. The previous revision assumed an unavailable external credential
+lifecycle. This revision removes that lifecycle and closes the protected
+acceptance boundary around the environments that actually exist. It does not
+authorize source changes, tests, dependency changes, deployment changes,
+Cloudflare configuration changes, or production implementation.
 
 Current gate state:
 
 ```text
 SRG-022: RESOLVED
 SRG-035: RESOLVED
-writing-plans: COMPLETED
-RG-001: PARTIALLY RESOLVED; lifecycle decision recorded, attestation unavailable
+writing-plans: COMPLETED; implementation plan synchronized in this revision
+RG-001: UNRESOLVED — BLOCKER; prior runner-capability assumption failed
 RG-002: RESOLVED
-RG-003: RESOLVED in this document/plan revision
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED pending Gate 0 actual attestation and fresh re-review
+pre-implementation gate: BLOCKED / DESIGN RE-APPROVAL REQUIRED
 design-to-plan consistency review: BLOCKED pending fresh re-review
-production implementation: NOT STARTED and BLOCKED pending re-review
+production implementation: NOT STARTED
 ```
 
 The completed and required order is:
@@ -35,9 +34,11 @@ The completed and required order is:
 4. SRG-035 protocol characterization
 5. SRG-035 = RESOLVED
 6. writing-plans
-7. Gate 0 external protected-runner provisioning evidence: BLOCKED pending actual attestation
-8. design-to-plan consistency review: BLOCKED pending fresh re-review
-9. production implementation only after Gate 0 PASS and a fresh review marks the plan READY
+7. RG-001 architecture assumption failure identified
+8. credential architecture re-designed from authoritative evidence
+9. implementation plan synchronization
+10. fresh Superpowers Review Gate marks both documents READY
+11. production implementation only after the fresh review marks the plan READY
 ```
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
@@ -55,8 +56,8 @@ which sets the target model's `model.api.url` to the Cloudflare AI Gateway
 Custom Provider endpoint. The relay is not represented as a second OpenCode
 provider identity.
 
-This revision defines the target architecture for OpenCode 1.18.31. It does
-not claim that the current repository source has already migrated to this
+This revision defines the target architecture for OpenCode 1.18.31. It does not
+claim that the current repository source has already migrated to this
 architecture. The current plugin entrypoint still installs
 `installFetchInterposer()`. That existing path is migration input, not the
 selected target transport owner.
@@ -127,8 +128,8 @@ route.
 
 The values used to construct `model.api.url`, the control headers, and the
 Custom Provider endpoint are resolved through the existing repository
-configuration and secret-injection mechanism. This design does not invent a
-new secret-management subsystem or record secret values.
+configuration and secret-injection mechanism. This design does not invent a new
+secret-management subsystem or record secret values.
 
 The relay remains fail-closed. There is no direct Codex or ChatGPT fallback,
 retry loop, payload persistence, or silent credential substitution.
@@ -140,10 +141,10 @@ The current source uses `installFetchInterposer()` together with
 `fetch` request. Its current URL shape ends in `/v1/responses`. Those symbols
 are legacy implementation details and are not the selected transport owner.
 
-The selected architecture MUST NOT retain global fetch interception as a
-second routing owner for the OpenAI request. A later implementation plan may
-remove the interposer, disable it, or reduce it to a non-routing responsibility,
-but it MUST NOT run it in parallel with the `provider.models` transport path.
+The selected architecture MUST NOT retain global fetch interception as a second
+routing owner for the OpenAI request. A later implementation plan may remove the
+interposer, disable it, or reduce it to a non-routing responsibility, but it
+MUST NOT run it in parallel with the `provider.models` transport path.
 
 ## 2. Provider Identity and Model Boundary
 
@@ -179,27 +180,27 @@ or namespace is retained by this revision.
 ChatGPT / Codex authentication is owned by OpenCode's built-in `openai`
 provider:
 
-| Responsibility | Owner or behavior |
-| --- | --- |
-| Credential acquisition | OpenCode built-in ChatGPT OAuth |
-| Credential owner | OpenCode |
-| Credential storage and format | OpenCode native auth store; the runner provisioning service stores only an opaque encrypted acceptance copy and reconciled native store |
-| Credential refresh | OpenCode |
-| `Authorization` injection | OpenCode |
-| ChatGPT account routing metadata | OpenCode |
-| Plugin, Gateway, and relay behavior | Treat the request credential as opaque transport data |
+| Responsibility                      | Owner or behavior                                                                                  |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Credential acquisition              | OpenCode built-in ChatGPT OAuth                                                                    |
+| Credential owner                    | OpenCode                                                                                           |
+| Credential storage and format       | OpenCode native auth store owned by the user-controlled OpenCode runtime; no repository or CI copy |
+| Credential refresh                  | OpenCode                                                                                           |
+| `Authorization` injection           | OpenCode                                                                                           |
+| ChatGPT account routing metadata    | OpenCode                                                                                           |
+| Plugin, Gateway, and relay behavior | Treat the request credential as opaque transport data                                              |
 
 The plugin, Cloudflare component, and relay MUST NOT acquire, inspect for
-ownership, extract, persist, refresh, or substitute the OpenAI OAuth
-credential. They may forward the opaque HTTP authorization header required by
-the request; forwarding is not credential extraction or credential ownership.
+ownership, extract, persist, refresh, or substitute the OpenAI OAuth credential.
+They may forward the opaque HTTP authorization header required by the request;
+forwarding is not credential extraction or credential ownership.
 
 No private OpenCode credential API is required.
 
 ### 3.2 PAT architecture is not current
 
-The current architecture has no Personal Access Token requirement. The
-following are removed from the current design and MUST NOT be implemented:
+The current architecture has no Personal Access Token requirement. The following
+are removed from the current design and MUST NOT be implemented:
 
 - `CODEX_ACCESS_TOKEN` as a production requirement.
 - Codex Personal Access Token as the selected credential.
@@ -208,194 +209,102 @@ following are removed from the current design and MUST NOT be implemented:
 - PAT permission gates or real-PAT pre-implementation blockers.
 - OAuth-token extraction fallback or conversion outside OpenCode.
 
-### 3.3 Protected acceptance credential provisioning
+### 3.3 CI and protected acceptance credential boundary
 
-Protected acceptance is an acceptance-only environment and is not a second
-production credential architecture. Its OpenCode-owned OAuth state is supplied
-through one fixed mechanism:
+The authoritative environment evidence available for this revision is:
 
 ```text
-GitHub Actions protected-acceptance job
-  -> ephemeral organization-managed runner
-     label: protected-opencode-oauth
-  -> runner provisioning service attaches a job-scoped encrypted volume
-  -> native OpenCode auth store at $HOME/.local/share/opencode/auth.json
-  -> OpenCode 1.18.31 built-in openai provider
+Repository owner: yohi (GitHub user, not an organization)
+Repository-managed runners: 0
+CI runner: ubuntu-latest
+Protected acceptance runner: ubuntu-latest
+Protected acceptance OAuth state: not configured
 ```
 
-The workflow MUST run only on the `protected-opencode-oauth` runner label. The
-runner provisioning service, not the workflow, is the credential source and
-injection boundary. It MUST attach the native auth store before the job starts,
-with owner-only permissions, and MUST NOT expose the store through a GitHub
-Environment variable, command argument, generated workflow file, artifact,
-cache, or log. The workflow MUST NOT parse the auth store or read an access or
-refresh token from it. OpenCode reads the store through its normal built-in
-authentication path; the plugin still sees only OpenCode-owned opaque request
-headers.
+The repository workflows confirm that `.github/workflows/ci.yml` and
+`.github/workflows/acceptance.yml` use GitHub-hosted `ubuntu-latest` jobs. The
+repository runner API reports zero managed runners. No external OAuth credential
+service or CI credential persistence resource is configured, so none may remain
+an implicit future dependency.
 
-The GitHub `protected-acceptance` Environment gates manual dispatch and exposes
-only the existing Gateway/relay control configuration. It does not store or
-retrieve the OpenCode OAuth state; the runner manager's pre-job volume mount is
-the sole acceptance provisioning mechanism.
+The OpenCode 1.18.31 source and official documentation establish the supported
+runtime credential mechanism:
 
-The target-runtime credential-safe observation on OpenCode `1.18.31` identified
-the native store as `$HOME/.local/share/opencode/auth.json` through
-`opencode auth list`; only the provider label and path were observed, and no
-credential value was recorded. The acceptance prerequisite is pinned to this
-path and MUST fail closed if the file is absent, unreadable, owned by the wrong
-user, or not recognized by `opencode auth list`.
+- The versioned OpenCode auth service stores OAuth records in its native
+  `auth.json` under the XDG data directory and owns the OAuth record schema:
+  [`packages/opencode/src/auth/index.ts`](https://raw.githubusercontent.com/anomalyco/opencode/v1.18.31/packages/opencode/src/auth/index.ts).
+- The versioned OpenAI integration provides both browser OAuth and a ChatGPT
+  Pro/Plus headless device-code method, and its refresh path writes the
+  refreshed credential through OpenCode's auth service:
+  [`packages/core/src/plugin/provider/openai.ts`](https://raw.githubusercontent.com/anomalyco/opencode/v1.18.31/packages/core/src/plugin/provider/openai.ts).
+- The official CLI documents `opencode auth login`, `opencode auth list`, and
+  the native credential file, while `opencode run` is the supported headless
+  execution command:
+  [OpenCode CLI documentation](https://opencode.ai/docs/cli/).
 
-The provisioning contract is:
+The versioned source also contains `OPENCODE_AUTH_CONTENT`, but it is not part
+of the public CLI credential contract. Source presence alone does not establish
+that injecting OAuth JSON through a GitHub Actions environment is supported or
+acceptable under this project's security requirements. It is therefore not an
+accepted credential injection seam.
 
-| Concern | Fixed decision |
-| --- | --- |
-| Credential owner | OpenCode's built-in `openai` provider and the authorized ChatGPT account own OAuth semantics; the runner provisioning service owns the protected-acceptance native-store lifecycle |
-| Canonical state source | Runner provisioning service's canonical encrypted native auth store, populated through the authorized OpenCode native login lifecycle |
-| GitHub retrieval | None; the workflow receives no OAuth secret and cannot retrieve, serialize, or parse the store |
-| OpenCode injection | Runner provisioning service makes an opaque copy or mount into a read-write job-scoped encrypted volume at `$HOME/.local/share/opencode/auth.json` before `opencode` starts |
-| Post-job reconciliation | The runner provisioning service atomically persists the latest opaque native store after every PASS, FAIL, or CANCEL and confirms persistence before volume teardown; the workflow never performs this operation |
-| Concurrent access | One provisioning-service lock per canonical native auth store; no concurrent protected acceptance job may hold or update the same store |
-| Runner lifetime | One ephemeral runner instance and one acceptance job |
-| Cleanup | The service destroys the encrypted job volume only after successful reconciliation; on reconciliation failure it seals or quarantines the volume under exclusive service control and blocks the next job |
-| Rotation, revocation, and reauthorization owner | The organization runner-provisioning owner is the protected-acceptance credential lifecycle owner; it controls admission, native OpenCode reauthorization, rotation, revocation response, canonical-store replacement, and unblock decisions, while OpenCode remains the only OAuth semantic writer |
-| Minimum permission | Manual dispatch approval for `protected-acceptance`, runner-label admission, `contents: read`, and read-only use of the existing Gateway/relay controls |
-| Existing acceptance controls | Protected non-OAuth variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and `RELAY_CF_PROVIDER_SLUG` plus existing plugin controls `RELAY_CF_AIG_TOKEN` and `RELAY_SECRET`; the job uses these existing names in memory and retains separate legacy acceptance inputs where needed |
-| Non-exposure boundary | No OAuth value may appear in stdout, stderr, command-line arguments, environment variables, artifacts, caches, fixtures, summaries, or subprocess diagnostics |
+The single selected architecture is:
+
+| Concern                                         | Fixed decision                                                                                                                                                                                                                              |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential source                               | OpenCode 1.18.31 built-in `openai` provider using its official ChatGPT Pro/Plus OAuth login; browser or headless device authorization is performed by the user/operator in the OpenCode runtime                                             |
+| Authentication architecture                     | OpenCode owns OAuth acquisition, interpretation, refresh, expiry, account metadata, and request authentication; the plugin remains an opaque routing/control-header layer                                                                   |
+| Credential injection mechanism                  | None in this project or in GitHub Actions; OpenCode injects `Authorization` and `ChatGPT-Account-Id` inside its built-in provider at runtime                                                                                                |
+| Persistent state owner                          | The user-controlled OpenCode runtime and its native `$XDG_DATA_HOME/opencode/auth.json` store, defaulting to `$HOME/.local/share/opencode/auth.json`; no repository, GitHub Environment, artifact, cache, or CI store owns OAuth state      |
+| Refresh-state owner                             | OpenCode's built-in provider writes refreshed state back to the same local native auth store; the plugin, relay, Gateway, and CI do not write back or persist it                                                                            |
+| Secret handling                                 | OAuth state MUST NOT enter GitHub Secrets, workflow environment, command arguments, generated files, artifacts, caches, logs, or summaries. Existing Gateway and relay secrets remain separate protected-acceptance inputs                  |
+| Security boundary                               | OAuth remains inside the user-controlled OpenCode runtime. The plugin, Gateway, and relay may transport the resulting request authorization opaquely but MUST NOT extract, decode, store, refresh, or substitute it                         |
+| CI/runtime owner                                | GitHub-hosted ephemeral runners own deterministic tests and non-OAuth Gateway/relay acceptance. The user-controlled OpenCode runtime owns live ChatGPT OAuth behavior                                                                       |
+| Rotation, revocation, and reauthorization owner | The user/operator of the OpenCode runtime, using the official OpenCode auth login/logout flow; no repository or CI lifecycle owner is introduced                                                                                            |
+| Acceptance execution location                   | Required protected acceptance runs on GitHub-hosted `ubuntu-latest` and covers relay/Gateway behavior that uses only its existing non-OAuth secrets. Live OAuth acceptance is not a CI gate and is not part of this implementation plan     |
+| Failure policy                                  | Missing or expired local OAuth, unsupported headless use, or any routing/configuration failure fails closed. No PAT, OAuth-token extraction, GitHub secret copy, direct-fetch fallback, retry, or silent credential substitution is allowed |
 
 OpenCode `1.18.31` writes refreshed OAuth state returned by its built-in refresh
-flow back to the native auth store. The refreshed native store is therefore the
-current credential state for the next protected acceptance job; silently
-discarding it and reseeding an older canonical store is not an approved
-lifecycle assumption.
+flow back to the user's native auth store. That local write-back is the only
+refresh-state persistence required by this architecture. The repository has no
+authority to copy, rotate, or destroy that state.
 
-The native-store lifecycle is fixed as follows:
+Protected acceptance uses only non-OAuth inputs already owned by the
+`protected-acceptance` GitHub Environment, including Gateway and relay controls.
+The workflow MUST run on `ubuntu-latest`, MUST NOT install or invoke a ChatGPT
+OAuth login, and MUST NOT require an OpenCode auth store. It may verify the
+Gateway/relay boundary and deterministic relay behavior, but it MUST NOT claim
+to prove a live OpenCode OAuth request.
 
-```text
-canonical encrypted native auth store
-        |
-        | pre-job opaque mount/copy under the provisioning-service lock
-        v
-job-scoped encrypted read-write auth volume
-        |
-        | OpenCode alone may interpret or update OAuth contents during refresh
-        v
-post-job provisioning-service reconciliation
-        |
-        | atomic opaque persistence, after PASS/FAIL/CANCEL and before teardown
-        v
-canonical encrypted native auth store
-```
+The live OAuth path is an OpenCode runtime concern. If the local native store is
+missing, unreadable, expired, or rejected by OpenCode, the runtime fails closed
+and the operator must use the official OpenCode login/logout flow. The plugin,
+Gateway, relay, CI workflow, and acceptance scripts do not repair or replace
+that state.
 
-1. The runner provisioning service acquires the canonical-store single-writer
-   lock before runner admission and keeps it until reconciliation completes or
-   the failed volume is sealed for repair.
-2. Before the job starts, the service makes the canonical native store available
-   at `$HOME/.local/share/opencode/auth.json` through the encrypted job volume.
-   The service transports the file opaquely and does not parse or edit OAuth
-   fields. The workflow does not receive, copy, or inspect it.
-3. OpenCode is the only component allowed to interpret or semantically update
-   the OAuth contents. A refresh may update the access token, refresh token, and
-   expiry state in the job volume through OpenCode's native auth-store write.
-4. After the job result is PASS, FAIL, or CANCEL, the provisioning-service
-   finalizer first ensures the OpenCode process and its descendants are stopped
-   and reaped, then atomically replaces the canonical encrypted native store
-   with the latest opaque store from the job volume.
-5. The service must confirm successful atomic persistence before destroying the
-   job volume. Teardown is not success evidence by itself.
-6. If persistence or reconciliation fails, the service marks the credential
-   state unhealthy, refuses the next protected acceptance job, and requires
-   operator reauthorization or canonical-store repair. It must not silently
-   reseed from a stale store. Until repair or an explicitly approved secure
-   destruction, the encrypted job volume remains sealed under provisioning
-   service control and is inaccessible to the workflow.
+GitHub Secrets are permitted only for the existing non-OAuth Gateway, relay, and
+provider acceptance controls. OAuth state in GitHub Secrets, workflow
+environment variables, command arguments, generated files, artifacts, caches,
+logs, or summaries is prohibited. A future request to make live OAuth acceptance
+a CI gate requires `DESIGN RE-APPROVAL REQUIRED` and a new security review; it
+cannot be solved by selecting a private environment override or by extracting
+OAuth tokens.
 
-The workflow continues to apply the same non-exposure boundary to the
-provisioning lifecycle. Neither the canonical store nor the refreshed store may
-appear in stdout, stderr, GitHub secrets, workflow environment, command
-arguments, generated repository files, artifacts, caches, summaries, or
-request/response logs. Rotation, revocation, reauthorization, reconciliation,
-and the single-writer lock are all owned and enforced by the protected-
-acceptance credential lifecycle owner; the workflow only consumes the resulting
-native OpenCode auth behavior.
+The previous external credential attestation requirement is deleted. It cannot
+be used as evidence or as a prerequisite for implementation. The replacement
+pre-implementation condition is a fresh Superpowers Review Gate that verifies
+this document and the synchronized plan contain one credential architecture and
+no unsupported CI OAuth injection. Deleting the unavailable prerequisite does
+not resolve `RG-001`; that blocker remains until the fresh review explicitly
+accepts the authoritative environment evidence and this replacement boundary.
 
-If the organization cannot provide this exact runner provisioning contract and
-its credential-safe evidence before implementation, the result is
-`BLOCKED / DESIGN RE-APPROVAL REQUIRED`. No PAT, OAuth-token extraction,
-alternate OAuth client, GitHub secret copy, or direct-fetch fallback may be
-introduced to bypass that result. This is a hard prerequisite, not an
-implementation-time design choice.
-
-The required pre-implementation evidence is an actual bounded attestation from
-the organization runner-provisioning owner containing only the fields in this
-schema:
+No Task 1 through Task 8 may start until the fresh review marks both documents
+`READY`. Until then the result remains:
 
 ```text
-runner label
-OpenCode version
-native auth-store path
-file owner/mode check result
-opencode auth list exit status and provider label
-encrypted-volume lifetime
-post-refresh persistence/reconciliation result
-single-writer/serialization result
-teardown result
-rotation/revocation/reauthorization owner
+BLOCKED / DESIGN RE-APPROVAL REQUIRED
+production implementation: NOT STARTED
 ```
-
-The attestation MUST contain no auth-store bytes, token, account identifier,
-command transcript, request payload, or response content. No actual bounded
-runner-provisioning attestation is present in this repository or in the current
-review evidence. The list above is an evidence schema, not a substitute for the
-actual attestation. The schema MUST NOT be copied into a review note and
-treated as an observed result. Until an actual attestation covers the pre-job
-mount, post-refresh persistence, single-writer enforcement, and teardown
-ordering, the plan remains `BLOCKED / DESIGN RE-APPROVAL REQUIRED` even though
-the provisioning mechanism and post-refresh lifecycle are now selected.
-
-#### Gate 0 — External protected-runner provisioning evidence
-
-Gate 0 is a pre-task external gate owned by the organization
-runner-provisioning owner. It is not an implementation step, and it is not
-owned by Task 6 or by the repository workflow.
-
-```text
-Owner:
-  organization runner-provisioning owner
-
-Repository modifications:
-  none
-
-Consumes:
-  already-provisioned protected-opencode-oauth runner environment
-
-Produces:
-  actual bounded secret-free runner-provisioning attestation
-
-PASS:
-  every required provisioning and lifecycle property is evidenced
-
-FAIL:
-  BLOCKED / DESIGN RE-APPROVAL REQUIRED
-```
-
-The attestation schema above is not a Gate 0 PASS. Gate 0 PASS requires the
-actual owner-provided attestation and does not permit recording auth-store
-contents, tokens, account identifiers, raw command transcripts, request
-payloads, or response content. Gate 0 does not modify the repository, runner
-infrastructure, GitHub Environment, or credential store.
-
-No Task 1 through Task 8 may start until both of the following are true:
-
-```text
-Gate 0 PASS
-fresh Superpowers Review Gate = READY for this design and implementation plan
-```
-
-Gate 0 PASS alone does not make the plan `READY`. If the actual attestation
-cannot be provided, Task 1 through Task 8 remain blocked and the result is
-`BLOCKED / DESIGN RE-APPROVAL REQUIRED`. Task 6 may only consume an already
-approved Gate 0 prerequisite; it must not design, establish, or synthesize
-runner-provisioning evidence.
 
 ## 4. Cloudflare and Relay Credentials
 
@@ -407,17 +316,17 @@ credential.
 
 `cf-aig-authorization` is the Cloudflare AI Gateway credential:
 
-| Responsibility | Owner or behavior |
-| --- | --- |
-| Credential owner | Cloudflare AI Gateway account/operator |
-| Configuration owner | Deployment/operator configuration using the existing repository secret path |
-| Existing configuration input | `RELAY_CF_AIG_TOKEN` or its existing equivalent |
-| Existing precedence | `RELAY_CF_AIG_TOKEN` -> plugin `apiKey` |
-| Header producer | Plugin control-header configuration using the resolved existing configuration |
-| Header consumer | Cloudflare AI Gateway |
-| Header validator | Cloudflare AI Gateway |
-| OpenAI credential relationship | Must not be treated as an OpenAI credential |
-| Secret value | Never recorded in this document |
+| Responsibility                 | Owner or behavior                                                             |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| Credential owner               | Cloudflare AI Gateway account/operator                                        |
+| Configuration owner            | Deployment/operator configuration using the existing repository secret path   |
+| Existing configuration input   | `RELAY_CF_AIG_TOKEN` or its existing equivalent                               |
+| Existing precedence            | `RELAY_CF_AIG_TOKEN` -> plugin `apiKey`                                       |
+| Header producer                | Plugin control-header configuration using the resolved existing configuration |
+| Header consumer                | Cloudflare AI Gateway                                                         |
+| Header validator               | Cloudflare AI Gateway                                                         |
+| OpenAI credential relationship | Must not be treated as an OpenAI credential                                   |
+| Secret value                   | Never recorded in this document                                               |
 
 The existing repository configuration precedence and injection mechanism remain
 the source of truth. Environment/configuration overrides must not be changed as
@@ -431,17 +340,17 @@ The canonical relay credential is `RELAY_SECRET` and the canonical header is:
 x-chatgpt-relay-authorization: Bearer <relay secret>
 ```
 
-| Responsibility | Owner or behavior |
-| --- | --- |
-| Credential owner | Relay deployment/operator |
-| Configuration owner | Existing relay deployment secret configuration |
-| Existing configuration input | `RELAY_SECRET` or its existing equivalent |
-| Existing precedence | `RELAY_SECRET` -> plugin `relayToken` |
-| Header producer | Plugin control-header configuration using the resolved existing configuration |
-| Header validator | Deno relay |
-| Header consumer | Deno relay |
-| Upstream behavior | The header terminates at the relay and must not reach Codex |
-| Secret value | Never recorded in this document |
+| Responsibility               | Owner or behavior                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| Credential owner             | Relay deployment/operator                                                     |
+| Configuration owner          | Existing relay deployment secret configuration                                |
+| Existing configuration input | `RELAY_SECRET` or its existing equivalent                                     |
+| Existing precedence          | `RELAY_SECRET` -> plugin `relayToken`                                         |
+| Header producer              | Plugin control-header configuration using the resolved existing configuration |
+| Header validator             | Deno relay                                                                    |
+| Header consumer              | Deno relay                                                                    |
+| Upstream behavior            | The header terminates at the relay and must not reach Codex                   |
+| Secret value                 | Never recorded in this document                                               |
 
 `x-relay-authorization` is non-canonical. It is sanitized or removed as an
 untrusted header and is never an authentication alias.
@@ -449,8 +358,8 @@ untrusted header and is never an authentication alias.
 ### 4.3 Plugin control-header responsibility
 
 The plugin is the producer of the Gateway and relay control headers in the
-selected architecture. It MUST configure the following headers without
-replacing OpenCode-owned `Authorization` or `ChatGPT-Account-Id`:
+selected architecture. It MUST configure the following headers without replacing
+OpenCode-owned `Authorization` or `ChatGPT-Account-Id`:
 
 ```text
 cf-aig-authorization
@@ -464,9 +373,9 @@ cf-aig-max-attempts
 
 `cf-aig-authorization` and `x-chatgpt-relay-authorization` are the required
 control credentials. The remaining `cf-aig-*` values preserve the existing
-Gateway control behavior. No global fetch interposer may inject a competing
-set of routing or control headers for the same OpenAI request. Header
-configuration is separate from the `provider.models` route owner.
+Gateway control behavior. No global fetch interposer may inject a competing set
+of routing or control headers for the same OpenAI request. Header configuration
+is separate from the `provider.models` route owner.
 
 `cf-aig-collect-log-payload` preserves the existing Gateway observability
 configuration and may expose request payloads to the Gateway observability
@@ -480,16 +389,16 @@ payload-free.
 The following ownership and forwarding rules are normative for the initial
 architecture:
 
-| Header | Producer | Consumer | Boundary behavior |
-| --- | --- | --- | --- |
-| `Authorization` | OpenCode | Codex/OpenAI upstream | OpenCode-owned credential; preserve as opaque transport data; no intermediary substitutes it |
-| `ChatGPT-Account-Id` | OpenCode | Codex/OpenAI upstream | OpenCode-owned account routing metadata; preserve when supplied by OpenCode |
-| `cf-aig-authorization` | Plugin control-header configuration | Cloudflare AI Gateway | Gateway credential only; stop at the Gateway boundary; never treat as OpenAI credential |
-| `x-chatgpt-relay-authorization` | Plugin control-header configuration | Deno relay | Relay credential only; validate at relay; never forward to Codex |
-| `cf-aig-metadata` | Plugin control-header configuration using existing Gateway configuration | Cloudflare AI Gateway | Preserve existing behavior when configured; not an authentication header and not a required OAuth substitute |
-| `X-OpenAI-Fedramp` | OpenCode, only when its applicability is established | Codex/OpenAI upstream | Do not infer or add it for an unverified account mode |
-| `x-openai-internal-codex-residency` | No producer in the initial scope | None in the initial scope | Do not add it by inference |
-| `x-relay-authorization` | Untrusted caller input | None | Sanitize/remove; never accept for authentication |
+| Header                              | Producer                                                                 | Consumer                  | Boundary behavior                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Authorization`                     | OpenCode                                                                 | Codex/OpenAI upstream     | OpenCode-owned credential; preserve as opaque transport data; no intermediary substitutes it                 |
+| `ChatGPT-Account-Id`                | OpenCode                                                                 | Codex/OpenAI upstream     | OpenCode-owned account routing metadata; preserve when supplied by OpenCode                                  |
+| `cf-aig-authorization`              | Plugin control-header configuration                                      | Cloudflare AI Gateway     | Gateway credential only; stop at the Gateway boundary; never treat as OpenAI credential                      |
+| `x-chatgpt-relay-authorization`     | Plugin control-header configuration                                      | Deno relay                | Relay credential only; validate at relay; never forward to Codex                                             |
+| `cf-aig-metadata`                   | Plugin control-header configuration using existing Gateway configuration | Cloudflare AI Gateway     | Preserve existing behavior when configured; not an authentication header and not a required OAuth substitute |
+| `X-OpenAI-Fedramp`                  | OpenCode, only when its applicability is established                     | Codex/OpenAI upstream     | Do not infer or add it for an unverified account mode                                                        |
+| `x-openai-internal-codex-residency` | No producer in the initial scope                                         | None in the initial scope | Do not add it by inference                                                                                   |
+| `x-relay-authorization`             | Untrusted caller input                                                   | None                      | Sanitize/remove; never accept for authentication                                                             |
 
 The relay removes Gateway-only, relay-only, hop-by-hop, and forwarding headers
 before the upstream request. It preserves only the OpenAI authorization and
@@ -527,12 +436,11 @@ Relay request:
   POST /v1/responses
 ```
 
-Neither `/v1/responses` nor `/responses` may be included in `model.api.url`.
-The `provider.models` hook MUST NOT append either suffix itself. The
-transport seam establishes the destination and boundary ownership; it does not
-select request, response, or SSE transformation behavior. The Gateway auth
-header and relay auth header remain control credentials for their own
-boundaries.
+Neither `/v1/responses` nor `/responses` may be included in `model.api.url`. The
+`provider.models` hook MUST NOT append either suffix itself. The transport seam
+establishes the destination and boundary ownership; it does not select request,
+response, or SSE transformation behavior. The Gateway auth header and relay auth
+header remain control credentials for their own boundaries.
 
 ### 6.2 Gateway to relay
 
@@ -568,8 +476,8 @@ model.api.url routing override
 Cloudflare/relay control-header configuration
 ```
 
-The plugin does not read OAuth access tokens or refresh tokens, copy or
-persist credentials, or implement OAuth refresh.
+The plugin does not read OAuth access tokens or refresh tokens, copy or persist
+credentials, or implement OAuth refresh.
 
 **Cloudflare AI Gateway**
 
@@ -590,12 +498,16 @@ fail closed
 ### 6.4 Transport invariants
 
 - Fail closed on configuration, authentication, routing, or transport errors.
-- Do not fall back directly to ChatGPT or Codex when Gateway or relay delivery fails.
-- Do not extract, decode, copy into storage, or replace the OpenCode OAuth credential.
+- Do not fall back directly to ChatGPT or Codex when Gateway or relay delivery
+  fails.
+- Do not extract, decode, copy into storage, or replace the OpenCode OAuth
+  credential.
 - Do not add retry loops, caching, or payload persistence.
 - Do not add a generic `/upstream/*` contract.
-- Do not perform plugin-side body rewriting to choose a production model or protocol.
-- Treat the public `provider.models` hook as the selected plugin-side transport-routing owner.
+- Do not perform plugin-side body rewriting to choose a production model or
+  protocol.
+- Treat the public `provider.models` hook as the selected plugin-side
+  transport-routing owner.
 - Do not use a global fetch interposer to route the same OpenAI request.
 
 ### 6.5 REJECTED / SUPERSEDED: Legacy global fetch interposer
@@ -617,17 +529,17 @@ parallel with the `provider.models` hook.
 
 Errors are owned by the boundary that can classify them without guessing:
 
-| Error | Owning boundary |
-| --- | --- |
-| `UNKNOWN_MODEL` or model resolution failure | OpenCode model-resolution boundary |
-| Plugin configuration, route construction, or control-header injection failure | OpenCode plugin `provider.models` / control-header configuration boundary |
-| Cloudflare authentication failure | Cloudflare AI Gateway boundary |
-| Relay authentication failure | Deno relay boundary |
-| OpenAI/Codex OAuth authentication failure | Codex/OpenAI upstream authentication boundary |
-| Request protocol incompatibility after authenticated dispatch | Relay protocol boundary; explicit unsupported boundary if direct forwarding cannot accept it |
-| Response protocol incompatibility | Relay response protocol boundary |
-| SSE incompatibility, stream error, or cancellation failure | Relay streaming boundary |
-| Tools unsupported outside the initial contract | Explicit initial-scope unsupported boundary; no fallback |
+| Error                                                                         | Owning boundary                                                                              |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `UNKNOWN_MODEL` or model resolution failure                                   | OpenCode model-resolution boundary                                                           |
+| Plugin configuration, route construction, or control-header injection failure | OpenCode plugin `provider.models` / control-header configuration boundary                    |
+| Cloudflare authentication failure                                             | Cloudflare AI Gateway boundary                                                               |
+| Relay authentication failure                                                  | Deno relay boundary                                                                          |
+| OpenAI/Codex OAuth authentication failure                                     | Codex/OpenAI upstream authentication boundary                                                |
+| Request protocol incompatibility after authenticated dispatch                 | Relay protocol boundary; explicit unsupported boundary if direct forwarding cannot accept it |
+| Response protocol incompatibility                                             | Relay response protocol boundary                                                             |
+| SSE incompatibility, stream error, or cancellation failure                    | Relay streaming boundary                                                                     |
+| Tools unsupported outside the initial contract                                | Explicit initial-scope unsupported boundary; no fallback                                     |
 
 Common policy:
 
@@ -669,8 +581,8 @@ Managed residency: NOT SUPPORTED IN INITIAL SCOPE
 If the target workspace requires managed residency, the configuration is
 unsupported and MUST fail closed. Additional design and runtime validation is
 required before support can be added. The normal path must not guess or add
-`x-openai-internal-codex-residency`. `X-OpenAI-Fedramp` is likewise emitted
-only when its applicability and source are already established.
+`x-openai-internal-codex-residency`. `X-OpenAI-Fedramp` is likewise emitted only
+when its applicability and source are already established.
 
 ## 9. SRG-022 Runtime Evidence
 
@@ -744,9 +656,9 @@ architecture and must not be reintroduced by an implementation agent.
 ### REJECTED / SUPERSEDED: Separate OpenCode provider identity
 
 An independent `cf-ai-gw-relay` OpenCode provider and a namespace such as
-`cf-ai-gw-relay/<upstream-provider>/<model>` were rejected because the
-validated path uses the built-in `openai` provider and inherits its ChatGPT
-OAuth ownership.
+`cf-ai-gw-relay/<upstream-provider>/<model>` were rejected because the validated
+path uses the built-in `openai` provider and inherits its ChatGPT OAuth
+ownership.
 
 ### REJECTED / SUPERSEDED: PAT credential architecture
 
@@ -760,8 +672,8 @@ requirements.
 The earlier design assigned routing ownership to the public `config` hook by
 setting `provider.openai.options.baseURL`. Target-runtime validation showed that
 the hook executed, but this `options.baseURL` setting did not change the
-built-in ChatGPT OAuth request route. The request used the direct
-`chatgpt.com` route instead of reaching the observer.
+built-in ChatGPT OAuth request route. The request used the direct `chatgpt.com`
+route instead of reaching the observer.
 
 Therefore `provider.openai.options.baseURL` is not adopted as the effective
 ChatGPT OAuth route owner and is not used by the current architecture. The
@@ -777,9 +689,9 @@ is not part of the current architecture.
 ### REJECTED / SUPERSEDED: `/v1`-shaped direct Codex rewrite
 
 The spike recorded that an inappropriate `/v1`-shaped OpenCode base URL could
-trigger a direct Codex rewrite. The validated configuration uses `provider=openai`
-and the Cloudflare AI Gateway Custom Provider path instead. The relay route is
-still `POST /v1/responses`.
+trigger a direct Codex rewrite. The validated configuration uses
+`provider=openai` and the Cloudflare AI Gateway Custom Provider path instead.
+The relay route is still `POST /v1/responses`.
 
 ## 11. SRG-035 Boundary
 
@@ -832,13 +744,14 @@ fixtures, including legacy payload fixtures, are not normative evidence for the
 target mapping and were not changed by this revision.
 
 1. Final production Codex model, including `model.api.id` and wire model ID.
-2. Authenticated request/response protocol characterization after upstream dispatch.
+2. Authenticated request/response protocol characterization after upstream
+   dispatch.
 3. Live response streaming, SSE, and tools characterization.
 
-SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was being
-completed. The contract and its evidence are now resolved. `writing-plans` is
-complete, but production implementation remains unstarted and blocked pending
-the protected acceptance and design-to-plan gates below:
+SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was
+being completed. The contract and its evidence are now resolved. Production
+implementation remains unstarted and blocked pending the credential-architecture
+sync and fresh design-to-plan review below:
 
 ### 11.1 SRG-035 closure contract
 
@@ -902,18 +815,18 @@ REQUEST_PROTOCOL = DIRECT_FORWARDING
 The observed OpenCode request was `POST` with `Content-Type: application/json`
 and an OpenAI Responses body containing `model`, `input`, `instructions`,
 `stream`, `tools`, `tool_choice`, `include`, `reasoning`, `store`, `text`, and
-`prompt_cache_key`. The selected production mapping sends
-`model=gpt-5.6-luna`; `input` is a Responses input array, with
-`function_call`/`function_call_output` items on tool continuation. OpenCode's
-public run surface emitted `stream=true` and `tool_choice=auto`.
+`prompt_cache_key`. The selected production mapping sends `model=gpt-5.6-luna`;
+`input` is a Responses input array, with `function_call`/`function_call_output`
+items on tool continuation. OpenCode's public run surface emitted `stream=true`
+and `tool_choice=auto`.
 
 OpenCode-owned `Authorization` and `ChatGPT-Account-Id` remain opaque upstream
 headers. Gateway control headers authenticate the Gateway, and
 `x-chatgpt-relay-authorization` authenticates the relay. The relay removes
 Gateway-only, relay-only, hop-by-hop, and forwarding headers before the fixed
 upstream while preserving the upstream authorization and account-routing
-headers. No body field or tool field is rewritten, normalized, or dropped by
-the relay. No unsupported field was observed.
+headers. No body field or tool field is rewritten, normalized, or dropped by the
+relay. No unsupported field was observed.
 
 Plugin-side body rewriting remains prohibited. Any relay-only mapping MUST state
 the exact fields, headers, and transformations owned by the relay.
@@ -956,9 +869,9 @@ The characterization established:
 - SSE event shape.
 - Stream termination behavior.
 - Stream error behavior.
-- Required abort behavior: the relay's request signal aborts the upstream
-  fetch; downstream cancellation cancels the upstream response body and
-  aborts the upstream request; no retry or fallback occurs.
+- Required abort behavior: the relay's request signal aborts the upstream fetch;
+  downstream cancellation cancels the upstream response body and aborts the
+  upstream request; no retry or fallback occurs.
 
 The Gateway response at the OpenCode boundary had an absent `content-type`
 header while carrying the live SSE body. This is preserved as an observed
@@ -974,9 +887,9 @@ TOOLS = INCLUDED
 
 The live probe emitted a Responses `function_call` item for `read`, submitted a
 `function_call_output` item in the continuation request, and received a
-successful continuation response ending in `response.completed`. Tool
-arguments and results are opaque request data; the relay forwards them without
-body mapping. Tool calls are therefore part of the initial contract, not an
+successful continuation response ending in `response.completed`. Tool arguments
+and results are opaque request data; the relay forwards them without body
+mapping. Tool calls are therefore part of the initial contract, not an
 unsupported path.
 
 ### 11.2 SRG-035 failure policy
@@ -1001,14 +914,13 @@ SDK family or major version
 The result MAY proceed to implementation validation without design re-approval
 only when it is limited to the same architecture, such as an exact wire field,
 fixture detail, helper split, or implementation-specific edge case. The
-integrated result satisfies the SRG-035 closure contract. `writing-plans` was
-subsequently generated and is complete, but production implementation remains
-blocked until the protected acceptance provisioning contract and the
-design-to-plan consistency check in §12 pass.
+integrated result satisfies the SRG-035 closure contract, but production
+implementation remains blocked until the credential architecture is synchronized
+with the plan and the design-to-plan consistency check in §12 passes.
 
 These are not SRG-022 defects. SRG-022 established the provider identity,
-credential ownership, transport route, header boundaries, and fail-closed
-policy needed before this characterization could run.
+credential ownership, transport route, header boundaries, and fail-closed policy
+needed before this characterization could run.
 
 ### 11.3 Characterization attempt status
 
@@ -1138,7 +1050,8 @@ The integrated result is:
 SRG-022: RESOLVED
 SRG-035: RESOLVED
 writing-plans: COMPLETED
-RG-001: PARTIALLY RESOLVED; lifecycle selected, actual attestation unavailable
+RG-001: UNRESOLVED; prior lifecycle evidence unavailable; replacement architecture
+pending fresh review
 RG-002: RESOLVED
 RG-003: RESOLVED in the plan revision
 RG-004: RESOLVED
@@ -1175,10 +1088,10 @@ output from the protected OpenCode run.
 ### 11.6 Post-characterization gate review (2026-09-20)
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
-satisfies the pre-implementation closure contract.
-The confirmation scope is limited to the target-runtime characterization and
-architecture boundary. It does not approve source migration, dependency changes,
-production readiness, or protected acceptance.
+satisfies the pre-implementation closure contract. The confirmation scope is
+limited to the target-runtime characterization and architecture boundary. It
+does not approve source migration, dependency changes, production readiness, or
+protected acceptance.
 
 Direct fallback, retry loops, credential extraction, private OpenCode APIs, and
 silent credential substitution remain prohibited.
@@ -1190,27 +1103,6 @@ following split is normative and closes the driver/observer boundary before
 implementation:
 
 ```ts
-type CommandResult = {
-  readonly code: number | null;
-  readonly signal: string | null;
-  readonly stdout: string;
-  readonly stderr: string;
-};
-
-type RunningCommand = {
-  readonly result: Promise<CommandResult>;
-  readonly cancel: (reason?: string) => Promise<void>;
-};
-
-type CommandRunner = (
-  command: readonly string[],
-  env: Readonly<Record<string, string | undefined>>,
-  options: {
-    readonly signal: AbortSignal;
-    readonly maxOutputBytes: number;
-  },
-) => Promise<RunningCommand>;
-
 type BoundaryScenario =
   | "valid-gateway-invalid-relay"
   | "invalid-gateway-valid-relay";
@@ -1225,77 +1117,76 @@ type BoundaryProbe = (
   env: Readonly<Record<string, string | undefined>>,
 ) => Promise<BoundaryProbeResult>;
 
-type AcceptanceDependencies = {
+type BoundaryAcceptanceDependencies = {
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly run: CommandRunner;
   readonly probe: BoundaryProbe;
 };
 
-runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
+runBoundaryAcceptance(deps: BoundaryAcceptanceDependencies): Promise<void>;
 ```
 
-`CommandRunner` MUST start the command without a shell, capture stdout and
-stderr with a fixed bound, and never inherit them to the workflow log. An
-`AbortSignal` abort MUST call `cancel` at most once. `cancel` sends SIGTERM,
-waits two seconds, sends SIGKILL if the process is still alive, and resolves the
-result with the terminating signal; it MUST NOT retry or launch a fallback
-command. The acceptance script may inspect the bounded output in memory to
-derive a named result, but MUST discard it after the result and MUST never
-persist or print it.
-
-The acceptance driver passes `maxOutputBytes = 65536` for each stream. Exceeding
-that bound is a failed acceptance result, not a truncation that may be treated
-as a successful completion.
-
 `BoundaryProbe` is the only live boundary observer. It sends a fixed,
-non-sensitive `POST /v1/responses` request through the configured Gateway
-Custom Provider route. For `valid-gateway-invalid-relay`, it uses the protected
-Gateway token and a fixed invalid relay sentinel; PASS is HTTP 401 with the
-relay's fixed `{"error":"unauthorized"}` response class. For
+non-sensitive `POST /v1/responses` request through the configured Gateway Custom
+Provider route. For `valid-gateway-invalid-relay`, it uses the protected Gateway
+token and a fixed invalid relay sentinel; PASS is HTTP 401 with the relay's
+fixed `{"error":"unauthorized"}` response class. For
 `invalid-gateway-valid-relay`, it uses a fixed invalid Gateway sentinel and the
-protected relay token; PASS is a Gateway rejection (HTTP 401 or 403) that is
-not the relay's fixed unauthorized envelope. The probe retains only the status
-and response class, never the response body or credentials. These two negative
-controls, together with a successful OpenCode run, are the concrete observers
-for Gateway authentication and relay authentication; they do not introduce a
-second production route or credential flow.
+protected relay token; PASS is a Gateway rejection (HTTP 401 or 403) that is not
+the relay's fixed unauthorized envelope. The probe retains only the status and
+response class, never the response body or credentials. These two negative
+controls are the concrete CI observers for Gateway authentication and relay
+authentication; they do not introduce a second production route or credential
+flow. The previously recorded successful OpenCode run remains local target-
+runtime architecture evidence, not a GitHub Actions acceptance assertion.
+
+The existing `RELAY_ACCEPTANCE_ORIGIN` value remains owned by
+`apps/deno-relay/acceptance_test.ts` for its direct relay route checks. It is
+intentionally absent from `BoundaryAcceptanceDependencies` because the new
+`BoundaryProbe` sends both authentication scenarios through the configured
+Gateway Custom Provider route. The workflow still validates and supplies all six
+existing `RELAY_ACCEPTANCE_*` values; this is a test-responsibility split, not a
+configuration removal.
+
+Response classification is bounded and fail-closed. The driver defines
+`MAX_BOUNDARY_RESPONSE_BYTES = 4096`, reads at most 4097 bytes before
+classification, and cancels the body after the bounded read. A body that exceeds
+the limit, cannot be read, or does not match the fixed unauthorized response
+class is a failed probe. The body is never logged, persisted, uploaded, or
+returned from `BoundaryProbe`; the implementation must not read an unbounded
+response into memory.
 
 The ownership matrix is:
 
-| Requirement | Driver | Observation point / interface | Command | Expected PASS | Failure owner |
-| --- | --- | --- | --- | --- | --- |
-| OpenCode OAuth state available | Gate 0 admission evidence and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `$HOME/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Organization runner-provisioning owner; remain blocked, no fallback |
-| OpenCode 1.18.31 and model selection | Fixed CLI run | `CommandRunner`; bounded JSON summary containing selected model ID, non-empty output, and non-zero usage; process EOF is the completion observation | `opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."` | Exit code 0 with no terminating signal, model `gpt-5.6-luna`, and a completed streamed result | Plugin/provider-models or host compatibility owner |
-| Gateway authentication | `BoundaryProbe("valid-gateway-invalid-relay")` | HTTP status plus `responseClass` only | Fixed Gateway `POST /v1/responses` probe with valid Gateway token and invalid relay sentinel | HTTP 401 and `relay-rejected` | Gateway configuration or Gateway route owner |
-| Relay authentication | Valid OpenCode run plus both boundary probes | Successful OpenCode result and relay rejection class from `BoundaryProbe` | Same fixed run and probes | Valid run reaches a usable completion; invalid relay is rejected before upstream | Relay authentication or plugin header owner |
-| Stream completion | Fixed OpenCode CLI run | Bounded JSON event summary and process EOF from `CommandRunner` | Fixed OpenCode run above | Exit code 0, no terminating signal, non-empty output, and non-zero usage after the raw JSON event stream ends | Relay streaming/upstream owner |
-| Non-stream JSON forwarding | Synthetic relay request | Status, body bytes, and allowed headers in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Status/body/header forwarding is byte-preserving | Relay contract owner |
-| `function_call_output` continuation forwarding | Synthetic relay request | Raw request bytes and SSE bytes in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Function-call continuation body and response stream are unchanged | Relay contract owner |
-| Cancellation propagation | Synthetic downstream abort | `Request.signal`, upstream `AbortSignal`, and `ReadableStream.cancel` in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Upstream request and body are cancelled; no retry/fallback | Relay streaming owner |
-| No direct `chatgpt.com` route | Plugin integration and source ownership checks | `globalThis.fetch` identity, no legacy interposer symbol, and one `provider.models` owner | `npm test -- --run test/plugin.test.ts`; source grep in Task 8 | No global route mutation or second route owner | Plugin integration/host fail-closed owner |
-| Fail-closed invalid configuration | Plugin activation tests with missing route/control configuration | Rejection type, no returned hooks, and no direct route mutation | `npm test -- --run test/plugin.test.ts test/config.test.ts` | Configuration/host failure rejects before dispatch | Plugin configuration owner |
-| Post-refresh native-store persistence | Gate 0 actual owner attestation and runner provisioning-service finalizer | Actual bounded attestation; no auth-store content | Provisioning-service post-job reconciliation for PASS/FAIL/CANCEL | Latest opaque native store is atomically persisted before encrypted job-volume teardown | Organization runner-provisioning owner; mark state unhealthy and block the next job |
-| Single-writer serialization | Gate 0 actual owner attestation and runner provisioning-service admission lock | Actual bounded attestation; no store identity or credential data | Provisioning-service admission/finalizer lifecycle outside the workflow | One protected acceptance job holds the canonical-store lock through reconciliation | Organization runner-provisioning owner; deny admission without stale fallback |
+| Requirement                                    | Driver                                                                          | Observation point / interface                                                             | Command                                                                                                                     | Expected PASS                                                                                    | Failure owner                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| OpenCode OAuth state available                 | User-controlled OpenCode runtime                                                | OpenCode native auth store and official `opencode auth list` command                      | Local operator runtime only; not a CI command                                                                               | OpenCode recognizes the user's local OAuth state without exporting its value                     | OpenCode user/operator; fail closed and require official reauthorization        |
+| OpenCode 1.18.31 and model selection           | Local target-runtime characterization                                           | OpenCode public hook and model-resolution boundary                                        | Local `opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."` when a separate manual probe is required | Target runtime reaches the selected model without direct-route fallback; not a protected CI gate | Plugin/provider-models or host compatibility owner                              |
+| Gateway authentication                         | `BoundaryProbe("valid-gateway-invalid-relay")`                                  | HTTP status plus `responseClass` only                                                     | Fixed Gateway `POST /v1/responses` probe with valid Gateway token and invalid relay sentinel                                | HTTP 401 and `relay-rejected`                                                                    | Gateway configuration or Gateway route owner                                    |
+| Relay authentication                           | Both `BoundaryProbe` scenarios                                                  | HTTP status plus `responseClass` only                                                     | GitHub-hosted protected acceptance boundary probes                                                                          | Invalid relay is rejected before upstream and invalid Gateway is rejected at Gateway             | Relay authentication or plugin header owner                                     |
+| Stream completion                              | Deterministic relay tests; local runtime characterization remains informational | Relay stream bytes, cancellation, and source ownership                                    | `deno test apps/deno-relay/relay_test.ts`; local OpenCode probe is not a CI gate                                            | Relay behavior passes without retry/fallback                                                     | Relay streaming/upstream owner                                                  |
+| Non-stream JSON forwarding                     | Synthetic relay request                                                         | Status, body bytes, and allowed headers in `relay_test.ts`                                | `deno test apps/deno-relay/relay_test.ts`                                                                                   | Status/body/header forwarding is byte-preserving                                                 | Relay contract owner                                                            |
+| `function_call_output` continuation forwarding | Synthetic relay request                                                         | Raw request bytes and SSE bytes in `relay_test.ts`                                        | `deno test apps/deno-relay/relay_test.ts`                                                                                   | Function-call continuation body and response stream are unchanged                                | Relay contract owner                                                            |
+| Cancellation propagation                       | Synthetic downstream abort                                                      | `Request.signal`, upstream `AbortSignal`, and `ReadableStream.cancel` in `relay_test.ts`  | `deno test apps/deno-relay/relay_test.ts`                                                                                   | Upstream request and body are cancelled; no retry/fallback                                       | Relay streaming owner                                                           |
+| No direct `chatgpt.com` route                  | Plugin integration and source ownership checks                                  | `globalThis.fetch` identity, no legacy interposer symbol, and one `provider.models` owner | `npm test -- --run test/plugin.test.ts`; source grep in Task 8                                                              | No global route mutation or second route owner                                                   | Plugin integration/host fail-closed owner                                       |
+| Fail-closed invalid configuration              | Plugin activation tests with missing route/control configuration                | Rejection type, no returned hooks, and no direct route mutation                           | `npm test -- --run test/plugin.test.ts test/config.test.ts`                                                                 | Configuration/host failure rejects before dispatch                                               | Plugin configuration owner                                                      |
+| Refresh-state persistence                      | OpenCode built-in provider                                                      | Local native auth service; no repository interface                                        | OpenCode runtime refresh path                                                                                               | Refreshed OAuth state is written to the user's native store; no CI copy exists                   | OpenCode user/operator; fail closed and require official reauthorization        |
+| CI credential persistence                      | No CI component                                                                 | Protected acceptance environment contains only non-OAuth controls                         | GitHub-hosted workflow inspection and protected acceptance run                                                              | No OAuth state is supplied, persisted, or written back by CI                                     | Architecture owner; `DESIGN RE-APPROVAL REQUIRED` for any live OAuth CI request |
 
 Non-stream forwarding, tool continuation, cancellation, and direct-route
 exclusion therefore belong to deterministic tests and source-level ownership
 checks, not to a second live OpenCode transport. The previously recorded live
 SRG-035 tool continuation remains architecture evidence; the byte-preserving
-relay regression is the implementation gate. Task 6 MUST NOT claim to prove
-non-stream output, cancellation, or tool choice from the public OpenCode run
-surface. A future requirement for a new live tool-registration seam would
-require an explicit design review rather than an implementation-time guess.
+relay regression is the implementation gate. Protected acceptance MUST NOT claim
+to prove OAuth state availability, refresh persistence, non-stream output,
+cancellation, or tool choice from a live OpenCode process. A future requirement
+for any of those live CI assertions requires explicit architecture and security
+re-approval rather than an implementation-time credential choice.
 
-The canonical native-store lifecycle is outside the `AcceptanceDependencies`
-interface and outside `runProviderAcceptance`. The acceptance driver consumes
-only the precondition that the provisioning service has mounted the store and
-that the native OpenCode provider is recognized. The provisioning service owns
-the post-job finalizer, opaque atomic persistence, single-writer lock, and
-volume teardown. Its actual bounded attestation is the external pre-task Gate 0
-output; it is not produced by the workflow and must not be synthesized from
-the acceptance driver's command result. Task 6 consumes the approved Gate 0
-prerequisite and configures only the repository-owned acceptance workflow and
-driver.
+`BoundaryAcceptanceDependencies` contains no native-store or OAuth field. The
+acceptance driver consumes only the existing non-OAuth Gateway and relay
+controls, and its boundary probes retain only status and response class. The
+user-controlled OpenCode runtime remains the sole owner of OAuth persistence and
+refresh; CI does not synthesize, export, or write back that state.
 
 ## 12. Scope and Definition of Done
 
@@ -1303,47 +1194,64 @@ This design-and-plan correction changes only the two review documents. It does
 not change production source, tests, dependencies, package metadata, lockfiles,
 CI, deployment, Cloudflare settings, or runtime configuration.
 
-SRG-022 is resolved. SRG-035 is resolved. The
-selected architecture is defined by all of the following:
+SRG-022 is resolved. SRG-035 is resolved. The selected architecture is defined
+by all of the following:
 
 - Provider identity is `openai`.
-- The public OpenCode extension point is the `provider.models` hook on the target OpenCode 1.18.31 runtime.
-- The selected routing owner is the `provider.models` hook, through the target model's `model.api.url`.
-- `model.api.url` is `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-<slug>`.
-- `provider.openai.options.baseURL` is not the effective ChatGPT OAuth route owner and is rejected as a current routing mechanism after target-runtime validation.
-- The AI SDK-owned `/responses` suffix and the Custom Provider `base_url` together produce relay `POST /v1/responses`.
-- The plugin configures `cf-aig-authorization` and `x-chatgpt-relay-authorization`, plus the existing Gateway control headers, without taking OAuth ownership.
-- Global `fetch` interception is not a selected transport owner and cannot run as a parallel routing path.
+- The public OpenCode extension point is the `provider.models` hook on the
+  target OpenCode 1.18.31 runtime.
+- The selected routing owner is the `provider.models` hook, through the target
+  model's `model.api.url`.
+- `model.api.url` is
+  `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-<slug>`.
+- `provider.openai.options.baseURL` is not the effective ChatGPT OAuth route
+  owner and is rejected as a current routing mechanism after target-runtime
+  validation.
+- The AI SDK-owned `/responses` suffix and the Custom Provider `base_url`
+  together produce relay `POST /v1/responses`.
+- The plugin configures `cf-aig-authorization` and
+  `x-chatgpt-relay-authorization`, plus the existing Gateway control headers,
+  without taking OAuth ownership.
+- Global `fetch` interception is not a selected transport owner and cannot run
+  as a parallel routing path.
 - ChatGPT OAuth is acquired, stored, refreshed, and injected by OpenCode.
-- The plugin does not read, copy, persist, or refresh OAuth credentials, and no private OpenCode credential API is required.
-- PAT architecture is removed from the current design and marked superseded only in history.
+- The plugin does not read, copy, persist, or refresh OAuth credentials, and no
+  private OpenCode credential API is required.
+- PAT architecture is removed from the current design and marked superseded only
+  in history.
 - `cf-aig-authorization` has explicit Gateway ownership and termination.
 - `x-chatgpt-relay-authorization` is the sole relay auth header.
 - Relay transport is `POST /v1/responses`.
 - `REQUEST_PROTOCOL = DIRECT_FORWARDING`.
 - `RESPONSE_PROTOCOL = DIRECT_FORWARDING`.
 - `STREAMING_PROTOCOL = DIRECT_FORWARDING`.
-- `TOOLS = INCLUDED`, with Responses `function_call` and `function_call_output` continuation.
-- Initial production mapping is `openai/gpt-5.6-luna` -> `gpt-5.6-luna` -> `@ai-sdk/openai 3.0.88` -> `gpt-5.6-luna`.
-- Error ownership is fixed at the model-resolution, Gateway, relay, upstream OAuth, response, streaming, and explicit unsupported boundaries.
+- `TOOLS = INCLUDED`, with Responses `function_call` and `function_call_output`
+  continuation.
+- Initial production mapping is `openai/gpt-5.6-luna` -> `gpt-5.6-luna` ->
+  `@ai-sdk/openai 3.0.88` -> `gpt-5.6-luna`.
+- Error ownership is fixed at the model-resolution, Gateway, relay, upstream
+  OAuth, response, streaming, and explicit unsupported boundaries.
 - Direct fallback and credential extraction are prohibited.
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
 - `openai/gpt-5.6-sol` remains validation evidence only.
-- Gateway and relay authentication were validated without recording secret values.
+- Gateway and relay authentication were validated without recording secret
+  values.
 - SRG-035 satisfies the closure contract as `RESOLVED`.
 - `writing-plans` is `COMPLETED`.
-- Protected acceptance uses only the `protected-opencode-oauth` ephemeral runner
-  and runner-managed native OpenCode auth volume defined in §3.3, including
-  opaque post-refresh reconciliation, single-writer serialization, and
-  persistence-before-teardown; inability to provide that contract or its actual
-  bounded attestation is `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
-- Gate 0 is the external pre-task gate for the actual bounded
-  runner-provisioning attestation. It makes no repository modification and is
-  not produced by Task 6, the workflow, or `runProviderAcceptance`.
-- No Task 1 through Task 8 may start before Gate 0 PASS and a fresh Superpowers
-  Review Gate marks this design and plan `READY`.
-- The design-to-plan consistency review is `BLOCKED` until the verification
-  ownership, Gate 0 ordering, and plan corrections in §11.7 are re-reviewed.
+- Protected acceptance runs on GitHub-hosted `ubuntu-latest` and uses only the
+  existing non-OAuth Gateway, relay, and provider acceptance controls.
+- ChatGPT OAuth is acquired, stored, refreshed, and injected only by the
+  user-controlled OpenCode 1.18.31 runtime through its official native auth
+  mechanism; CI has no OAuth injection, persistence, refresh, or write-back
+  seam.
+- `OPENCODE_AUTH_CONTENT`, GitHub Secrets containing OAuth state, PATs, OAuth
+  token extraction, external brokers, and direct-fetch fallback are prohibited.
+- Live OpenCode OAuth acceptance is not a CI release gate. A future request for
+  it is `DESIGN RE-APPROVAL REQUIRED`.
+- No Task 1 through Task 8 may start before a fresh Superpowers Review Gate
+  marks this design and plan `READY`.
+- The design-to-plan consistency review is `BLOCKED` until the credential
+  ownership, CI acceptance scope, and plan corrections are re-reviewed.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
@@ -1352,11 +1260,11 @@ plan may choose only the concrete source patch that implements the
 `provider.models` -> `model.api.url` route and plugin control-header
 configuration; it may not choose a different routing mechanism.
 
-The implementation plan now exists. Before production implementation may start,
-the design document and implementation plan MUST be checked for zero divergence
-in specification, terminology, types/interfaces, error handling, test strategy,
-and non-functional requirements. Any unresolved divergence, missing actual
-runner-provisioning attestation, failed Gate 0 ordering, or failed ownership
-mapping keeps production implementation blocked. A fresh Superpowers Review Gate
-MUST mark the pair `READY` after Gate 0 PASS; this document does not self-approve
-production implementation.
+The implementation plan has been revised to synchronize with this document.
+Before production implementation may start, the design document and
+implementation plan MUST be checked for zero divergence in specification,
+terminology, types/interfaces, error handling, test strategy, and non-functional
+requirements. Any unresolved divergence, unsupported OAuth injection proposal,
+or failed ownership mapping keeps production implementation blocked. A fresh
+Superpowers Review Gate MUST mark the pair `READY`; this document does not
+self-approve production implementation.

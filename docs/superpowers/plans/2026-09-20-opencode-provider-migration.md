@@ -20,72 +20,27 @@ model is that same OpenAI model; it never replaces `Authorization` or
 directly forwards the resulting `POST /v1/responses` request, response, SSE
 stream, and tool continuations.
 
-Protected acceptance credential lifecycle is external to the workflow and to
-`runProviderAcceptance`. The runner provisioning service owns the canonical
-encrypted native OpenCode auth store, takes a single-writer lock before job
-admission, makes an opaque job-scoped read-write copy available at
-`$HOME/.local/share/opencode/auth.json`, and atomically reconciles the latest
-store after PASS, FAIL, or CANCEL before teardown. OpenCode `1.18.31` writes
-refreshed OAuth state returned by its built-in refresh flow back to the native
-store. OpenCode is the only OAuth semantic writer; the provisioning service
-never parses OAuth contents. A reconciliation failure marks the credential
-state unhealthy, blocks the next job, and requires operator reauthorization or
-store repair without stale-store fallback. The organization
-runner-provisioning owner controls admission, reauthorization, rotation,
-revocation response, canonical-store replacement, and unblock decisions.
+OpenCode 1.18.31 is the sole ChatGPT OAuth owner. Its official browser or
+headless device login populates the user-controlled native `auth.json`; its
+built-in provider refreshes and writes that local state. The plugin, relay,
+Gateway, GitHub Actions, and protected acceptance workflow never receive or
+persist OAuth state. Protected acceptance runs on GitHub-hosted `ubuntu-latest`
+and verifies only non-OAuth Gateway/relay boundaries and deterministic
+contracts. Live OAuth acceptance is not a CI gate.
 
 **Tech Stack:** TypeScript, `@opencode-ai/plugin` 1.18.31, `@opencode-ai/sdk/v2`
 model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
-**Pre-implementation gate:** `BLOCKED`.
+**Pre-implementation gate:** `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
 
-**Gate 0 — External protected-runner provisioning evidence** is a pre-task gate
-owned by the organization runner-provisioning owner. It is not an implementation
-step and is not owned by Task 6 or by the repository workflow.
-
-```text
-Owner:
-  organization runner-provisioning owner
-
-Repository modifications:
-  none
-
-Consumes:
-  already-provisioned protected-opencode-oauth runner environment
-
-Produces:
-  actual bounded secret-free runner-provisioning attestation
-
-PASS:
-  every required provisioning and lifecycle property is evidenced
-
-FAIL:
-  BLOCKED / DESIGN RE-APPROVAL REQUIRED
-```
-
-The actual attestation MUST cover the runner label, OpenCode `1.18.31`, native
-auth-store path, owner/mode result, provider recognition, encrypted-volume
-lifetime, post-refresh persistence/reconciliation, single-writer serialization,
-teardown ordering, and the rotation/revocation/reauthorization owner. It must
-contain no auth-store bytes, token, account identifier, raw command transcript,
-request payload, or response content. The field list in this gate and the
-attestation schema in the design are not evidence, and no actual bounded
-runner-provisioning attestation is currently present in the repository or review
-evidence.
-
-No Task 1 through Task 8 may start until both conditions hold:
-
-```text
-Gate 0 PASS
-fresh Superpowers Review Gate = READY for this design and implementation plan
-```
-
-Gate 0 PASS alone does not make this plan `READY`. If the actual attestation
-cannot be provided, stop with `BLOCKED / DESIGN RE-APPROVAL REQUIRED`; do not
-choose a different credential source during implementation. Gate 0 makes no
-repository, runner-infrastructure, GitHub Environment, or credential-store
-modification. Task 6 may only consume the approved Gate 0 prerequisite; it must
-not design, establish, or synthesize runner-provisioning evidence.
+The superseded credential lifecycle is removed. No Task 1 through Task 8 may
+start until a fresh Superpowers Review Gate marks this design and plan `READY`.
+The fresh review must verify that the selected architecture has no CI OAuth
+injection, no OAuth persistence outside the user-controlled OpenCode runtime,
+and no alternative credential choice left to the implementation agent. Removing
+the unavailable lifecycle is not a pass for `RG-001`; the blocker remains until
+that fresh review accepts the authoritative environment evidence and replacement
+boundary.
 
 ## Global Constraints
 
@@ -108,30 +63,25 @@ not design, establish, or synthesize runner-provisioning evidence.
 - `REQUEST_PROTOCOL`, `RESPONSE_PROTOCOL`, and `STREAMING_PROTOCOL` are
   `DIRECT_FORWARDING`; `TOOLS = INCLUDED`, including Responses `function_call`
   and `function_call_output` continuation.
-- OpenCode exclusively acquires, interprets, refreshes, and injects ChatGPT OAuth
-  semantics. The runner provisioning service stores and transports only an
-  opaque encrypted native-store copy for protected acceptance. The plugin and
-  relay must not extract, inspect for ownership, persist, refresh, substitute,
-  or log OAuth contents.
-- Protected acceptance runs only on an ephemeral organization-managed runner
-  with label `protected-opencode-oauth`. The runner provisioning service owns
-  the canonical encrypted native OpenCode auth store and acquires its
-  single-writer lock before admission. It makes an opaque copy or mount
-  available through a read-write job-scoped encrypted volume at
-  `$HOME/.local/share/opencode/auth.json` before the workflow starts. OpenCode
-  `1.18.31` writes refreshed OAuth state to that native store; after PASS,
-  FAIL, or CANCEL, the provisioning-service finalizer stops and reaps the
-  OpenCode process, atomically persists the latest opaque store to the
-  canonical encrypted store, confirms persistence, and only then destroys the
-  job volume. The workflow must not receive the OAuth state as a GitHub secret,
-  environment value, command argument, generated repository file, artifact,
-  cache, or serialized file; it must not parse, copy, or upload the store.
-  Missing runner admission, mount, ownership, permissions, native-store
-  recognition, single-writer lock, or post-refresh reconciliation is a hard
-  blocked prerequisite with no PAT or OAuth-token extraction fallback. If
-  reconciliation fails, mark the credential state unhealthy, block the next
-  protected job, require operator reauthorization or store repair, and never
-  silently reseed from a stale store.
+- OpenCode exclusively acquires, interprets, refreshes, and injects ChatGPT
+  OAuth semantics through its official native auth mechanism. The
+  user-controlled OpenCode runtime owns `$XDG_DATA_HOME/opencode/auth.json`,
+  defaulting to `$HOME/.local/share/opencode/auth.json`; the plugin and relay
+  must not extract, inspect for ownership, persist, refresh, substitute, or log
+  OAuth contents.
+- GitHub Actions uses GitHub-hosted `ubuntu-latest` for CI and protected
+  acceptance. Protected acceptance uses only existing non-OAuth Gateway, relay,
+  and provider controls. It must not install or invoke ChatGPT OAuth, require an
+  OpenCode auth store, or claim to prove a live OAuth request.
+- OAuth state must not be placed in GitHub Secrets, workflow environment values,
+  command arguments, generated repository files, artifacts, caches, or logs.
+  `OPENCODE_AUTH_CONTENT` is not a selected CI interface because source presence
+  does not establish a public supported credential contract.
+- OpenCode writes refreshed OAuth state back to the user's local native store.
+  CI does not own refreshed OAuth state, credential persistence, or credential
+  rotation. Operators reauthorize through official OpenCode login/logout flows.
+  No PAT, OAuth-token extraction, alternate OAuth client, or external credential
+  broker is allowed.
 - `chat.headers` configures `cf-aig-authorization`,
   `x-chatgpt-relay-authorization`, `cf-aig-collect-log`,
   `cf-aig-collect-log-payload`, `cf-aig-metadata`, `cf-aig-skip-cache`, and
@@ -157,7 +107,8 @@ not design, establish, or synthesize runner-provisioning evidence.
 - Managed residency is `NOT SUPPORTED IN INITIAL SCOPE`; do not infer
   `x-openai-internal-codex-residency` or `X-OpenAI-Fedramp`.
 - Do not claim supported production readiness until the OpenCode host-capability
-  gate and protected acceptance both pass.
+  gate and non-OAuth protected acceptance both pass. Live OAuth acceptance is
+  not a CI release gate; requiring it later is `DESIGN RE-APPROVAL REQUIRED`.
 
 ---
 
@@ -183,13 +134,15 @@ not design, establish, or synthesize runner-provisioning evidence.
 - Modify `apps/deno-relay/relay_test.ts` for explicit non-stream Responses JSON
   byte/header pass-through and the existing streaming/cancellation/tool
   regressions. This task does not modify `apps/deno-relay/relay.ts`; a failing
-  characterization is a plan blocker that requires a separately approved
-  relay defect task.
-- Create `.github/scripts/opencode_provider_acceptance_test.ts`; modify
-  `.github/workflows/acceptance.yml`, `docs/configuration.md`, and
-  `docs/operations.md` for a secret-safe, manually dispatched OpenCode
-  acceptance gate on `protected-opencode-oauth`, explicit Gateway/relay
-  boundary probes, and the Gateway payload-observability boundary.
+  characterization is a plan blocker that requires a separately approved relay
+  defect task.
+- Keep `.github/workflows/acceptance.yml` on GitHub-hosted `ubuntu-latest` and
+  modify its documentation owners in a later implementation task only when the
+  non-OAuth boundary assertions change. Create an OAuth-free boundary driver and
+  its test under `.github/scripts`; do not create an OpenCode OAuth acceptance
+  driver or an OAuth injection helper. The existing
+  `apps/deno-relay/acceptance_test.ts` and `acceptance_support.ts` remain the
+  relay route test seam.
 - Modify `SPEC.md`, `README.md`, `README.ja.md`,
   `packages/opencode-plugin/README.md`, and the design document after migration
   so canonical documentation distinguishes the migrated current route from the
@@ -526,7 +479,8 @@ not design, establish, or synthesize runner-provisioning evidence.
   expect(globalThis.fetch).toBe(fetchBeforeActivation);
   ```
 
-- [ ] **Step 2: RED — run the integration test to confirm the interposer fails it**
+- [ ] **Step 2: RED — run the integration test to confirm the interposer fails
+      it**
 
   ```bash
   npm test -- --run test/plugin.test.ts
@@ -535,7 +489,8 @@ not design, establish, or synthesize runner-provisioning evidence.
   Expected: FAIL because the current plugin returns `{}` and mutates global
   `fetch` after successful activation.
 
-- [ ] **Step 3: Minimum GREEN — integrate one resolved configuration into both hooks**
+- [ ] **Step 3: Minimum GREEN — integrate one resolved configuration into both
+      hooks**
 
   Retain host validation first, resolve configuration exactly once, then return
   the two selected public hooks. Do not defer configuration to a request-time
@@ -550,7 +505,8 @@ not design, establish, or synthesize runner-provisioning evidence.
   };
   ```
 
-- [ ] **Step 4: Minimum GREEN — remove every legacy routing symbol and its tests**
+- [ ] **Step 4: Minimum GREEN — remove every legacy routing symbol and its
+      tests**
 
   Delete the three legacy source files and their tests. Remove their exports
   from `index.ts`; export `buildGatewayModelUrl`, `createProviderModels`,
@@ -601,7 +557,8 @@ not design, establish, or synthesize runner-provisioning evidence.
   removes relay-only, Gateway-only, hop-by-hop, and forwarding request headers
   before the fixed Codex upstream.
 
-- [ ] **Step 1: Add characterization/regression coverage for non-stream Responses**
+- [ ] **Step 1: Add characterization/regression coverage for non-stream
+      Responses**
 
   Create an authenticated relay request with an opaque `Authorization`,
   `ChatGPT-Account-Id`, Gateway headers, and relay credential. Return synthetic
@@ -653,7 +610,8 @@ not design, establish, or synthesize runner-provisioning evidence.
   Expected: PASS with no generic `/upstream/*` test enabled and no retry,
   caching, body normalization, or payload persistence introduced.
 
-- [ ] **Step 5: Record the refactor decision and commit relay contract coverage**
+- [ ] **Step 5: Record the refactor decision and commit relay contract
+      coverage**
 
   Refactor decision: none. The relay source remains unchanged because this task
   locks existing direct forwarding rather than introducing a new implementation.
@@ -663,46 +621,30 @@ not design, establish, or synthesize runner-provisioning evidence.
   git commit -m "test: lock relay Responses forwarding contract"
   ```
 
-## Task 6: Add a Secret-Safe Protected OpenCode Acceptance Gate
+## Task 6: Keep Protected Acceptance GitHub-Hosted and OAuth-Free
 
 **Files:**
 
 - Create: `.github/scripts/opencode_provider_acceptance.ts`
 - Create: `.github/scripts/opencode_provider_acceptance_test.ts`
-- Modify: `.github/workflows/acceptance.yml`
-- Modify: `docs/configuration.md`
-- Modify: `docs/operations.md`
+- Inspect: `.github/workflows/acceptance.yml`
+- Inspect: `apps/deno-relay/acceptance_test.ts`
+- Inspect: `apps/deno-relay/acceptance_support.ts`
+- Modify only if the migrated non-OAuth boundary contract requires it:
+  `.github/workflows/acceptance.yml`, `docs/configuration.md`,
+  `docs/operations.md`
 
 **Interfaces:**
 
-- Consumes the existing protected Gateway and relay control values plus the
-  native OpenCode auth store already mounted by the
-  `protected-opencode-oauth` runner; it must not read or print OAuth credential
-  values.
-- Produces the following process and boundary interfaces:
+- Consumes the existing non-OAuth Gateway, relay, and provider acceptance
+  variables/secrets already defined by the `protected-acceptance` Environment.
+- Does not consume an OpenCode auth store, OAuth JSON, PAT, or any credential
+  injection interface.
+- The existing test seam remains `apps/deno-relay/acceptance_test.ts` and
+  `apps/deno-relay/acceptance_support.ts`. If a reusable boundary helper is
+  needed, its exact interface is:
 
   ```ts
-  type CommandResult = {
-    readonly code: number | null;
-    readonly signal: string | null;
-    readonly stdout: string;
-    readonly stderr: string;
-  };
-
-  type RunningCommand = {
-    readonly result: Promise<CommandResult>;
-    readonly cancel: (reason?: string) => Promise<void>;
-  };
-
-  type CommandRunner = (
-    command: readonly string[],
-    env: Readonly<Record<string, string | undefined>>,
-    options: {
-      readonly signal: AbortSignal;
-      readonly maxOutputBytes: number;
-    },
-  ) => Promise<RunningCommand>;
-
   type BoundaryScenario =
     | "valid-gateway-invalid-relay"
     | "invalid-gateway-valid-relay";
@@ -717,103 +659,57 @@ not design, establish, or synthesize runner-provisioning evidence.
     env: Readonly<Record<string, string | undefined>>,
   ) => Promise<BoundaryProbeResult>;
 
-  type AcceptanceDependencies = {
+  type BoundaryAcceptanceDependencies = {
     readonly env: Readonly<Record<string, string | undefined>>;
-    readonly run: CommandRunner;
     readonly probe: BoundaryProbe;
   };
 
-  runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
+  runBoundaryAcceptance(deps: BoundaryAcceptanceDependencies): Promise<void>;
   ```
 
-  Task 6 is available only after Gate 0 PASS and a fresh Superpowers Review Gate
-  marks this plan `READY`. Therefore Task 6 Step 1 and Step 2, including the
-  deterministic RED command, are executed only after the global pre-implementation
-  gate opens. Their lack of network and OAuth requirements does not exempt them
-  from that gate.
+- The workflow remains `runs-on: ubuntu-latest`, uses the `protected-acceptance`
+  Environment, and reports only named result classes.
+- `RELAY_ACCEPTANCE_ORIGIN` remains owned by the existing
+  `apps/deno-relay/acceptance_test.ts` direct relay checks. The new boundary
+  driver intentionally does not consume it because both scenarios go through the
+  configured Gateway Custom Provider route; this is a responsibility split, not
+  a removal from workflow configuration. The workflow configuration step must
+  still require all six existing `RELAY_ACCEPTANCE_*` values.
+- No workflow step may install, invoke, inspect, export, or persist ChatGPT
+  OAuth state. Live OpenCode OAuth acceptance is explicitly outside this task.
 
-  The acceptance interfaces do not expose or mutate the native auth store. The
-  runner provisioning service separately produces the canonical-store lock,
-  pre-job opaque mount/copy, post-job reconciliation result, and
-  persistence-before-teardown decision. OpenCode is the only OAuth semantic
-  writer; the provisioning service transports the native file opaquely.
+- [ ] **Step 1: RED — write the failing boundary contract test**
 
-  `CommandRunner` starts argv directly without a shell, captures stdout/stderr
-  with a fixed bound, and never inherits them to workflow output. Its
-  `AbortSignal` invokes `cancel` at most once. `cancel` sends SIGTERM, waits
-  two seconds, sends SIGKILL if needed, and resolves the result with the
-  terminating signal; it never retries or starts a fallback command. Pass
-  `maxOutputBytes = 65536` for each stream; exceeding the bound fails the
-  acceptance result rather than being treated as a successful truncation.
-- Produces
-  `deno run --allow-run --allow-env --allow-net .github/scripts/opencode_provider_acceptance.ts`,
-  which exits non-zero unless the protected auth-store precondition, OpenCode
-  1.18.31 model route, streamed completion, and both explicit boundary probes
-  pass. Non-stream forwarding, cancellation, tool continuation, direct-route
-  exclusion, and invalid configuration are owned by Tasks 4 and 5 as shown in
-  the design document's verification matrix.
-- Produces no stored transcript, request payload, response content, account
-  identifier, or secret.
+Add `.github/scripts/opencode_provider_acceptance_test.ts` before the driver
+exists. Import `runBoundaryAcceptance` from the not-yet-created
+`./opencode_provider_acceptance.ts` module so the RED result has one
+deterministic missing-module cause. Test the exact `BoundaryProbe`,
+`BoundaryAcceptanceDependencies`, required environment names, and both scenarios
+with non-secret sentinels:
 
-- [ ] **Step 1: RED — write the failing acceptance-command contract**
+```ts
+const testEnvironment = {
+  RELAY_ACCEPTANCE_RELAY_SECRET: "relay-sentinel",
+  RELAY_ACCEPTANCE_GATEWAY_BASE_URL:
+    "https://gateway.ai.cloudflare.com/v1/acct/gateway",
+  RELAY_ACCEPTANCE_GATEWAY_TOKEN: "gateway-sentinel",
+  RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY: "provider-sentinel",
+  RELAY_ACCEPTANCE_MODEL: "gpt-5.6-luna",
+};
 
-  Add `opencode_provider_acceptance_test.ts` before the runner exists. Test the
-  exact `CommandRunner`, `BoundaryProbe`, and `AcceptanceDependencies` seams,
-  including cancellation, bounded output, required configuration names, and
-  the two boundary scenarios. Use only non-secret sentinels in fake values.
-  Import `runProviderAcceptance` from the not-yet-created
-  `./opencode_provider_acceptance.ts` module so the RED condition has one
-  deterministic missing-module cause.
-  The OpenCode command must invoke the fixed model with a constant prompt and
-  must use a process-local plugin configuration whose JSON contains no
-  `{env:...}` references.
-
-  ```ts
-  const testEnvironment = {
-    RELAY_CF_ACCOUNT_ID: "acct",
-    RELAY_CF_GATEWAY_ID: "gateway",
-    RELAY_CF_PROVIDER_SLUG: "relay-chatgpt",
-    RELAY_CF_AIG_TOKEN: "gateway-sentinel",
-    RELAY_SECRET: "relay-sentinel",
-  };
-  const run: CommandRunner = async (command, _env, _options) => {
-    assertEquals(command[0], "opencode");
-    assert(command.includes("openai/gpt-5.6-luna"));
-    return {
-      result: Promise.resolve({
-        code: 0,
-        signal: null,
-        stdout: '{"modelID":"gpt-5.6-luna","output":"OK","usage":{"total_tokens":1}}',
-        stderr: "",
-      }),
-      cancel: async () => undefined,
-    };
-  };
-  const probe: BoundaryProbe = async (scenario) => scenario ===
+const probe: BoundaryProbe = async (scenario) =>
+  scenario ===
       "valid-gateway-invalid-relay"
     ? { status: 401, responseClass: "relay-rejected" }
     : { status: 403, responseClass: "gateway-rejected" };
-  await runProviderAcceptance({ env: testEnvironment, run, probe });
 
-  const command = [
-    "opencode",
-    "run",
-    "--model",
-    "openai/gpt-5.6-luna",
-    "--format",
-    "json",
-    "Reply exactly OK.",
-  ];
-  ```
+await runBoundaryAcceptance({ env: testEnvironment, probe });
+```
 
-  The test must also require rejection for a missing configuration name, a
-  non-zero command status, a terminating signal, empty output, zero usage, a
-  wrong model ID, a wrong boundary status/class, or a command that does not
-  expose a cancel handle. The runner may inspect bounded JSON in memory, but it
-  must not print command output or persist it. Add a hanging fake process that
-  records `cancel` calls; abort its signal and assert one SIGTERM/SIGKILL
-  cancellation path, no retry invocation, and a terminating signal in the
-  result.
+Require rejection for a missing environment value, a wrong status, a wrong
+response class, and an unexpected relay response class. Assert that the driver
+makes exactly one probe per scenario, uses no command runner, does not invoke
+OpenCode, and retains no response body or credential value.
 
 - [ ] **Step 2: RED — run the focused contract test**
 
@@ -825,127 +721,102 @@ not design, establish, or synthesize runner-provisioning evidence.
 
   Expected: `FAIL` before any test body executes because
   `.github/scripts/opencode_provider_acceptance.ts` does not yet exist and the
-  test import produces a Deno module-not-found error. This RED check requires
-  no network access, protected runner, or OAuth credential. Do not accept a
-  network, credential, assertion, or unrelated permission failure as the
-  contract RED result.
+  test import produces a Deno module-not-found error. This RED check requires no
+  network access, GitHub Environment, OpenCode installation, or OAuth
+  credential. Do not accept a network, credential, assertion, or unrelated
+  permission failure as the contract RED result.
 
-- [ ] **Step 3: Consume Gate 0 and configure the repository-owned acceptance workflow**
+- [ ] **Step 3: Keep the repository-owned acceptance workflow GitHub-hosted**
 
-  Gate 0 MUST already be `PASS` before this step begins. After recording the
-  deterministic RED result, consume the approved Gate 0 prerequisite and modify
-  `.github/workflows/acceptance.yml` to use
-  `runs-on: [self-hosted, protected-opencode-oauth]`, retain the
-  `protected-acceptance` Environment, install Node.js 22 and pinned OpenCode
-  `1.18.31`, and build the plugin in the job. This step does not design,
-  provision, or prove the runner credential architecture.
+  After recording the deterministic RED result, retain
+  `.github/workflows/acceptance.yml` on `runs-on: ubuntu-latest`, retain the
+  `protected-acceptance` Environment, and keep the existing `RELAY_ACCEPTANCE_*`
+  variables and secrets. Do not install Node.js or OpenCode for this task, do
+  not create an OAuth precondition, and do not add a GitHub Secret containing
+  OAuth state.
 
-  The workflow MUST verify and consume the already-approved runner
-  prerequisite: the runner provisioning service has mounted
-  `$HOME/.local/share/opencode/auth.json` before the workflow starts. Add a
-  secret-free precondition using `opencode --version` and `opencode auth list`;
-  require version `1.18.31`, exit code 0, and recognition of the `OpenAI oauth`
-  entry without printing command output. A failed precondition remains a
-  blocked Gate 0/provisioning-owner failure; it must not create a replacement
-  attestation or choose a fallback credential source.
+  Add one explicit step named `Run provider boundary acceptance` that runs
+  `deno run --allow-net --allow-env .github/scripts/opencode_provider_acceptance.ts`.
+  The step may observe only status and response class. It must not use
+  `--allow-read`, `--allow-run`, artifacts, caches, generated auth files, or
+  command arguments containing credentials. A missing or invalid
+  `RELAY_ACCEPTANCE_*` value fails closed before any probe.
 
-  The workflow must not receive OAuth state through GitHub secrets, env vars,
-  command arguments, generated files, artifacts, or caches. Do not add PAT or
-  OAuth-token extraction. Pass only the secret-free process-local plugin
-  configuration as valid `JSON.stringify` output, while the plugin reads
-  existing Gateway/relay controls from the protected process environment.
+  The existing `apps/deno-relay/acceptance_test.ts` remains the owner of the
+  relay route checks. The new boundary driver owns only the two explicit
+  Gateway/relay authentication observations; it does not duplicate streaming,
+  tool continuation, cancellation, or model-runtime assertions from Tasks 4
+  and 5.
 
-  The `protected-acceptance` GitHub Environment gates manual dispatch and
-  supplies only the existing Gateway/relay controls; it is not an OAuth state
-  store and performs no OAuth retrieval. The runner manager's pre-job volume
-  mount remains the sole credential-provisioning mechanism.
+- [ ] **Step 4: Minimum GREEN — implement the boundary driver**
 
-  The workflow inputs for this gate are explicit: protected-acceptance
-  variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and
-  `RELAY_CF_PROVIDER_SLUG`; existing plugin secrets `RELAY_CF_AIG_TOKEN` and
-  `RELAY_SECRET`; and the existing non-OAuth acceptance variables retained for
-  the relay checks. The job uses these existing plugin names in memory and
-  never maps or persists the native OpenCode auth store. No control value is
-  printed.
+  Implement `.github/scripts/opencode_provider_acceptance.ts` in this order:
 
-  Gate 0, not this step, establishes the canonical-store lock, pre-job opaque
-  mount/copy, PASS/FAIL/CANCEL finalizer, post-refresh atomic reconciliation,
-  persistence confirmation, and persistence-before-teardown ordering. A
-  reconciliation failure marks the credential state unhealthy, blocks the next
-  job, requires operator reauthorization or store repair, and cannot fall back
-  silently to a stale canonical store. These lifecycle operations remain
-  outside the workflow and outside `runProviderAcceptance`; this step only
-  consumes their approved prerequisite.
+  1. Read and validate `RELAY_ACCEPTANCE_RELAY_SECRET`,
+     `RELAY_ACCEPTANCE_GATEWAY_BASE_URL`, `RELAY_ACCEPTANCE_GATEWAY_TOKEN`,
+     `RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY`, and `RELAY_ACCEPTANCE_MODEL`
+     without printing values. Require `RELAY_ACCEPTANCE_MODEL` to be
+     `gpt-5.6-luna`; do not select a model from an OAuth response.
+  2. Build the fixed non-sensitive body
+     `{"model":"gpt-5.6-luna","input":[],"stream":false}`.
+  3. For `BoundaryProbe("valid-gateway-invalid-relay")`, use the protected
+     Gateway token and a fixed invalid relay sentinel. Require HTTP 401 and the
+     relay's fixed unauthorized response class.
+  4. For `BoundaryProbe("invalid-gateway-valid-relay")`, use a fixed invalid
+     Gateway sentinel and the protected relay token. Require Gateway HTTP 401 or
+     403 and reject the relay's fixed unauthorized response class.
+  5. Define `MAX_BOUNDARY_RESPONSE_BYTES = 4096`. Read at most 4097 bytes before
+     classifying the fixed unauthorized response, then cancel the body. Never
+     perform an unbounded drain. Exceeding the limit, a read failure, or a
+     non-matching response class fails closed. Retain only `status` and
+     `responseClass`; never log or store the response body. Perform exactly one
+     request per scenario, with no retry, fallback, OAuth lookup, OpenCode
+     invocation, or payload persistence.
 
-- [ ] **Step 4: Minimum GREEN — implement bounded acceptance assertions**
-
-  Implement the script in this order: verify the runner auth-store
-  precondition; run `BoundaryProbe("valid-gateway-invalid-relay")` and require
-  HTTP 401 with the relay rejection class; run
-  `BoundaryProbe("invalid-gateway-valid-relay")` and require HTTP 401/403 with
-  the Gateway rejection class; then run the fixed OpenCode command and require
-  the selected model ID, non-empty output, non-zero usage, no terminating
-  signal, and exit code 0 after the raw JSON event stream reaches EOF. Process
-  completion after EOF is the live stream-completion observation; do not require
-  the CLI to expose an upstream SSE event name.
-  The probe uses the exact non-sensitive body
-  `{"model":"gpt-5.6-luna","input":[],"stream":false}` and retains only
-  status/class. The command runner redacts/discards bounded output and reports
-  only named check outcomes and exit status.
-
-  Do not add live assertions for non-stream forwarding, cancellation, tool
-  choice, direct `chatgpt.com` exclusion, or invalid configuration here; those
-  are already owned by the deterministic interfaces in Tasks 4 and 5.
-
-  After the runner module and its test seam are implemented, run the same
-  focused command used for RED:
+  After implementation, run:
 
   ```bash
   deno test .github/scripts/opencode_provider_acceptance_test.ts
+  deno run --allow-net --allow-env .github/scripts/opencode_provider_acceptance.ts
   ```
 
-  Expected: `PASS`; the acceptance contract tests cover the command runner,
-  bounded output, cancellation, configuration rejection, model/result checks,
-  and both boundary-probe classifications using only non-secret sentinels.
-  Only after this focused command passes, run the broader script gate:
+  Expected: `PASS`; the focused contract tests use only non-secret sentinels,
+  and the manual driver reports named boundary outcomes without response bodies
+  or credentials.
 
-  ```bash
-  deno test .github/scripts
-  ```
-
-  Expected: `PASS`; the focused contract and all existing provisioning-script
-  tests pass without network access or protected OAuth state.
-
-- [ ] **Step 5: Document the payload and access boundary**
+- [ ] **Step 5: Document the payload and credential boundary**
 
   In `docs/configuration.md` and `docs/operations.md`, keep
   `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` default `true`, state that payload logging
   is controlled at the Cloudflare Gateway boundary, and direct operators to
-  their Gateway retention/access policy. Document the exact
-  `protected-opencode-oauth` runner prerequisite, the runner-managed native
-  auth-store mount, its job lifetime, single-writer lock, post-refresh opaque
-  reconciliation, persistence-before-teardown rule, cleanup, and
-  rotation/revocation/reauthorization owner. State that a reconciliation failure
-  marks the credential state unhealthy, blocks the next job, requires operator
-  repair, and never falls back to a stale store. State that the workflow does
-  not receive the OAuth state and that the repository does not store payloads,
-  raw probes, or OpenCode credentials.
+  their Gateway retention/access policy. Document that protected acceptance is
+  GitHub-hosted, uses only the existing non-OAuth `RELAY_ACCEPTANCE_*` controls,
+  and verifies only Gateway/relay boundary status classes. State that OpenCode
+  OAuth is acquired, stored, refreshed, and injected only by the user's local
+  OpenCode 1.18.31 runtime and is never supplied to CI, the repository, or the
+  relay. State that the repository does not store payloads, raw probes, or
+  OpenCode credentials.
 
-- [ ] **Step 6: Validate workflow syntax and commit**
+- [ ] **Step 6: Validate workflow wiring and commit**
 
   ```bash
-  deno test .github/scripts
+  deno test .github/scripts/opencode_provider_acceptance_test.ts
+  deno test apps/deno-relay/acceptance_test.ts
+  actionlint .github/workflows/acceptance.yml
+  git grep -n "opencode_provider_acceptance.ts\|runs-on: ubuntu-latest\|RELAY_ACCEPTANCE_" -- .github/workflows/acceptance.yml
   deno fmt --check
   git diff --check
   git add .github/scripts/opencode_provider_acceptance.ts .github/scripts/opencode_provider_acceptance_test.ts .github/workflows/acceptance.yml docs/configuration.md docs/operations.md
-  git commit -m "test: add protected OpenCode provider acceptance"
+  git commit -m "test: add protected provider boundary acceptance"
   ```
 
-  Expected: all acceptance unit tests and deterministic checks pass, the
-  workflow selects only `protected-opencode-oauth`, and no credential or raw
-  output appears in logs, artifacts, caches, fixtures, or summaries. Refactor
-  decision: none; this task adds only the bounded acceptance driver and its
-  explicitly owned probes.
+  Expected: all focused and existing acceptance tests pass, `actionlint` passes,
+  and the grep output shows the boundary driver step, `ubuntu-latest`, and all
+  six existing acceptance variable names. The workflow must not skip the new
+  boundary step. No OAuth credential, raw response, or request payload appears
+  in logs, artifacts, caches, fixtures, or summaries. Refactor decision: none;
+  this task adds only the bounded boundary driver and its explicitly owned
+  probes.
 
 ## Task 7: Update Canonical Current-Path Documentation
 
@@ -1011,8 +882,8 @@ not design, establish, or synthesize runner-provisioning evidence.
 
 - Inspect only: source, tests, workflow, package metadata, and canonical
   documentation
-- Modify: none. A failed verification returns to the owning task and requires
-  a plan revision before any source or documentation repair.
+- Modify: none. A failed verification returns to the owning task and requires a
+  plan revision before any source or documentation repair.
 
 **Interfaces:**
 
@@ -1051,14 +922,54 @@ not design, establish, or synthesize runner-provisioning evidence.
 
 - [ ] **Step 3: Run the protected acceptance manually**
 
-  Dispatch `.github/workflows/acceptance.yml` only after Gate 0 is `PASS`, the
-  `protected-opencode-oauth` runner admission, native auth-store mount, and
-  `opencode auth list` precondition are available. Verify the bounded results
-  from Task 6 without displaying secrets or raw request/response data. A
+  Dispatch `.github/workflows/acceptance.yml` on its existing GitHub-hosted
+  `ubuntu-latest` runner with the `protected-acceptance` Environment and capture
+  the run result without displaying secrets or raw request/response data:
+
+  ```bash
+  dispatch_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  gh workflow run acceptance.yml --repo yohi/cf-ai-gw-relay --ref master
+  run_ids=''
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    run_ids=$(gh run list --repo yohi/cf-ai-gw-relay --workflow acceptance.yml \
+      --event workflow_dispatch --branch master --limit 20 \
+      --json databaseId,createdAt | \
+      jq -r --arg started "$dispatch_started_at" \
+        '[.[] | select(.createdAt >= $started) | .databaseId] | .[]')
+    [ -n "$run_ids" ] && break
+    sleep 3
+  done
+  test "$(printf '%s\n' "$run_ids" | awk 'NF {count += 1} END {print count + 0}')" = 1
+  run_id="$run_ids"
+  gh run watch "$run_id" --repo yohi/cf-ai-gw-relay --exit-status
+  test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
+    --json conclusion --jq '.conclusion')" = success
+  test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay --json jobs \
+    --jq '[.jobs[].steps[] | select(.name == "Run provider boundary acceptance") | .conclusion] | if length == 1 then .[0] else "missing-or-ambiguous" end')" = success
+  gh run view "$run_id" --repo yohi/cf-ai-gw-relay --json jobs \
+    --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'
+  ```
+
+  The run lookup is deliberately fail-closed: if the timestamp filter returns
+  zero or more than one candidate, stop without treating any run as evidence.
+  GitHub's dispatch endpoint does not return a run ID; this check therefore
+  refuses ambiguous near-concurrent dispatches rather than selecting one.
+  Require the workflow conclusion and the boundary-driver step to be `success`;
+  a skipped boundary-driver step, missing configuration validation, ignored
+  local test, or a workflow with only generic tests ignored is not acceptance
+  evidence. The workflow configuration step must validate all six existing
+  `RELAY_ACCEPTANCE_*` values, including `RELAY_ACCEPTANCE_ORIGIN`; the new
+  boundary driver may consume only its documented Gateway/relay subset. A
   missing host capability, inability to inject headers through `chat.headers`,
-  failed Gateway/relay boundary probe, or failed streamed completion blocks
-  supported production use. Do not add a live non-stream, cancellation, or
-  tool-choice assertion here.
+  failed Gateway/relay boundary probe, or failed deterministic relay check
+  blocks supported production use. Do not add a live OpenCode OAuth, non-stream,
+  cancellation, or tool-choice assertion here.
+
+  This is a future implementation-stage verification command. During this
+  document-only correction, the current workflow is intentionally not modified
+  and therefore does not yet contain the Task 6 boundary-driver step. Do not
+  dispatch the workflow or treat the current absence of that future step as a
+  production-acceptance result.
 
 - [ ] **Step 4: Perform the design-to-plan consistency review without edits**
 
@@ -1087,14 +998,12 @@ not design, establish, or synthesize runner-provisioning evidence.
 ## Handoff
 
 Current handoff state is `BLOCKED`: production implementation is `NOT STARTED`
-and MUST NOT start. Gate 0 is not produced by this plan, Task 6, the workflow,
-or `runProviderAcceptance`. The organization runner-provisioning owner must
-provide an actual bounded attestation covering the pre-job mount, OpenCode
-recognition, post-refresh persistence/reconciliation, single-writer
-serialization, and teardown ordering. The attestation schema in this plan is
-not evidence. Gate 0 must return `PASS`, and a fresh Superpowers Review Gate
-must independently mark both documents `READY`; neither status may be
-self-declared by this plan or by the attestation. Only then may Task 1 start.
+and MUST NOT start. The selected architecture has no external credential
+provisioning prerequisite, but that fact does not resolve `RG-001`. Protected
+acceptance is limited to the existing GitHub-hosted non-OAuth Gateway/relay
+boundary. A fresh Superpowers Review Gate must independently mark both documents
+`READY`; that status may not be self-declared by this plan. Only then may Task 1
+start.
 
 Request a fresh code review after Task 8. Do not claim supported production use
 unless the exact host contract, deterministic checks, protected acceptance, and
