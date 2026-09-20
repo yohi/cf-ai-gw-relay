@@ -4,36 +4,38 @@
 
 This revision records the architecture validated by the target-runtime spike and
 the integrated SRG-035 protocol characterization. It is a design-document
-change only. It does not authorize source changes, tests, dependency changes,
-deployment changes, Cloudflare configuration changes, or implementation
-planning.
+change only. It permits the next `writing-plans` stage, but it does not
+authorize source changes, tests, dependency changes, deployment changes,
+Cloudflare configuration changes, or production implementation.
 
 Current gate state:
 
 ```text
 SRG-022: RESOLVED
-SRG-035: RESOLVED — REVIEWER CONFIRMED
-writing-plans: UNBLOCKED — NOT STARTED
+SRG-035: RESOLVED
+writing-plans: ALLOWED
 production implementation: NOT STARTED
 ```
 
-The required order remains:
+The completed and permitted order is:
 
 ```text
 1. SRG-022 design update
 2. SRG-022 re-review
 3. SRG-022 reviewer decision
 4. SRG-035 protocol characterization
-5. SRG-035 = RESOLVED CANDIDATE
-6. reviewer confirmation
-7. writing-plans
+5. SRG-035 = RESOLVED
+6. writing-plans
+7. design-to-plan consistency review
+8. production implementation after plan approval
 ```
 
-The reviewer confirmation recorded in §11.6 approves the target-runtime protocol
-characterization recorded here. It does not approve the current plugin source as
-already migrated, authorize production readiness, or replace the implementation
-validation required by the later writing plan. The current source remains the
-legacy fetch-interposer implementation described below.
+The post-characterization gate review of commit `0851e88` confirmed that SRG-035
+satisfies the pre-implementation closure contract. It does not approve the
+current plugin source as already migrated, authorize production readiness, or
+replace the implementation validation required by the later writing plan. The
+current source remains the legacy fetch-interposer implementation described
+below.
 
 ## 1. Architecture Decision
 
@@ -584,8 +586,8 @@ still `POST /v1/responses`.
 
 SRG-035 owns the final production model mapping and the request, response,
 streaming, and tools characterization for the selected architecture. The
-integrated result below records those decisions as a reviewer-confirmed
-resolution for the target-runtime architecture.
+integrated result below records those decisions as the resolved target-runtime
+architecture result.
 
 The transport premise for SRG-035 is now:
 
@@ -635,9 +637,8 @@ target mapping and were not changed by this revision.
 3. Live response streaming, SSE, and tools characterization.
 
 SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was being
-completed. The contract and its evidence are now reviewer-confirmed in §11.6;
-the later writing plan may start, but production implementation remains
-unstarted:
+completed. The contract and its evidence are now resolved. `writing-plans` may
+start, but production implementation remains unstarted:
 
 ### 11.1 SRG-035 closure contract
 
@@ -800,8 +801,9 @@ SDK family or major version
 The result MAY proceed to implementation validation without design re-approval
 only when it is limited to the same architecture, such as an exact wire field,
 fixture detail, helper split, or implementation-specific edge case. The
-integrated result satisfies the closure contract, but `writing-plans` remains
-blocked until a reviewer confirms this candidate.
+integrated result satisfies the closure contract. `writing-plans` may start now.
+After an implementation plan is generated, the plan MUST undergo the
+design-to-plan consistency check in §12 before production implementation.
 
 These are not SRG-022 defects. SRG-022 established the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed
@@ -933,8 +935,8 @@ The integrated result is:
 
 ```text
 SRG-022: RESOLVED
-SRG-035: RESOLVED — REVIEWER CONFIRMED
-writing-plans: UNBLOCKED — NOT STARTED
+SRG-035: RESOLVED
+writing-plans: ALLOWED
 ```
 
 ### 11.5 Evidence traceability
@@ -962,11 +964,10 @@ into artifacts; it is not a replay fixture. The live public OpenCode run emitted
 `stream=true`, so non-stream behavior remains an implementation-validation item,
 not a claim of separately observed non-stream output.
 
-### 11.6 Reviewer confirmation (2026-09-20)
+### 11.6 Post-characterization gate review (2026-09-20)
 
-The post-characterization review used five independent lanes covering goal and
-constraint compliance, documentation QA, design quality, security, and repository
-context. All lanes passed after the evidence-boundary correction in `d41c611`.
+The post-characterization gate review of commit `0851e88` confirmed that SRG-035
+satisfies the pre-implementation closure contract.
 The confirmation scope is limited to the target-runtime characterization and
 architecture boundary. It does not approve source migration, dependency changes,
 production readiness, or protected acceptance.
@@ -980,7 +981,7 @@ This revision changes only this design document. It does not change production
 source, tests, dependencies, package metadata, lockfiles, CI, deployment,
 Cloudflare settings, or writing-plans artifacts.
 
-SRG-022 is resolved. SRG-035 is resolved with reviewer confirmation. The
+SRG-022 is resolved. SRG-035 is resolved. The
 selected architecture is defined by all of the following:
 
 - Provider identity is `openai`.
@@ -1007,8 +1008,8 @@ selected architecture is defined by all of the following:
 - Managed residency initial scope is `NOT SUPPORTED IN INITIAL SCOPE`.
 - `openai/gpt-5.6-sol` remains validation evidence only.
 - Gateway and relay authentication were validated without recording secret values.
-- SRG-035 satisfies the closure contract as `RESOLVED — REVIEWER CONFIRMED`.
-- `writing-plans` is unblocked but has not started.
+- SRG-035 satisfies the closure contract as `RESOLVED`.
+- `writing-plans` is allowed and has not started.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
@@ -1017,7 +1018,9 @@ plan may choose only the concrete source patch that implements the
 `provider.models` -> `model.api.url` route and plugin control-header
 configuration; it may not choose a different routing mechanism.
 
-Before `writing-plans` may start, the design document and implementation plan
-MUST be checked for zero divergence in specification, terminology,
-types/interfaces, error handling, test strategy, and non-functional requirements.
-Any unresolved divergence keeps `writing-plans` blocked.
+After `writing-plans` generates an implementation plan, and before production
+implementation may start, the design document and implementation plan MUST be
+checked for zero divergence in specification, terminology, types/interfaces,
+error handling, test strategy, and non-functional requirements. Any unresolved
+divergence keeps production implementation blocked. It does not block generation
+of the implementation plan.
