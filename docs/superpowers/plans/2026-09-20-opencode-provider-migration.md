@@ -20,6 +20,20 @@ model is that same OpenAI model; it never replaces `Authorization` or
 directly forwards the resulting `POST /v1/responses` request, response, SSE
 stream, and tool continuations.
 
+Protected acceptance credential lifecycle is external to the workflow and to
+`runProviderAcceptance`. The runner provisioning service owns the canonical
+encrypted native OpenCode auth store, takes a single-writer lock before job
+admission, makes an opaque job-scoped read-write copy available at
+`$HOME/.local/share/opencode/auth.json`, and atomically reconciles the latest
+store after PASS, FAIL, or CANCEL before teardown. OpenCode `1.18.31` writes
+refreshed OAuth state returned by its built-in refresh flow back to the native
+store. OpenCode is the only OAuth semantic writer; the provisioning service
+never parses OAuth contents. A reconciliation failure marks the credential
+state unhealthy, blocks the next job, and requires operator reauthorization or
+store repair without stale-store fallback. The organization
+runner-provisioning owner controls admission, reauthorization, rotation,
+revocation response, canonical-store replacement, and unblock decisions.
+
 **Tech Stack:** TypeScript, `@opencode-ai/plugin` 1.18.31, `@opencode-ai/sdk/v2`
 model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
@@ -27,7 +41,10 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 credential-provisioning contract and the design-to-plan re-review. No Task 1
 through Task 8 may start until an organization-managed ephemeral runner with
 the `protected-opencode-oauth` label is available, its runner provisioning
-evidence is recorded, and a fresh review marks this plan `READY`. If that
+evidence is recorded, including post-refresh reconciliation and single-writer
+serialization, and a fresh review marks this plan `READY`. No actual bounded
+runner-provisioning attestation is currently present in the repository or
+review evidence. If that
 prerequisite cannot be provided, stop with `BLOCKED / DESIGN RE-APPROVAL
 REQUIRED`; do not choose a different credential source during implementation.
 
@@ -52,20 +69,30 @@ REQUIRED`; do not choose a different credential source during implementation.
 - `REQUEST_PROTOCOL`, `RESPONSE_PROTOCOL`, and `STREAMING_PROTOCOL` are
   `DIRECT_FORWARDING`; `TOOLS = INCLUDED`, including Responses `function_call`
   and `function_call_output` continuation.
-- OpenCode exclusively acquires, stores, refreshes, and injects ChatGPT OAuth.
-  The plugin and relay must not extract, inspect for ownership, persist,
-  refresh, substitute, or log it.
+- OpenCode exclusively acquires, interprets, refreshes, and injects ChatGPT OAuth
+  semantics. The runner provisioning service stores and transports only an
+  opaque encrypted native-store copy for protected acceptance. The plugin and
+  relay must not extract, inspect for ownership, persist, refresh, substitute,
+  or log OAuth contents.
 - Protected acceptance runs only on an ephemeral organization-managed runner
-  with label `protected-opencode-oauth`. The runner provisioning service mounts
-  the native OpenCode 1.18.31 auth store at
-  `$HOME/.local/share/opencode/auth.json` through a read-write job-scoped
-  encrypted volume before the workflow starts. Any refresh remains inside that
-  volume and is never synchronized back by the workflow. The workflow must not
-  receive the OAuth state as a GitHub secret, environment value, command
-  argument, artifact, cache, or serialized file; it must not parse the store.
-  Missing runner admission, mount, ownership, permissions, or `opencode auth
-  list` recognition is a hard blocked prerequisite with no PAT or OAuth-token
-  extraction fallback.
+  with label `protected-opencode-oauth`. The runner provisioning service owns
+  the canonical encrypted native OpenCode auth store and acquires its
+  single-writer lock before admission. It makes an opaque copy or mount
+  available through a read-write job-scoped encrypted volume at
+  `$HOME/.local/share/opencode/auth.json` before the workflow starts. OpenCode
+  `1.18.31` writes refreshed OAuth state to that native store; after PASS,
+  FAIL, or CANCEL, the provisioning-service finalizer stops and reaps the
+  OpenCode process, atomically persists the latest opaque store to the
+  canonical encrypted store, confirms persistence, and only then destroys the
+  job volume. The workflow must not receive the OAuth state as a GitHub secret,
+  environment value, command argument, generated repository file, artifact,
+  cache, or serialized file; it must not parse, copy, or upload the store.
+  Missing runner admission, mount, ownership, permissions, native-store
+  recognition, single-writer lock, or post-refresh reconciliation is a hard
+  blocked prerequisite with no PAT or OAuth-token extraction fallback. If
+  reconciliation fails, mark the credential state unhealthy, block the next
+  protected job, require operator reauthorization or store repair, and never
+  silently reseed from a stale store.
 - `chat.headers` configures `cf-aig-authorization`,
   `x-chatgpt-relay-authorization`, `cf-aig-collect-log`,
   `cf-aig-collect-log-payload`, `cf-aig-metadata`, `cf-aig-skip-cache`, and
@@ -660,6 +687,12 @@ REQUIRED`; do not choose a different credential source during implementation.
   runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
   ```
 
+  The acceptance interfaces do not expose or mutate the native auth store. The
+  runner provisioning service separately produces the canonical-store lock,
+  pre-job opaque mount/copy, post-job reconciliation result, and
+  persistence-before-teardown decision. OpenCode is the only OAuth semantic
+  writer; the provisioning service transports the native file opaquely.
+
   `CommandRunner` starts argv directly without a shell, captures stdout/stderr
   with a fixed bound, and never inherits them to workflow output. Its
   `AbortSignal` invokes `cancel` at most once. `cancel` sends SIGTERM, waits
@@ -683,6 +716,9 @@ REQUIRED`; do not choose a different credential source during implementation.
   exact `CommandRunner`, `BoundaryProbe`, and `AcceptanceDependencies` seams,
   including cancellation, bounded output, required configuration names, and
   the two boundary scenarios. Use only non-secret sentinels in fake values.
+  Import `runProviderAcceptance` from the not-yet-created
+  `./opencode_provider_acceptance.ts` module so the RED condition has one
+  deterministic missing-module cause.
   The OpenCode command must invoke the fixed model with a constant prompt and
   must use a process-local plugin configuration whose JSON contains no
   `{env:...}` references.
@@ -734,10 +770,25 @@ REQUIRED`; do not choose a different credential source during implementation.
   cancellation path, no retry invocation, and a terminating signal in the
   result.
 
-- [ ] **Step 2: RED confirmation and protected workflow prerequisites**
+- [ ] **Step 2: RED — run the focused contract test**
 
-  Run the focused Deno test to confirm the old interface is absent and the
-  contract is RED. Then modify `.github/workflows/acceptance.yml` to use
+  Run exactly:
+
+  ```bash
+  deno test .github/scripts/opencode_provider_acceptance_test.ts
+  ```
+
+  Expected: `FAIL` before any test body executes because
+  `.github/scripts/opencode_provider_acceptance.ts` does not yet exist and the
+  test import produces a Deno module-not-found error. This RED check requires
+  no network access, protected runner, or OAuth credential. Do not accept a
+  network, credential, assertion, or unrelated permission failure as the
+  contract RED result.
+
+- [ ] **Step 3: Establish protected workflow prerequisites and lifecycle evidence**
+
+  After recording the deterministic RED result, modify
+  `.github/workflows/acceptance.yml` to use
   `runs-on: [self-hosted, protected-opencode-oauth]`, retain the
   `protected-acceptance` Environment, install Node.js 22 and pinned OpenCode
   `1.18.31`, and build the plugin in the job.
@@ -768,14 +819,29 @@ REQUIRED`; do not choose a different credential source during implementation.
   never maps or persists the native OpenCode auth store. No control value is
   printed.
 
-  Record the runner owner's bounded attestation before proceeding: runner label,
-  `opencode --version`, native-store path, file owner/mode check result,
-  `opencode auth list` exit status/provider label, encrypted-volume lifetime,
-  teardown result, and rotation/revocation owner. The attestation must contain
-  no auth-store bytes, token, account identifier, command transcript, or request
-  payload.
+  Before any GREEN implementation, the organization runner-provisioning owner
+  MUST record an actual bounded attestation containing only: runner label,
+  OpenCode version,
+  native-store path, file owner/mode check result, `opencode auth list` exit
+  status/provider label, encrypted-volume lifetime, post-refresh
+  persistence/reconciliation result, single-writer/serialization result,
+  teardown result, and rotation/revocation/reauthorization owner. It must
+  contain no auth-store bytes, token, account identifier, command transcript,
+  request payload, or response content. The current repository and review
+  evidence contain no such actual attestation; until it is supplied, stop with
+  `BLOCKED / DESIGN RE-APPROVAL REQUIRED` and do not treat this schema as
+  evidence.
 
-- [ ] **Step 3: Minimum GREEN — implement bounded acceptance assertions**
+  The provisioning service must hold the canonical-store lock from admission
+  through post-job reconciliation. For PASS, FAIL, and CANCEL, its finalizer
+  must stop and reap the OpenCode process, atomically persist the latest opaque
+  native store, confirm persistence, and only then destroy the encrypted job
+  volume. A reconciliation failure marks the credential state unhealthy,
+  blocks the next job, requires operator reauthorization or store repair, and
+  cannot fall back silently to a stale canonical store. These operations are
+  outside the workflow and outside `runProviderAcceptance`.
+
+- [ ] **Step 4: Minimum GREEN — implement bounded acceptance assertions**
 
   Implement the script in this order: verify the runner auth-store
   precondition; run `BoundaryProbe("valid-gateway-invalid-relay")` and require
@@ -795,18 +861,41 @@ REQUIRED`; do not choose a different credential source during implementation.
   choice, direct `chatgpt.com` exclusion, or invalid configuration here; those
   are already owned by the deterministic interfaces in Tasks 4 and 5.
 
-- [ ] **Step 4: Document the payload and access boundary**
+  After the runner module and its test seam are implemented, run the same
+  focused command used for RED:
+
+  ```bash
+  deno test .github/scripts/opencode_provider_acceptance_test.ts
+  ```
+
+  Expected: `PASS`; the acceptance contract tests cover the command runner,
+  bounded output, cancellation, configuration rejection, model/result checks,
+  and both boundary-probe classifications using only non-secret sentinels.
+  Only after this focused command passes, run the broader script gate:
+
+  ```bash
+  deno test .github/scripts
+  ```
+
+  Expected: `PASS`; the focused contract and all existing provisioning-script
+  tests pass without network access or protected OAuth state.
+
+- [ ] **Step 5: Document the payload and access boundary**
 
   In `docs/configuration.md` and `docs/operations.md`, keep
   `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` default `true`, state that payload logging
   is controlled at the Cloudflare Gateway boundary, and direct operators to
   their Gateway retention/access policy. Document the exact
   `protected-opencode-oauth` runner prerequisite, the runner-managed native
-  auth-store mount, its job lifetime, cleanup, rotation/revocation owner, and
-  the fact that the workflow does not receive the OAuth state. State that the
-  repository does not store payloads, raw probes, or OpenCode credentials.
+  auth-store mount, its job lifetime, single-writer lock, post-refresh opaque
+  reconciliation, persistence-before-teardown rule, cleanup, and
+  rotation/revocation/reauthorization owner. State that a reconciliation failure
+  marks the credential state unhealthy, blocks the next job, requires operator
+  repair, and never falls back to a stale store. State that the workflow does
+  not receive the OAuth state and that the repository does not store payloads,
+  raw probes, or OpenCode credentials.
 
-- [ ] **Step 5: Validate workflow syntax and commit**
+- [ ] **Step 6: Validate workflow syntax and commit**
 
   ```bash
   deno test .github/scripts
@@ -961,9 +1050,12 @@ REQUIRED`; do not choose a different credential source during implementation.
 
 ## Handoff
 
-Current handoff state is `BLOCKED`: production implementation MUST NOT start
-until the runner-provisioning attestation is available and a fresh
-design-to-plan review marks both documents `READY`.
+Current handoff state is `BLOCKED`: production implementation is `NOT STARTED`
+and MUST NOT start. The organization runner-provisioning owner must provide an
+actual bounded attestation covering the pre-job mount, OpenCode recognition,
+post-refresh persistence/reconciliation, single-writer serialization, and
+teardown ordering. The attestation schema in this plan is not evidence. A fresh
+design-to-plan review must also mark both documents `READY`.
 
 Request a fresh code review after Task 8. Do not claim supported production use
 unless the exact host contract, deterministic checks, protected acceptance, and

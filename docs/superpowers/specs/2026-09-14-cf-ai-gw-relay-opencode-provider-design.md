@@ -17,7 +17,10 @@ Current gate state:
 SRG-022: RESOLVED
 SRG-035: RESOLVED
 writing-plans: COMPLETED
-RG-001/RG-002/RG-003/RG-004: ADDRESSED IN THIS DOCUMENT/PLAN REVISION
+RG-001: PARTIALLY RESOLVED; lifecycle decision recorded, attestation unavailable
+RG-002: RESOLVED
+RG-003: RESOLVED in this document/plan revision
+RG-004: RESOLVED
 design-to-plan consistency review: BLOCKED pending fresh re-review
 production implementation: NOT STARTED and BLOCKED pending re-review
 ```
@@ -178,7 +181,7 @@ provider:
 | --- | --- |
 | Credential acquisition | OpenCode built-in ChatGPT OAuth |
 | Credential owner | OpenCode |
-| Credential storage | OpenCode |
+| Credential storage and format | OpenCode native auth store; the runner provisioning service stores only an opaque encrypted acceptance copy and reconciled native store |
 | Credential refresh | OpenCode |
 | `Authorization` injection | OpenCode |
 | ChatGPT account routing metadata | OpenCode |
@@ -234,7 +237,7 @@ retrieve the OpenCode OAuth state; the runner manager's pre-job volume mount is
 the sole acceptance provisioning mechanism.
 
 The target-runtime credential-safe observation on OpenCode `1.18.31` identified
-the native store as `~/.local/share/opencode/auth.json` through
+the native store as `$HOME/.local/share/opencode/auth.json` through
 `opencode auth list`; only the provider label and path were observed, and no
 credential value was recorded. The acceptance prerequisite is pinned to this
 path and MUST fail closed if the file is absent, unreadable, owned by the wrong
@@ -244,16 +247,74 @@ The provisioning contract is:
 
 | Concern | Fixed decision |
 | --- | --- |
-| Credential owner | The OpenCode built-in `openai` provider and the authorized ChatGPT account; the runner manager only transports the native store for acceptance |
-| State source | Runner provisioning service's encrypted, job-scoped volume populated from the operator-managed OpenCode `1.18.31` native auth store |
+| Credential owner | OpenCode's built-in `openai` provider and the authorized ChatGPT account own OAuth semantics; the runner provisioning service owns the protected-acceptance native-store lifecycle |
+| Canonical state source | Runner provisioning service's canonical encrypted native auth store, populated through the authorized OpenCode native login lifecycle |
 | GitHub retrieval | None; the workflow receives no OAuth secret and cannot retrieve, serialize, or parse the store |
-| OpenCode injection | Read-write job-scoped volume mounted at `$HOME/.local/share/opencode/auth.json` before `opencode` starts; refreshes remain inside the volume and are never synced back by the workflow |
+| OpenCode injection | Runner provisioning service makes an opaque copy or mount into a read-write job-scoped encrypted volume at `$HOME/.local/share/opencode/auth.json` before `opencode` starts |
+| Post-job reconciliation | The runner provisioning service atomically persists the latest opaque native store after every PASS, FAIL, or CANCEL and confirms persistence before volume teardown; the workflow never performs this operation |
+| Concurrent access | One provisioning-service lock per canonical native auth store; no concurrent protected acceptance job may hold or update the same store |
 | Runner lifetime | One ephemeral runner instance and one acceptance job |
-| Cleanup | Runner teardown destroys the encrypted volume; the workflow removes only its temporary build/config files and uploads no runner state |
-| Rotation and revocation owner | The protected-acceptance environment owner rotates the native store through the OpenCode login lifecycle and revokes the associated ChatGPT session through the account owner; the runner manager replaces the volume before the next job |
+| Cleanup | The service destroys the encrypted job volume only after successful reconciliation; on reconciliation failure it seals or quarantines the volume under exclusive service control and blocks the next job |
+| Rotation, revocation, and reauthorization owner | The organization runner-provisioning owner is the protected-acceptance credential lifecycle owner; it controls admission, native OpenCode reauthorization, rotation, revocation response, canonical-store replacement, and unblock decisions, while OpenCode remains the only OAuth semantic writer |
 | Minimum permission | Manual dispatch approval for `protected-acceptance`, runner-label admission, `contents: read`, and read-only use of the existing Gateway/relay controls |
 | Existing acceptance controls | Protected non-OAuth variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and `RELAY_CF_PROVIDER_SLUG` plus existing plugin controls `RELAY_CF_AIG_TOKEN` and `RELAY_SECRET`; the job uses these existing names in memory and retains separate legacy acceptance inputs where needed |
 | Non-exposure boundary | No OAuth value may appear in stdout, stderr, command-line arguments, environment variables, artifacts, caches, fixtures, summaries, or subprocess diagnostics |
+
+OpenCode `1.18.31` writes refreshed OAuth state returned by its built-in refresh
+flow back to the native auth store. The refreshed native store is therefore the
+current credential state for the next protected acceptance job; silently
+discarding it and reseeding an older canonical store is not an approved
+lifecycle assumption.
+
+The native-store lifecycle is fixed as follows:
+
+```text
+canonical encrypted native auth store
+        |
+        | pre-job opaque mount/copy under the provisioning-service lock
+        v
+job-scoped encrypted read-write auth volume
+        |
+        | OpenCode alone may interpret or update OAuth contents during refresh
+        v
+post-job provisioning-service reconciliation
+        |
+        | atomic opaque persistence, after PASS/FAIL/CANCEL and before teardown
+        v
+canonical encrypted native auth store
+```
+
+1. The runner provisioning service acquires the canonical-store single-writer
+   lock before runner admission and keeps it until reconciliation completes or
+   the failed volume is sealed for repair.
+2. Before the job starts, the service makes the canonical native store available
+   at `$HOME/.local/share/opencode/auth.json` through the encrypted job volume.
+   The service transports the file opaquely and does not parse or edit OAuth
+   fields. The workflow does not receive, copy, or inspect it.
+3. OpenCode is the only component allowed to interpret or semantically update
+   the OAuth contents. A refresh may update the access token, refresh token, and
+   expiry state in the job volume through OpenCode's native auth-store write.
+4. After the job result is PASS, FAIL, or CANCEL, the provisioning-service
+   finalizer first ensures the OpenCode process and its descendants are stopped
+   and reaped, then atomically replaces the canonical encrypted native store
+   with the latest opaque store from the job volume.
+5. The service must confirm successful atomic persistence before destroying the
+   job volume. Teardown is not success evidence by itself.
+6. If persistence or reconciliation fails, the service marks the credential
+   state unhealthy, refuses the next protected acceptance job, and requires
+   operator reauthorization or canonical-store repair. It must not silently
+   reseed from a stale store. Until repair or an explicitly approved secure
+   destruction, the encrypted job volume remains sealed under provisioning
+   service control and is inaccessible to the workflow.
+
+The workflow continues to apply the same non-exposure boundary to the
+provisioning lifecycle. Neither the canonical store nor the refreshed store may
+appear in stdout, stderr, GitHub secrets, workflow environment, command
+arguments, generated repository files, artifacts, caches, summaries, or
+request/response logs. Rotation, revocation, reauthorization, reconciliation,
+and the single-writer lock are all owned and enforced by the protected-
+acceptance credential lifecycle owner; the workflow only consumes the resulting
+native OpenCode auth behavior.
 
 If the organization cannot provide this exact runner provisioning contract and
 its credential-safe evidence before implementation, the result is
@@ -263,13 +324,29 @@ introduced to bypass that result. This is a hard prerequisite, not an
 implementation-time design choice.
 
 The required pre-implementation evidence is a bounded attestation from the
-runner provisioning owner containing only the runner label, OpenCode version,
-native-store path, file owner/mode check result, `opencode auth list` exit
-status/provider label, encrypted-volume job lifetime, teardown result, and
-rotation/revocation owner. It MUST contain no auth-store bytes, token, account
-identifier, command transcript, or request payload. Until this attestation is
-available, the plan remains blocked even though the provisioning mechanism is
-already selected.
+organization runner-provisioning owner containing only:
+
+```text
+runner label
+OpenCode version
+native auth-store path
+file owner/mode check result
+opencode auth list exit status and provider label
+encrypted-volume lifetime
+post-refresh persistence/reconciliation result
+single-writer/serialization result
+teardown result
+rotation/revocation/reauthorization owner
+```
+
+The attestation MUST contain no auth-store bytes, token, account identifier,
+command transcript, request payload, or response content. No actual bounded
+runner-provisioning attestation is present in this repository or in the current
+review evidence. The list above is a required evidence schema, not a substitute
+for the attestation. Until an actual attestation covers the pre-job mount,
+post-refresh persistence, single-writer enforcement, and teardown ordering, the
+plan remains `BLOCKED / DESIGN RE-APPROVAL REQUIRED` even though the
+provisioning mechanism and post-refresh lifecycle are now selected.
 
 ## 4. Cloudflare and Relay Credentials
 
@@ -1012,9 +1089,12 @@ The integrated result is:
 SRG-022: RESOLVED
 SRG-035: RESOLVED
 writing-plans: COMPLETED
-RG-001/RG-002/RG-003/RG-004: ADDRESSED; fresh re-review pending
+RG-001: PARTIALLY RESOLVED; lifecycle selected, actual attestation unavailable
+RG-002: RESOLVED
+RG-003: RESOLVED in the plan revision
+RG-004: RESOLVED
 design-to-plan consistency review: BLOCKED pending fresh re-review
-production implementation: NOT STARTED
+production implementation: NOT STARTED and BLOCKED
 ```
 
 ### 11.5 Evidence traceability
@@ -1135,7 +1215,7 @@ The ownership matrix is:
 
 | Requirement | Driver | Observation point / interface | Command | Expected PASS | Failure owner |
 | --- | --- | --- | --- | --- | --- |
-| OpenCode OAuth state available | Protected runner admission and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `~/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Runner provisioning owner; remain blocked, no fallback |
+| OpenCode OAuth state available | Protected runner admission and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `$HOME/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Organization runner-provisioning owner; remain blocked, no fallback |
 | OpenCode 1.18.31 and model selection | Fixed CLI run | `CommandRunner`; bounded JSON summary containing selected model ID, non-empty output, and non-zero usage; process EOF is the completion observation | `opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."` | Exit code 0 with no terminating signal, model `gpt-5.6-luna`, and a completed streamed result | Plugin/provider-models or host compatibility owner |
 | Gateway authentication | `BoundaryProbe("valid-gateway-invalid-relay")` | HTTP status plus `responseClass` only | Fixed Gateway `POST /v1/responses` probe with valid Gateway token and invalid relay sentinel | HTTP 401 and `relay-rejected` | Gateway configuration or Gateway route owner |
 | Relay authentication | Valid OpenCode run plus both boundary probes | Successful OpenCode result and relay rejection class from `BoundaryProbe` | Same fixed run and probes | Valid run reaches a usable completion; invalid relay is rejected before upstream | Relay authentication or plugin header owner |
@@ -1145,6 +1225,8 @@ The ownership matrix is:
 | Cancellation propagation | Synthetic downstream abort | `Request.signal`, upstream `AbortSignal`, and `ReadableStream.cancel` in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Upstream request and body are cancelled; no retry/fallback | Relay streaming owner |
 | No direct `chatgpt.com` route | Plugin integration and source ownership checks | `globalThis.fetch` identity, no legacy interposer symbol, and one `provider.models` owner | `npm test -- --run test/plugin.test.ts`; source grep in Task 8 | No global route mutation or second route owner | Plugin integration/host fail-closed owner |
 | Fail-closed invalid configuration | Plugin activation tests with missing route/control configuration | Rejection type, no returned hooks, and no direct route mutation | `npm test -- --run test/plugin.test.ts test/config.test.ts` | Configuration/host failure rejects before dispatch | Plugin configuration owner |
+| Post-refresh native-store persistence | Runner provisioning-service finalizer | Bounded owner attestation; no auth-store content | Provisioning-service post-job reconciliation for PASS/FAIL/CANCEL | Latest opaque native store is atomically persisted before encrypted job-volume teardown | Organization runner-provisioning owner; mark state unhealthy and block the next job |
+| Single-writer serialization | Runner provisioning-service admission lock | Bounded owner attestation; no store identity or credential data | Provisioning-service admission/finalizer lifecycle outside the workflow | One protected acceptance job holds the canonical-store lock through reconciliation | Organization runner-provisioning owner; deny admission without stale fallback |
 
 Non-stream forwarding, tool continuation, cancellation, and direct-route
 exclusion therefore belong to deterministic tests and source-level ownership
@@ -1154,6 +1236,15 @@ relay regression is the implementation gate. Task 6 MUST NOT claim to prove
 non-stream output, cancellation, or tool choice from the public OpenCode run
 surface. A future requirement for a new live tool-registration seam would
 require an explicit design review rather than an implementation-time guess.
+
+The canonical native-store lifecycle is outside the `AcceptanceDependencies`
+interface and outside `runProviderAcceptance`. The acceptance driver consumes
+only the precondition that the provisioning service has mounted the store and
+that the native OpenCode provider is recognized. The provisioning service owns
+the post-job finalizer, opaque atomic persistence, single-writer lock, and
+volume teardown. Its bounded attestation is an external pre-implementation
+gate; it is not produced by the workflow and must not be synthesized from the
+acceptance driver's command result.
 
 ## 12. Scope and Definition of Done
 
@@ -1191,8 +1282,10 @@ selected architecture is defined by all of the following:
 - SRG-035 satisfies the closure contract as `RESOLVED`.
 - `writing-plans` is `COMPLETED`.
 - Protected acceptance uses only the `protected-opencode-oauth` ephemeral runner
-  and runner-managed native OpenCode auth volume defined in §3.3; inability to
-  provide that contract is `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
+  and runner-managed native OpenCode auth volume defined in §3.3, including
+  opaque post-refresh reconciliation, single-writer serialization, and
+  persistence-before-teardown; inability to provide that contract or its actual
+  bounded attestation is `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
 - The design-to-plan consistency review is `BLOCKED` until the verification
   ownership and plan corrections in §11.7 are re-reviewed.
 
