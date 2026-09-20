@@ -37,16 +37,55 @@ revocation response, canonical-store replacement, and unblock decisions.
 **Tech Stack:** TypeScript, `@opencode-ai/plugin` 1.18.31, `@opencode-ai/sdk/v2`
 model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
-**Pre-implementation gate:** `BLOCKED` pending the exact protected acceptance
-credential-provisioning contract and the design-to-plan re-review. No Task 1
-through Task 8 may start until an organization-managed ephemeral runner with
-the `protected-opencode-oauth` label is available, its runner provisioning
-evidence is recorded, including post-refresh reconciliation and single-writer
-serialization, and a fresh review marks this plan `READY`. No actual bounded
-runner-provisioning attestation is currently present in the repository or
-review evidence. If that
-prerequisite cannot be provided, stop with `BLOCKED / DESIGN RE-APPROVAL
-REQUIRED`; do not choose a different credential source during implementation.
+**Pre-implementation gate:** `BLOCKED`.
+
+**Gate 0 — External protected-runner provisioning evidence** is a pre-task gate
+owned by the organization runner-provisioning owner. It is not an implementation
+step and is not owned by Task 6 or by the repository workflow.
+
+```text
+Owner:
+  organization runner-provisioning owner
+
+Repository modifications:
+  none
+
+Consumes:
+  already-provisioned protected-opencode-oauth runner environment
+
+Produces:
+  actual bounded secret-free runner-provisioning attestation
+
+PASS:
+  every required provisioning and lifecycle property is evidenced
+
+FAIL:
+  BLOCKED / DESIGN RE-APPROVAL REQUIRED
+```
+
+The actual attestation MUST cover the runner label, OpenCode `1.18.31`, native
+auth-store path, owner/mode result, provider recognition, encrypted-volume
+lifetime, post-refresh persistence/reconciliation, single-writer serialization,
+teardown ordering, and the rotation/revocation/reauthorization owner. It must
+contain no auth-store bytes, token, account identifier, raw command transcript,
+request payload, or response content. The field list in this gate and the
+attestation schema in the design are not evidence, and no actual bounded
+runner-provisioning attestation is currently present in the repository or review
+evidence.
+
+No Task 1 through Task 8 may start until both conditions hold:
+
+```text
+Gate 0 PASS
+fresh Superpowers Review Gate = READY for this design and implementation plan
+```
+
+Gate 0 PASS alone does not make this plan `READY`. If the actual attestation
+cannot be provided, stop with `BLOCKED / DESIGN RE-APPROVAL REQUIRED`; do not
+choose a different credential source during implementation. Gate 0 makes no
+repository, runner-infrastructure, GitHub Environment, or credential-store
+modification. Task 6 may only consume the approved Gate 0 prerequisite; it must
+not design, establish, or synthesize runner-provisioning evidence.
 
 ## Global Constraints
 
@@ -687,6 +726,12 @@ REQUIRED`; do not choose a different credential source during implementation.
   runProviderAcceptance(deps: AcceptanceDependencies): Promise<void>;
   ```
 
+  Task 6 is available only after Gate 0 PASS and a fresh Superpowers Review Gate
+  marks this plan `READY`. Therefore Task 6 Step 1 and Step 2, including the
+  deterministic RED command, are executed only after the global pre-implementation
+  gate opens. Their lack of network and OAuth requirements does not exempt them
+  from that gate.
+
   The acceptance interfaces do not expose or mutate the native auth store. The
   runner provisioning service separately produces the canonical-store lock,
   pre-job opaque mount/copy, post-job reconciliation result, and
@@ -785,31 +830,35 @@ REQUIRED`; do not choose a different credential source during implementation.
   network, credential, assertion, or unrelated permission failure as the
   contract RED result.
 
-- [ ] **Step 3: Establish protected workflow prerequisites and lifecycle evidence**
+- [ ] **Step 3: Consume Gate 0 and configure the repository-owned acceptance workflow**
 
-  After recording the deterministic RED result, modify
+  Gate 0 MUST already be `PASS` before this step begins. After recording the
+  deterministic RED result, consume the approved Gate 0 prerequisite and modify
   `.github/workflows/acceptance.yml` to use
   `runs-on: [self-hosted, protected-opencode-oauth]`, retain the
   `protected-acceptance` Environment, install Node.js 22 and pinned OpenCode
-  `1.18.31`, and build the plugin in the job.
+  `1.18.31`, and build the plugin in the job. This step does not design,
+  provision, or prove the runner credential architecture.
 
-  The runner provisioning service MUST have mounted
+  The workflow MUST verify and consume the already-approved runner
+  prerequisite: the runner provisioning service has mounted
   `$HOME/.local/share/opencode/auth.json` before the workflow starts. Add a
   secret-free precondition using `opencode --version` and `opencode auth list`;
   require version `1.18.31`, exit code 0, and recognition of the `OpenAI oauth`
-  entry without printing command output.
+  entry without printing command output. A failed precondition remains a
+  blocked Gate 0/provisioning-owner failure; it must not create a replacement
+  attestation or choose a fallback credential source.
+
   The workflow must not receive OAuth state through GitHub secrets, env vars,
-  command arguments, generated files, artifacts, or caches. If runner
-  admission, mount, ownership, permissions, or recognition fails, stop with
-  `BLOCKED / DESIGN RE-APPROVAL REQUIRED`; do not add PAT or OAuth-token
-  extraction. Pass only the secret-free process-local plugin configuration as
-  valid `JSON.stringify` output, while the plugin reads existing Gateway/relay
-  controls from the protected process environment.
+  command arguments, generated files, artifacts, or caches. Do not add PAT or
+  OAuth-token extraction. Pass only the secret-free process-local plugin
+  configuration as valid `JSON.stringify` output, while the plugin reads
+  existing Gateway/relay controls from the protected process environment.
 
   The `protected-acceptance` GitHub Environment gates manual dispatch and
   supplies only the existing Gateway/relay controls; it is not an OAuth state
   store and performs no OAuth retrieval. The runner manager's pre-job volume
-  mount is the sole credential-provisioning mechanism.
+  mount remains the sole credential-provisioning mechanism.
 
   The workflow inputs for this gate are explicit: protected-acceptance
   variables `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, and
@@ -819,27 +868,14 @@ REQUIRED`; do not choose a different credential source during implementation.
   never maps or persists the native OpenCode auth store. No control value is
   printed.
 
-  Before any GREEN implementation, the organization runner-provisioning owner
-  MUST record an actual bounded attestation containing only: runner label,
-  OpenCode version,
-  native-store path, file owner/mode check result, `opencode auth list` exit
-  status/provider label, encrypted-volume lifetime, post-refresh
-  persistence/reconciliation result, single-writer/serialization result,
-  teardown result, and rotation/revocation/reauthorization owner. It must
-  contain no auth-store bytes, token, account identifier, command transcript,
-  request payload, or response content. The current repository and review
-  evidence contain no such actual attestation; until it is supplied, stop with
-  `BLOCKED / DESIGN RE-APPROVAL REQUIRED` and do not treat this schema as
-  evidence.
-
-  The provisioning service must hold the canonical-store lock from admission
-  through post-job reconciliation. For PASS, FAIL, and CANCEL, its finalizer
-  must stop and reap the OpenCode process, atomically persist the latest opaque
-  native store, confirm persistence, and only then destroy the encrypted job
-  volume. A reconciliation failure marks the credential state unhealthy,
-  blocks the next job, requires operator reauthorization or store repair, and
-  cannot fall back silently to a stale canonical store. These operations are
-  outside the workflow and outside `runProviderAcceptance`.
+  Gate 0, not this step, establishes the canonical-store lock, pre-job opaque
+  mount/copy, PASS/FAIL/CANCEL finalizer, post-refresh atomic reconciliation,
+  persistence confirmation, and persistence-before-teardown ordering. A
+  reconciliation failure marks the credential state unhealthy, blocks the next
+  job, requires operator reauthorization or store repair, and cannot fall back
+  silently to a stale canonical store. These lifecycle operations remain
+  outside the workflow and outside `runProviderAcceptance`; this step only
+  consumes their approved prerequisite.
 
 - [ ] **Step 4: Minimum GREEN — implement bounded acceptance assertions**
 
@@ -1015,9 +1051,9 @@ REQUIRED`; do not choose a different credential source during implementation.
 
 - [ ] **Step 3: Run the protected acceptance manually**
 
-  Dispatch `.github/workflows/acceptance.yml` only after the
+  Dispatch `.github/workflows/acceptance.yml` only after Gate 0 is `PASS`, the
   `protected-opencode-oauth` runner admission, native auth-store mount, and
-  `opencode auth list` precondition are evidenced. Verify the bounded results
+  `opencode auth list` precondition are available. Verify the bounded results
   from Task 6 without displaying secrets or raw request/response data. A
   missing host capability, inability to inject headers through `chat.headers`,
   failed Gateway/relay boundary probe, or failed streamed completion blocks
@@ -1051,11 +1087,14 @@ REQUIRED`; do not choose a different credential source during implementation.
 ## Handoff
 
 Current handoff state is `BLOCKED`: production implementation is `NOT STARTED`
-and MUST NOT start. The organization runner-provisioning owner must provide an
-actual bounded attestation covering the pre-job mount, OpenCode recognition,
-post-refresh persistence/reconciliation, single-writer serialization, and
-teardown ordering. The attestation schema in this plan is not evidence. A fresh
-design-to-plan review must also mark both documents `READY`.
+and MUST NOT start. Gate 0 is not produced by this plan, Task 6, the workflow,
+or `runProviderAcceptance`. The organization runner-provisioning owner must
+provide an actual bounded attestation covering the pre-job mount, OpenCode
+recognition, post-refresh persistence/reconciliation, single-writer
+serialization, and teardown ordering. The attestation schema in this plan is
+not evidence. Gate 0 must return `PASS`, and a fresh Superpowers Review Gate
+must independently mark both documents `READY`; neither status may be
+self-declared by this plan or by the attestation. Only then may Task 1 start.
 
 Request a fresh code review after Task 8. Do not claim supported production use
 unless the exact host contract, deterministic checks, protected acceptance, and

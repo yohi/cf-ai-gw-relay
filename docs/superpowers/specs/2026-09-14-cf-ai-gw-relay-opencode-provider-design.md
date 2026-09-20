@@ -21,6 +21,7 @@ RG-001: PARTIALLY RESOLVED; lifecycle decision recorded, attestation unavailable
 RG-002: RESOLVED
 RG-003: RESOLVED in this document/plan revision
 RG-004: RESOLVED
+pre-implementation gate: BLOCKED pending Gate 0 actual attestation and fresh re-review
 design-to-plan consistency review: BLOCKED pending fresh re-review
 production implementation: NOT STARTED and BLOCKED pending re-review
 ```
@@ -34,8 +35,9 @@ The completed and required order is:
 4. SRG-035 protocol characterization
 5. SRG-035 = RESOLVED
 6. writing-plans
-7. design-to-plan consistency review: BLOCKED pending fresh re-review
-8. production implementation only after a fresh review marks the plan READY
+7. Gate 0 external protected-runner provisioning evidence: BLOCKED pending actual attestation
+8. design-to-plan consistency review: BLOCKED pending fresh re-review
+9. production implementation only after Gate 0 PASS and a fresh review marks the plan READY
 ```
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
@@ -323,8 +325,9 @@ alternate OAuth client, GitHub secret copy, or direct-fetch fallback may be
 introduced to bypass that result. This is a hard prerequisite, not an
 implementation-time design choice.
 
-The required pre-implementation evidence is a bounded attestation from the
-organization runner-provisioning owner containing only:
+The required pre-implementation evidence is an actual bounded attestation from
+the organization runner-provisioning owner containing only the fields in this
+schema:
 
 ```text
 runner label
@@ -342,11 +345,57 @@ rotation/revocation/reauthorization owner
 The attestation MUST contain no auth-store bytes, token, account identifier,
 command transcript, request payload, or response content. No actual bounded
 runner-provisioning attestation is present in this repository or in the current
-review evidence. The list above is a required evidence schema, not a substitute
-for the attestation. Until an actual attestation covers the pre-job mount,
-post-refresh persistence, single-writer enforcement, and teardown ordering, the
-plan remains `BLOCKED / DESIGN RE-APPROVAL REQUIRED` even though the
-provisioning mechanism and post-refresh lifecycle are now selected.
+review evidence. The list above is an evidence schema, not a substitute for the
+actual attestation. The schema MUST NOT be copied into a review note and
+treated as an observed result. Until an actual attestation covers the pre-job
+mount, post-refresh persistence, single-writer enforcement, and teardown
+ordering, the plan remains `BLOCKED / DESIGN RE-APPROVAL REQUIRED` even though
+the provisioning mechanism and post-refresh lifecycle are now selected.
+
+#### Gate 0 — External protected-runner provisioning evidence
+
+Gate 0 is a pre-task external gate owned by the organization
+runner-provisioning owner. It is not an implementation step, and it is not
+owned by Task 6 or by the repository workflow.
+
+```text
+Owner:
+  organization runner-provisioning owner
+
+Repository modifications:
+  none
+
+Consumes:
+  already-provisioned protected-opencode-oauth runner environment
+
+Produces:
+  actual bounded secret-free runner-provisioning attestation
+
+PASS:
+  every required provisioning and lifecycle property is evidenced
+
+FAIL:
+  BLOCKED / DESIGN RE-APPROVAL REQUIRED
+```
+
+The attestation schema above is not a Gate 0 PASS. Gate 0 PASS requires the
+actual owner-provided attestation and does not permit recording auth-store
+contents, tokens, account identifiers, raw command transcripts, request
+payloads, or response content. Gate 0 does not modify the repository, runner
+infrastructure, GitHub Environment, or credential store.
+
+No Task 1 through Task 8 may start until both of the following are true:
+
+```text
+Gate 0 PASS
+fresh Superpowers Review Gate = READY for this design and implementation plan
+```
+
+Gate 0 PASS alone does not make the plan `READY`. If the actual attestation
+cannot be provided, Task 1 through Task 8 remain blocked and the result is
+`BLOCKED / DESIGN RE-APPROVAL REQUIRED`. Task 6 may only consume an already
+approved Gate 0 prerequisite; it must not design, establish, or synthesize
+runner-provisioning evidence.
 
 ## 4. Cloudflare and Relay Credentials
 
@@ -1215,7 +1264,7 @@ The ownership matrix is:
 
 | Requirement | Driver | Observation point / interface | Command | Expected PASS | Failure owner |
 | --- | --- | --- | --- | --- | --- |
-| OpenCode OAuth state available | Protected runner admission and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `$HOME/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Organization runner-provisioning owner; remain blocked, no fallback |
+| OpenCode OAuth state available | Gate 0 admission evidence and OpenCode preflight | `CommandRunner`; `opencode --version` plus recognized `OpenAI oauth` provider label only | `opencode --version`; `opencode auth list` | Version `1.18.31` and native store recognized at `$HOME/.local/share/opencode/auth.json` on `protected-opencode-oauth` | Organization runner-provisioning owner; remain blocked, no fallback |
 | OpenCode 1.18.31 and model selection | Fixed CLI run | `CommandRunner`; bounded JSON summary containing selected model ID, non-empty output, and non-zero usage; process EOF is the completion observation | `opencode run --model openai/gpt-5.6-luna --format json "Reply exactly OK."` | Exit code 0 with no terminating signal, model `gpt-5.6-luna`, and a completed streamed result | Plugin/provider-models or host compatibility owner |
 | Gateway authentication | `BoundaryProbe("valid-gateway-invalid-relay")` | HTTP status plus `responseClass` only | Fixed Gateway `POST /v1/responses` probe with valid Gateway token and invalid relay sentinel | HTTP 401 and `relay-rejected` | Gateway configuration or Gateway route owner |
 | Relay authentication | Valid OpenCode run plus both boundary probes | Successful OpenCode result and relay rejection class from `BoundaryProbe` | Same fixed run and probes | Valid run reaches a usable completion; invalid relay is rejected before upstream | Relay authentication or plugin header owner |
@@ -1225,8 +1274,8 @@ The ownership matrix is:
 | Cancellation propagation | Synthetic downstream abort | `Request.signal`, upstream `AbortSignal`, and `ReadableStream.cancel` in `relay_test.ts` | `deno test apps/deno-relay/relay_test.ts` | Upstream request and body are cancelled; no retry/fallback | Relay streaming owner |
 | No direct `chatgpt.com` route | Plugin integration and source ownership checks | `globalThis.fetch` identity, no legacy interposer symbol, and one `provider.models` owner | `npm test -- --run test/plugin.test.ts`; source grep in Task 8 | No global route mutation or second route owner | Plugin integration/host fail-closed owner |
 | Fail-closed invalid configuration | Plugin activation tests with missing route/control configuration | Rejection type, no returned hooks, and no direct route mutation | `npm test -- --run test/plugin.test.ts test/config.test.ts` | Configuration/host failure rejects before dispatch | Plugin configuration owner |
-| Post-refresh native-store persistence | Runner provisioning-service finalizer | Bounded owner attestation; no auth-store content | Provisioning-service post-job reconciliation for PASS/FAIL/CANCEL | Latest opaque native store is atomically persisted before encrypted job-volume teardown | Organization runner-provisioning owner; mark state unhealthy and block the next job |
-| Single-writer serialization | Runner provisioning-service admission lock | Bounded owner attestation; no store identity or credential data | Provisioning-service admission/finalizer lifecycle outside the workflow | One protected acceptance job holds the canonical-store lock through reconciliation | Organization runner-provisioning owner; deny admission without stale fallback |
+| Post-refresh native-store persistence | Gate 0 actual owner attestation and runner provisioning-service finalizer | Actual bounded attestation; no auth-store content | Provisioning-service post-job reconciliation for PASS/FAIL/CANCEL | Latest opaque native store is atomically persisted before encrypted job-volume teardown | Organization runner-provisioning owner; mark state unhealthy and block the next job |
+| Single-writer serialization | Gate 0 actual owner attestation and runner provisioning-service admission lock | Actual bounded attestation; no store identity or credential data | Provisioning-service admission/finalizer lifecycle outside the workflow | One protected acceptance job holds the canonical-store lock through reconciliation | Organization runner-provisioning owner; deny admission without stale fallback |
 
 Non-stream forwarding, tool continuation, cancellation, and direct-route
 exclusion therefore belong to deterministic tests and source-level ownership
@@ -1242,9 +1291,11 @@ interface and outside `runProviderAcceptance`. The acceptance driver consumes
 only the precondition that the provisioning service has mounted the store and
 that the native OpenCode provider is recognized. The provisioning service owns
 the post-job finalizer, opaque atomic persistence, single-writer lock, and
-volume teardown. Its bounded attestation is an external pre-implementation
-gate; it is not produced by the workflow and must not be synthesized from the
-acceptance driver's command result.
+volume teardown. Its actual bounded attestation is the external pre-task Gate 0
+output; it is not produced by the workflow and must not be synthesized from
+the acceptance driver's command result. Task 6 consumes the approved Gate 0
+prerequisite and configures only the repository-owned acceptance workflow and
+driver.
 
 ## 12. Scope and Definition of Done
 
@@ -1286,8 +1337,13 @@ selected architecture is defined by all of the following:
   opaque post-refresh reconciliation, single-writer serialization, and
   persistence-before-teardown; inability to provide that contract or its actual
   bounded attestation is `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
+- Gate 0 is the external pre-task gate for the actual bounded
+  runner-provisioning attestation. It makes no repository modification and is
+  not produced by Task 6, the workflow, or `runProviderAcceptance`.
+- No Task 1 through Task 8 may start before Gate 0 PASS and a fresh Superpowers
+  Review Gate marks this design and plan `READY`.
 - The design-to-plan consistency review is `BLOCKED` until the verification
-  ownership and plan corrections in §11.7 are re-reviewed.
+  ownership, Gate 0 ordering, and plan corrections in §11.7 are re-reviewed.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
@@ -1299,7 +1355,8 @@ configuration; it may not choose a different routing mechanism.
 The implementation plan now exists. Before production implementation may start,
 the design document and implementation plan MUST be checked for zero divergence
 in specification, terminology, types/interfaces, error handling, test strategy,
-and non-functional requirements. Any unresolved divergence, missing
-runner-provisioning evidence, or failed ownership mapping keeps production
-implementation blocked. A fresh review MUST mark the pair `READY`; this document
-does not self-approve production implementation.
+and non-functional requirements. Any unresolved divergence, missing actual
+runner-provisioning attestation, failed Gate 0 ordering, or failed ownership
+mapping keeps production implementation blocked. A fresh Superpowers Review Gate
+MUST mark the pair `READY` after Gate 0 PASS; this document does not self-approve
+production implementation.
