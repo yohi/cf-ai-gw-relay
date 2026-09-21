@@ -60,9 +60,10 @@ npm run build
 
 ## Features
 
-- OpenCode が使用する ChatGPT Codex Responses request だけを intercept します。
-- 対象 request を Cloudflare AI Gateway Custom Provider
-  経由にルーティングします。
+- OpenCode の built-in `openai` provider と public `provider.models` hook を使い、
+  `openai/gpt-5.6-luna` を Cloudflare AI Gateway Custom Provider 経由に
+  ルーティングします。
+- `chat.headers` hook で Gateway と relay の control header を設定します。
 - 元の Codex authorization、account、residency、body stream、abort signal
   を維持します。
 - Gateway credential と relay credential を分離します。
@@ -77,8 +78,10 @@ npm run build
 
 ```text
 OpenCode built-in ChatGPT OAuth
-  -> OpenCode plugin fetch interposer
+  -> OpenCode provider.models hook
+  -> model.api.url (suffix-free Gateway Custom Provider URL)
   -> Cloudflare AI Gateway Custom Provider
+  -> AI SDK appends /responses
   -> Deno Deploy relay
   -> https://chatgpt.com/backend-api/codex/responses
 ```
@@ -93,17 +96,15 @@ native `openai/*` / `anthropic/*` passthrough traffic に変換しません。
 
 ## 現在の Request Path
 
-Plugin が intercept するのは正確に次の request です。
+Plugin は対象 model の route として、suffix-free の次の URL を設定します。
 
 ```text
-POST https://chatgpt.com/backend-api/codex/responses
+https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}
 ```
 
-送信先は次の Gateway URL に書き換えられます。
-
-```text
-https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}/v1/responses
-```
+`/responses` は AI SDK が追加し、Custom Provider が relay route に対応付けます。
+Production mapping は `openai/gpt-5.6-luna` -> `gpt-5.6-luna` ->
+`@ai-sdk/openai 3.0.88` -> wire-body model `gpt-5.6-luna` です。
 
 現在の relay が受け付けるのは次です。
 
@@ -118,6 +119,11 @@ https://chatgpt.com/backend-api/codex/responses
 ```
 
 その他の relay route は `404` です。
+
+Relay は request / response body を直接 forwarding し、tools を含む内容を変換
+しません。Managed residency は initial scope では未サポートで、fail-closed
+になります。
+Fallback、retry loop、cache、payload persistence はありません。
 
 Generic `/upstream/<provider-slug>/*` relay は
 **計画済みですが未実装**です。Normative contract は [SPEC.md](SPEC.md)

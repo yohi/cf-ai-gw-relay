@@ -48,8 +48,9 @@ Success means all tests, type checks, formatting checks, lint checks, and the pa
 
 ## Features
 
-- Intercepts only the ChatGPT Codex Responses request used by OpenCode.
-- Routes that request through a Cloudflare AI Gateway Custom Provider.
+- Uses OpenCode's built-in `openai` provider and the public `provider.models` hook
+  to route `openai/gpt-5.6-luna` through a Cloudflare AI Gateway Custom Provider.
+- Uses the `chat.headers` hook for Gateway and relay control headers.
 - Preserves the original Codex authorization, account, residency, body stream, and abort signal.
 - Uses distinct Gateway and relay credentials.
 - Fails closed: the project does not intentionally fall back directly to ChatGPT.
@@ -61,8 +62,10 @@ Success means all tests, type checks, formatting checks, lint checks, and the pa
 
 ```text
 OpenCode built-in ChatGPT OAuth
-  -> OpenCode plugin fetch interposer
+  -> OpenCode provider.models hook
+  -> model.api.url (suffix-free Gateway Custom Provider URL)
   -> Cloudflare AI Gateway Custom Provider
+  -> AI SDK appends /responses
   -> Deno Deploy relay
   -> https://chatgpt.com/backend-api/codex/responses
 ```
@@ -73,17 +76,15 @@ The built-in OpenCode `cloudflare-ai-gateway` provider is outside this path. Thi
 
 ## Current Request Path
 
-The plugin intercepts exactly:
+The plugin sets the target model route to this suffix-free URL:
 
 ```text
-POST https://chatgpt.com/backend-api/codex/responses
+https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}
 ```
 
-and rewrites the destination to:
-
-```text
-https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}/v1/responses
-```
+The AI SDK appends `/responses`; the Custom Provider maps it to the relay route.
+The production mapping is `openai/gpt-5.6-luna` -> `gpt-5.6-luna` ->
+`@ai-sdk/openai 3.0.88` -> wire-body model `gpt-5.6-luna`.
 
 The current relay accepts:
 
@@ -98,6 +99,10 @@ https://chatgpt.com/backend-api/codex/responses
 ```
 
 Other relay routes return `404`.
+
+The relay directly forwards request and response bodies, including tools. Managed
+residency is not supported in the initial scope and fails closed.
+There is no fallback, retry loop, cache, or payload persistence.
 
 The generic `/upstream/<provider-slug>/*` relay is **planned and not implemented**. Its normative contract is documented in [SPEC.md](SPEC.md).
 
