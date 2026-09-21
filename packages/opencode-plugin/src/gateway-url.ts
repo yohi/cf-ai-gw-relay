@@ -9,3 +9,10 @@ export function buildGatewayUrl(config: ResolvedConfig): string {
     "/v1/responses";
   return `${base.origin}${path}`;
 }
+
+export function buildGatewayModelUrl(config: ResolvedConfig): string {
+  const base = new URL(config.gatewayBaseUrl);
+  return `${base.origin}/v1/${encodeURIComponent(config.accountId)}` +
+    `/${encodeURIComponent(config.gatewayId)}` +
+    `/custom-${encodeURIComponent(config.providerSlug)}`;
+}
