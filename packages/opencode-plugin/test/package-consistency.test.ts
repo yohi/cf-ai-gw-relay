@@ -17,11 +17,14 @@ describe("package metadata consistency", () => {
         "@opencode-ai/plugin": string;
       };
       engines: { opencode: string };
+      dependencies: Record<string, string>;
     };
-    expect(pkg.peerDependencies["@opencode-ai/plugin"]).toBe(">=1.18.20");
+    expect(pkg.peerDependencies["@opencode-ai/plugin"]).toBe(">=1.18.31 <1.18.32");
     expect(pkg.peerDependencies.opencode).toBeUndefined();
-    expect(pkg.devDependencies["@opencode-ai/plugin"]).toBe("^1.18.29");
+    expect(pkg.devDependencies["@opencode-ai/plugin"]).toBe("1.18.31");
     expect(pkg.engines.opencode).toBe(SUPPORTED_OPENCODE_RANGE);
-    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.18.20 <2");
+    expect(SUPPORTED_OPENCODE_RANGE).toBe("1.18.31");
+    expect(Object.keys(pkg.dependencies)).toEqual(["semver"]);
+    expect(pkg.dependencies["@ai-sdk/openai"]).toBeUndefined();
   });
 });

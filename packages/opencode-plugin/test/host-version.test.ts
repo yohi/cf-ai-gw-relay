@@ -44,7 +44,7 @@ describe("resolveHostVersionCapability", () => {
     vi.stubGlobal(
       "fetch",
       async () =>
-        new Response(JSON.stringify({ healthy: true, version: "1.18.29" }), {
+        new Response(JSON.stringify({ healthy: true, version: "1.18.31" }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -54,7 +54,7 @@ describe("resolveHostVersionCapability", () => {
       resolveHostVersionCapabilityAsync({ serverUrl: SERVER_URL }),
     ).resolves.toEqual({
       available: true,
-      version: "1.18.29",
+      version: "1.18.31",
     });
     expect(OPENCODE_SERVER_HEALTH_PATHNAME).toBe("/global/health");
   });
@@ -73,14 +73,14 @@ describe("resolveHostVersionCapability", () => {
     let requestInit: RequestInit | undefined;
     vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestInit = init;
-      return new Response(JSON.stringify({ healthy: true, version: "1.18.29" }), {
+      return new Response(JSON.stringify({ healthy: true, version: "1.18.31" }), {
         status: 200,
       });
     });
 
     await expect(
       resolveHostVersionCapabilityAsync({ serverUrl: SERVER_URL }),
-    ).resolves.toEqual({ available: true, version: "1.18.29" });
+    ).resolves.toEqual({ available: true, version: "1.18.31" });
     expect(requestInit?.redirect).toBe("error");
     expect(requestInit?.signal).toBeInstanceOf(AbortSignal);
   });
@@ -127,25 +127,28 @@ describe("assertSupportedHost", () => {
     );
   });
 
-  it("throws for versions outside the supported range", () => {
+  it("throws for every version except the pinned host version", () => {
     expect(() =>
       assertSupportedHost({ available: true, version: "1.18.19" }),
+    ).toThrow(UnsupportedOpenCodeVersionError);
+    expect(() =>
+      assertSupportedHost({ available: true, version: "1.18.29" }),
+    ).toThrow(UnsupportedOpenCodeVersionError);
+    expect(() =>
+      assertSupportedHost({ available: true, version: "1.18.32" }),
     ).toThrow(UnsupportedOpenCodeVersionError);
     expect(() =>
       assertSupportedHost({ available: true, version: "2.1.0" }),
     ).toThrow(UnsupportedOpenCodeVersionError);
   });
 
-  it("accepts boundary versions of the range", () => {
+  it("accepts only OpenCode 1.18.31", () => {
     expect(() =>
-      assertSupportedHost({ available: true, version: "1.18.20" }),
-    ).not.toThrow();
-    expect(() =>
-      assertSupportedHost({ available: true, version: "1.99.9" }),
+      assertSupportedHost({ available: true, version: "1.18.31" }),
     ).not.toThrow();
   });
 
   it("keeps the range constant in sync with the documented value", () => {
-    expect(SUPPORTED_OPENCODE_RANGE).toBe(">=1.18.20 <2");
+    expect(SUPPORTED_OPENCODE_RANGE).toBe("1.18.31");
   });
 });
