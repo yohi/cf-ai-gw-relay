@@ -31,16 +31,25 @@ contracts. Live OAuth acceptance is not a CI gate.
 **Tech Stack:** TypeScript, `@opencode-ai/plugin` 1.18.31, `@opencode-ai/sdk/v2`
 model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 
-**Pre-implementation gate:** `BLOCKED / DESIGN RE-APPROVAL REQUIRED`.
+**Fresh Superpowers Review Gate status (re-review of `abf7365`):**
 
-The superseded credential lifecycle is removed. No Task 1 through Task 8 may
-start until a fresh Superpowers Review Gate marks this design and plan `READY`.
-The fresh review must verify that the selected architecture has no CI OAuth
-injection, no OAuth persistence outside the user-controlled OpenCode runtime,
-and no alternative credential choice left to the implementation agent. Removing
-the unavailable lifecycle is not a pass for `RG-001`; the blocker remains until
-that fresh review accepts the authoritative environment evidence and replacement
-boundary.
+```text
+RG-001: RESOLVED
+RG-002: RESOLVED
+RG-003: REGRESSED — Major
+RG-004: RESOLVED
+pre-implementation gate: BLOCKED due RG-003
+production implementation: NOT STARTED
+```
+
+The selected OpenCode-owned OAuth architecture is resolved and must not be
+reopened. No Task 1 through Task 8 may start until a fresh Superpowers Review
+Gate marks this design and plan `READY`. The remaining gate work is limited to
+the RG-003 plan correction: the protected workflow must run the implementation
+branch version, the live boundary driver must remain owned by that protected
+workflow, and Task 6 must have unconditional file ownership and deterministic
+GREEN commands. The plan must not leave an OAuth, runner, broker, PAT, or CI
+credential choice to the implementation agent.
 
 ## Global Constraints
 
@@ -136,13 +145,13 @@ boundary.
   regressions. This task does not modify `apps/deno-relay/relay.ts`; a failing
   characterization is a plan blocker that requires a separately approved relay
   defect task.
-- Keep `.github/workflows/acceptance.yml` on GitHub-hosted `ubuntu-latest` and
-  modify its documentation owners in a later implementation task only when the
-  non-OAuth boundary assertions change. Create an OAuth-free boundary driver and
-  its test under `.github/scripts`; do not create an OpenCode OAuth acceptance
-  driver or an OAuth injection helper. The existing
-  `apps/deno-relay/acceptance_test.ts` and `acceptance_support.ts` remain the
-  relay route test seam.
+- Modify `.github/workflows/acceptance.yml` on GitHub-hosted `ubuntu-latest` to
+  add the explicit OAuth-free provider boundary step. Modify
+  `docs/configuration.md` and `docs/operations.md` for its non-OAuth ownership
+  and payload boundary. Create the OAuth-free boundary driver and its test under
+  `.github/scripts`; do not create an OpenCode OAuth acceptance driver or an
+  OAuth injection helper. The existing `apps/deno-relay/acceptance_test.ts` and
+  `acceptance_support.ts` remain the relay route test seam.
 - Modify `SPEC.md`, `README.md`, `README.ja.md`,
   `packages/opencode-plugin/README.md`, and the design document after migration
   so canonical documentation distinguishes the migrated current route from the
@@ -627,17 +636,20 @@ boundary.
 
 - Create: `.github/scripts/opencode_provider_acceptance.ts`
 - Create: `.github/scripts/opencode_provider_acceptance_test.ts`
-- Inspect: `.github/workflows/acceptance.yml`
+- Modify: `.github/workflows/acceptance.yml`
+- Modify: `docs/configuration.md`
+- Modify: `docs/operations.md`
 - Inspect: `apps/deno-relay/acceptance_test.ts`
 - Inspect: `apps/deno-relay/acceptance_support.ts`
-- Modify only if the migrated non-OAuth boundary contract requires it:
-  `.github/workflows/acceptance.yml`, `docs/configuration.md`,
-  `docs/operations.md`
 
 **Interfaces:**
 
-- Consumes the existing non-OAuth Gateway, relay, and provider acceptance
-  variables/secrets already defined by the `protected-acceptance` Environment.
+- The live driver consumes the existing non-OAuth Gateway, relay, and provider
+  acceptance variables/secrets already defined by the `protected-acceptance`
+  Environment only when Task 8 invokes it from the protected workflow. Task 6's
+  deterministic test supplies non-secret sentinels through
+  `BoundaryAcceptanceDependencies` and does not read protected process
+  environment values.
 - Does not consume an OpenCode auth store, OAuth JSON, PAT, or any credential
   injection interface.
 - The existing test seam remains `apps/deno-relay/acceptance_test.ts` and
@@ -773,16 +785,17 @@ OpenCode, and retains no response body or credential value.
      request per scenario, with no retry, fallback, OAuth lookup, OpenCode
      invocation, or payload persistence.
 
-  After implementation, run:
+  After implementation, run only the deterministic contract test:
 
   ```bash
   deno test .github/scripts/opencode_provider_acceptance_test.ts
-  deno run --allow-net --allow-env .github/scripts/opencode_provider_acceptance.ts
   ```
 
-  Expected: `PASS`; the focused contract tests use only non-secret sentinels,
-  and the manual driver reports named boundary outcomes without response bodies
-  or credentials.
+  Expected: `PASS`; the focused contract test uses only non-secret sentinels and
+  an injected `BoundaryProbe`, performs no network request, and requires no
+  protected Environment value. Do not run the live driver from the developer or
+  implementation workspace. Task 8 owns the only live driver invocation, from
+  the protected workflow on the verified implementation branch.
 
 - [ ] **Step 5: Document the payload and credential boundary**
 
@@ -920,27 +933,80 @@ OpenCode, and retains no response body or credential value.
   through `chat.headers`. The relay may retain `x-relay-authorization` only in
   its untrusted-header sanitization denylist.
 
-- [ ] **Step 3: Run the protected acceptance manually**
+- [ ] **Step 3: Run protected acceptance on the verified implementation branch**
 
-  Dispatch `.github/workflows/acceptance.yml` on its existing GitHub-hosted
-  `ubuntu-latest` runner with the `protected-acceptance` Environment and capture
-  the run result without displaying secrets or raw request/response data:
+  The fixed acceptance-ref owner is
+  `feature/cf-ai-gw-relay-opencode-provider`. Before dispatch, require that
+  Task 1 through Task 7 have verified commits on that branch, that the remote
+  branch points at the verified local `HEAD`, and that the
+  `protected-acceptance` Environment has an explicit custom branch policy for
+  the same ref. A missing Environment, missing policy, or policy mismatch is a
+  hard stop. Do not merge to `master`, change the Environment policy, create an
+  alternate workflow, or copy credentials to resolve it.
+
+  The plan-time GitHub API check on 2026-09-21 returned only the `production`
+  Environment; `protected-acceptance` was not present. Therefore the selected
+  sequence is to stop before Task 8 until the repository owner has made
+  `protected-acceptance` available with exactly one custom branch policy named
+  `feature/cf-ai-gw-relay-opencode-provider`. This document-only correction does
+  not create or modify that Environment, and no implementation agent may choose
+  a different Environment or ref.
+
+  Run the following from the implementation worktree without displaying
+  secrets or raw request/response data:
 
   ```bash
-  dispatch_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  gh workflow run acceptance.yml --repo yohi/cf-ai-gw-relay --ref master
+  set -eu
+  acceptance_ref='feature/cf-ai-gw-relay-opencode-provider'
+  test "$(git branch --show-current)" = "$acceptance_ref"
+  test "$acceptance_ref" != "master"
+  test -z "$(git status --porcelain)"
+  for subject in \
+    'test: pin OpenCode provider hook contract' \
+    'feat: add OpenCode provider model routing' \
+    'feat: inject Gateway control headers through OpenCode' \
+    'refactor: remove legacy OpenCode fetch routing' \
+    'test: lock relay Responses forwarding contract' \
+    'test: add protected provider boundary acceptance' \
+    'docs: record OpenCode provider route'
+  do
+    test "$(git log --format='%s' --fixed-strings --grep="$subject" -n 1)" = "$subject"
+  done
+  git fetch origin "$acceptance_ref"
+  verified_head_sha="$(git rev-parse HEAD)"
+  remote_branch_sha="$(git rev-parse "origin/$acceptance_ref")"
+  test "$verified_head_sha" = "$remote_branch_sha"
+
+  policy_json="$(gh api \
+    repos/yohi/cf-ai-gw-relay/environments/protected-acceptance/deployment-branch-policies)"
+  printf '%s' "$policy_json" | jq -e --arg ref "$acceptance_ref" \
+    '([.deployment_branch_policies[]? | select(.type == "branch" and .name == $ref)] | length) == 1' \
+    >/dev/null
+
+  test "$(gh api \
+    "repos/yohi/cf-ai-gw-relay/contents/.github/workflows/acceptance.yml?ref=$acceptance_ref" \
+    --jq '.content' | base64 --decode | \
+    grep -Fxc '      - name: Run provider boundary acceptance')" = 1
+
+  dispatch_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  gh workflow run acceptance.yml --repo yohi/cf-ai-gw-relay --ref "$acceptance_ref"
   run_ids=''
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
     run_ids=$(gh run list --repo yohi/cf-ai-gw-relay --workflow acceptance.yml \
-      --event workflow_dispatch --branch master --limit 20 \
-      --json databaseId,createdAt | \
-      jq -r --arg started "$dispatch_started_at" \
-        '[.[] | select(.createdAt >= $started) | .databaseId] | .[]')
+      --event workflow_dispatch --branch "$acceptance_ref" --limit 20 \
+      --json databaseId,createdAt,headBranch,headSha | \
+      jq -r --arg started "$dispatch_started_at" --arg ref "$acceptance_ref" \
+        --arg sha "$verified_head_sha" \
+        '[.[] | select(.createdAt >= $started and .headBranch == $ref and .headSha == $sha) | .databaseId] | .[]')
     [ -n "$run_ids" ] && break
     sleep 3
   done
   test "$(printf '%s\n' "$run_ids" | awk 'NF {count += 1} END {print count + 0}')" = 1
   run_id="$run_ids"
+  test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
+    --json headBranch --jq '.headBranch')" = "$acceptance_ref"
+  test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
+    --json headSha --jq '.headSha')" = "$verified_head_sha"
   gh run watch "$run_id" --repo yohi/cf-ai-gw-relay --exit-status
   test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
     --json conclusion --jq '.conclusion')" = success
@@ -950,9 +1016,13 @@ OpenCode, and retains no response body or credential value.
     --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'
   ```
 
-  The run lookup is deliberately fail-closed: if the timestamp filter returns
-  zero or more than one candidate, stop without treating any run as evidence.
-  GitHub's dispatch endpoint does not return a run ID; this check therefore
+  The preflight is deliberately fail-closed: the verified local `HEAD`, remote
+  implementation branch SHA, Environment branch policy, and workflow file
+  version must all identify the same acceptance ref. The dispatch `--ref` and
+  run lookup `--branch` use that same `$acceptance_ref`, and the run's
+  `headSha` must equal the verified local `HEAD`. If the timestamp/SHA filter
+  returns zero or more than one candidate, stop without treating any run as
+  evidence. GitHub's dispatch endpoint does not return a run ID; this check
   refuses ambiguous near-concurrent dispatches rather than selecting one.
   Require the workflow conclusion and the boundary-driver step to be `success`;
   a skipped boundary-driver step, missing configuration validation, ignored
@@ -966,10 +1036,10 @@ OpenCode, and retains no response body or credential value.
   cancellation, or tool-choice assertion here.
 
   This is a future implementation-stage verification command. During this
-  document-only correction, the current workflow is intentionally not modified
-  and therefore does not yet contain the Task 6 boundary-driver step. Do not
-  dispatch the workflow or treat the current absence of that future step as a
-  production-acceptance result.
+  document-only correction, do not execute it: the current workflow is
+  intentionally not modified and therefore does not yet contain the Task 6
+  boundary-driver step. The current absence of that future step is not an
+  acceptance result.
 
 - [ ] **Step 4: Perform the design-to-plan consistency review without edits**
 
@@ -977,12 +1047,14 @@ OpenCode, and retains no response body or credential value.
   constraint at the top of this plan and §§1-12 of
   `docs/superpowers/specs/2026-09-14-cf-ai-gw-relay-opencode-provider-design.md`.
   Produce only a review note containing command names, runtime version,
-  pass/fail status, and bounded error categories; Task 8 must not edit source,
-  tests, workflow, configuration, or documentation. If any divergence changes
-  provider identity, credential architecture, public extension point, component
-  boundary, security model, protocol owner, or SDK family/major version, record
-  `DESIGN RE-APPROVAL REQUIRED`, stop, and return to the owning task for an
-  explicit plan revision.
+  pass/fail status, and bounded error categories. The note MUST include an
+  explicit pass/fail entry for specification, terminology, types/interfaces,
+  error handling, test strategy, and non-functional requirements. Task 8 must
+  not edit source, tests, workflow, configuration, or documentation. If any
+  divergence changes provider identity, credential architecture, public
+  extension point, component boundary, security model, protocol owner, or SDK
+  family/major version, record `DESIGN RE-APPROVAL REQUIRED`, stop, and return
+  to the owning task for an explicit plan revision.
 
 - [ ] **Step 5: Hand off the verified migration result**
 
@@ -998,12 +1070,22 @@ OpenCode, and retains no response body or credential value.
 ## Handoff
 
 Current handoff state is `BLOCKED`: production implementation is `NOT STARTED`
-and MUST NOT start. The selected architecture has no external credential
-provisioning prerequisite, but that fact does not resolve `RG-001`. Protected
-acceptance is limited to the existing GitHub-hosted non-OAuth Gateway/relay
-boundary. A fresh Superpowers Review Gate must independently mark both documents
-`READY`; that status may not be self-declared by this plan. Only then may Task 1
-start.
+and MUST NOT start.
+
+```text
+RG-001: RESOLVED
+RG-002: RESOLVED
+RG-003: REGRESSED — Major
+RG-004: RESOLVED
+pre-implementation gate: BLOCKED due RG-003
+```
+
+The selected OpenCode-owned OAuth architecture is resolved and must not be
+reopened. Protected acceptance is limited to the existing GitHub-hosted
+non-OAuth Gateway/relay boundary, and the live boundary driver is owned only by
+Task 8 on the verified implementation branch. A fresh Superpowers Review Gate
+must independently mark both documents `READY`; that status may not be
+self-declared by this plan. Only then may Task 1 start.
 
 Request a fresh code review after Task 8. Do not claim supported production use
 unless the exact host contract, deterministic checks, protected acceptance, and
