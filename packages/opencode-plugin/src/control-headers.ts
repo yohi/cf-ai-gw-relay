@@ -3,7 +3,7 @@ import type { ChatHeadersHook } from "./hooks.js";
 
 const TARGET_MODEL_ID = "gpt-5.6-luna";
 
-const METADATA_HEADER_VALUE = JSON.stringify({
+export const METADATA_HEADER_VALUE = JSON.stringify({
   source: "opencode",
   auth_type: "chatgpt_subscription",
   plugin: "cloudflare-ai-gateway-chatgpt",
