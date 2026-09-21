@@ -935,14 +935,13 @@ OpenCode, and retains no response body or credential value.
 
 - [ ] **Step 3: Run protected acceptance on the verified implementation branch**
 
-  The fixed acceptance-ref owner is
-  `feature/cf-ai-gw-relay-opencode-provider`. Before dispatch, require that
-  Task 1 through Task 7 have verified commits on that branch, that the remote
-  branch points at the verified local `HEAD`, and that the
-  `protected-acceptance` Environment has an explicit custom branch policy for
-  the same ref. A missing Environment, missing policy, or policy mismatch is a
-  hard stop. Do not merge to `master`, change the Environment policy, create an
-  alternate workflow, or copy credentials to resolve it.
+  The fixed acceptance-ref owner is `feature/cf-ai-gw-relay-opencode-provider`.
+  Before dispatch, require that Task 1 through Task 7 have verified commits on
+  that branch, that the remote branch points at the verified local `HEAD`, and
+  that the `protected-acceptance` Environment has an explicit custom branch
+  policy for the same ref. A missing Environment, missing policy, or policy
+  mismatch is a hard stop. Do not merge to `master`, change the Environment
+  policy, create an alternate workflow, or copy credentials to resolve it.
 
   The plan-time GitHub API check on 2026-09-21 returned only the `production`
   Environment; `protected-acceptance` was not present. Therefore the selected
@@ -952,8 +951,8 @@ OpenCode, and retains no response body or credential value.
   not create or modify that Environment, and no implementation agent may choose
   a different Environment or ref.
 
-  Run the following from the implementation worktree without displaying
-  secrets or raw request/response data:
+  Run the following from the implementation worktree without displaying secrets
+  or raw request/response data:
 
   ```bash
   set -eu
@@ -1029,15 +1028,15 @@ OpenCode, and retains no response body or credential value.
   The preflight is deliberately fail-closed: the verified local `HEAD`, remote
   implementation branch SHA, Environment branch policy, and workflow file
   version must all identify the same acceptance ref. The dispatch `--ref` and
-  run lookup `--branch` use that same `$acceptance_ref`, and the run's
-  `headSha` must equal the verified local `HEAD`. If the timestamp/SHA filter
-  returns zero or more than one candidate, stop without treating any run as
-  evidence. GitHub's dispatch endpoint does not return a run ID; this check
-  refuses ambiguous near-concurrent dispatches rather than selecting one.
-  Require the workflow conclusion and the boundary-driver step to be `success`;
-  a skipped boundary-driver step, missing configuration validation, ignored
-  local test, or a workflow with only generic tests ignored is not acceptance
-  evidence. The workflow configuration step must validate all six existing
+  run lookup `--branch` use that same `$acceptance_ref`, and the run's `headSha`
+  must equal the verified local `HEAD`. If the timestamp/SHA filter returns zero
+  or more than one candidate, stop without treating any run as evidence.
+  GitHub's dispatch endpoint does not return a run ID; this check refuses
+  ambiguous near-concurrent dispatches rather than selecting one. Require the
+  workflow conclusion and the boundary-driver step to be `success`; a skipped
+  boundary-driver step, missing configuration validation, ignored local test, or
+  a workflow with only generic tests ignored is not acceptance evidence. The
+  workflow configuration step must validate all six existing
   `RELAY_ACCEPTANCE_*` values, including `RELAY_ACCEPTANCE_ORIGIN`; the new
   boundary driver may consume only its documented Gateway/relay subset. A
   missing host capability, inability to inject headers through `chat.headers`,

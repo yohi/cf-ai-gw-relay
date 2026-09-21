@@ -304,9 +304,8 @@ broker, CI auth store, PAT, or OAuth injection seam.
 The current pre-implementation gate remains blocked for `RG-003`: the plan must
 use the verified implementation branch for the protected workflow, keep live
 `BoundaryProbe` execution in that protected workflow, and make its Task 6 file
-ownership and deterministic GREEN sequence unconditional. No Task 1 through
-Task 8 may start until a fresh Superpowers Review Gate marks both documents
-`READY`.
+ownership and deterministic GREEN sequence unconditional. No Task 1 through Task
+8 may start until a fresh Superpowers Review Gate marks both documents `READY`.
 
 No Task 1 through Task 8 may start until the fresh review marks both documents
 `READY`. Until then the result remains:
