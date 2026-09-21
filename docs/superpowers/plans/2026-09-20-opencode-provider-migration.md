@@ -676,8 +676,20 @@ credential choice to the implementation agent.
     readonly probe: BoundaryProbe;
   };
 
+  buildBoundaryGatewayUrl(baseUrl: string): string;
   runBoundaryAcceptance(deps: BoundaryAcceptanceDependencies): Promise<void>;
   ```
+
+  `env.RELAY_ACCEPTANCE_GATEWAY_BASE_URL` keeps the existing acceptance
+  contract: it is the HTTPS Gateway account/gateway base
+  `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>` only. It MUST NOT
+  include `/custom-<slug>`, `/responses`, or `/v1/responses`. The boundary
+  driver uses the fixed acceptance provider slug `command-code`, so the Gateway
+  request URL is exactly
+  `.../v1/<account>/<gateway>/custom-command-code/responses`; the Custom
+  Provider maps that request to the relay's `POST /v1/responses`. The existing
+  `RELAY_ACCEPTANCE_ORIGIN` remains outside this dependency because direct relay
+  checks retain ownership of it.
 
 - The workflow remains `runs-on: ubuntu-latest`, uses the `protected-acceptance`
   Environment, and reports only named result classes.
@@ -693,9 +705,9 @@ credential choice to the implementation agent.
 - [ ] **Step 1: RED — write the failing boundary contract test**
 
 Add `.github/scripts/opencode_provider_acceptance_test.ts` before the driver
-exists. Import `runBoundaryAcceptance` from the not-yet-created
-`./opencode_provider_acceptance.ts` module so the RED result has one
-deterministic missing-module cause. Test the exact `BoundaryProbe`,
+exists. Import `buildBoundaryGatewayUrl` and `runBoundaryAcceptance` from the
+not-yet-created `./opencode_provider_acceptance.ts` module so the RED result has
+one deterministic missing-module cause. Test the exact `BoundaryProbe`,
 `BoundaryAcceptanceDependencies`, required environment names, and both scenarios
 with non-secret sentinels:
 
@@ -717,6 +729,13 @@ const probe: BoundaryProbe = async (scenario) =>
 
 await runBoundaryAcceptance({ env: testEnvironment, probe });
 ```
+
+Also assert that `buildBoundaryGatewayUrl` turns the fixture base into exactly
+`https://gateway.ai.cloudflare.com/v1/acct/gateway/custom-command-code/responses`.
+The contract test MUST reject a base URL that already contains the Custom
+Provider slug or an operation suffix, and MUST prove that the driver adds
+`custom-command-code` and `/responses` exactly once. The Gateway URL assertion
+is distinct from the relay-side `/v1/responses` route assertion.
 
 Require rejection for a missing environment value, a wrong status, a wrong
 response class, and an unexpected relay response class. Assert that the driver
@@ -769,15 +788,25 @@ OpenCode, and retains no response body or credential value.
      `RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY`, and `RELAY_ACCEPTANCE_MODEL`
      without printing values. Require `RELAY_ACCEPTANCE_MODEL` to be
      `gpt-5.6-luna`; do not select a model from an OAuth response.
-  2. Build the fixed non-sensitive body
+  2. Parse and validate `RELAY_ACCEPTANCE_GATEWAY_BASE_URL` as the existing
+     HTTPS Gateway account/gateway base only: exact host
+     `gateway.ai.cloudflare.com`, no port, credentials, query, or fragment, and
+     pathname matching `/v1/<account>/<gateway>` with an optional trailing
+     slash. Set the driver-owned `ACCEPTANCE_PROVIDER_SLUG` to `command-code`
+     and build the Gateway URL by appending `/custom-command-code/responses`
+     exactly once. Do not append `/v1` or `/v1/responses` to the Gateway URL;
+     `/responses` is the one Gateway operation suffix and the Custom Provider
+     maps it to relay `POST /v1/responses`. Use this same URL builder for both
+     scenarios and keep it observable to the deterministic contract test.
+  3. Build the fixed non-sensitive body
      `{"model":"gpt-5.6-luna","input":[],"stream":false}`.
-  3. For `BoundaryProbe("valid-gateway-invalid-relay")`, use the protected
+  4. For `BoundaryProbe("valid-gateway-invalid-relay")`, use the protected
      Gateway token and a fixed invalid relay sentinel. Require HTTP 401 and the
      relay's fixed unauthorized response class.
-  4. For `BoundaryProbe("invalid-gateway-valid-relay")`, use a fixed invalid
+  5. For `BoundaryProbe("invalid-gateway-valid-relay")`, use a fixed invalid
      Gateway sentinel and the protected relay token. Require Gateway HTTP 401 or
      403 and reject the relay's fixed unauthorized response class.
-  5. Define `MAX_BOUNDARY_RESPONSE_BYTES = 4096`. Read at most 4097 bytes before
+  6. Define `MAX_BOUNDARY_RESPONSE_BYTES = 4096`. Read at most 4097 bytes before
      classifying the fixed unauthorized response, then cancel the body. Never
      perform an unbounded drain. Exceeding the limit, a read failure, or a
      non-matching response class fails closed. Retain only `status` and
@@ -816,7 +845,19 @@ OpenCode, and retains no response body or credential value.
   deno test .github/scripts/opencode_provider_acceptance_test.ts
   deno test apps/deno-relay/acceptance_test.ts
   actionlint .github/workflows/acceptance.yml
-  git grep -n "opencode_provider_acceptance.ts\|runs-on: ubuntu-latest\|RELAY_ACCEPTANCE_" -- .github/workflows/acceptance.yml
+  git grep -n -F "opencode_provider_acceptance.ts" -- .github/workflows/acceptance.yml
+  git grep -n -F "runs-on: ubuntu-latest" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_RELAY_SECRET" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_ORIGIN" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_GATEWAY_BASE_URL" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_GATEWAY_TOKEN" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY" -- .github/workflows/acceptance.yml
+  git grep -n -F "RELAY_ACCEPTANCE_MODEL" -- .github/workflows/acceptance.yml
+  validation_step_line="$(git grep -n -F "      - name: Validate protected acceptance configuration" -- .github/workflows/acceptance.yml | cut -d: -f1)"
+  boundary_step_line="$(git grep -n -F "      - name: Run provider boundary acceptance" -- .github/workflows/acceptance.yml | cut -d: -f1)"
+  test -n "$validation_step_line"
+  test -n "$boundary_step_line"
+  test "$validation_step_line" -lt "$boundary_step_line"
   deno fmt --check
   git diff --check
   git add .github/scripts/opencode_provider_acceptance.ts .github/scripts/opencode_provider_acceptance_test.ts .github/workflows/acceptance.yml docs/configuration.md docs/operations.md
@@ -824,12 +865,12 @@ OpenCode, and retains no response body or credential value.
   ```
 
   Expected: all focused and existing acceptance tests pass, `actionlint` passes,
-  and the grep output shows the boundary driver step, `ubuntu-latest`, and all
-  six existing acceptance variable names. The workflow must not skip the new
-  boundary step. No OAuth credential, raw response, or request payload appears
-  in logs, artifacts, caches, fixtures, or summaries. Refactor decision: none;
-  this task adds only the bounded boundary driver and its explicitly owned
-  probes.
+  every fixed-string variable check succeeds, and the configuration validation
+  step precedes the boundary-driver step. The workflow must not skip the new
+  boundary step or allow it to run when any of the six required values is
+  missing. No OAuth credential, raw response, or request payload appears in
+  logs, artifacts, caches, fixtures, or summaries. Refactor decision: none; this
+  task adds only the bounded boundary driver and its explicitly owned probes.
 
 ## Task 7: Update Canonical Current-Path Documentation
 
@@ -960,21 +1001,48 @@ OpenCode, and retains no response body or credential value.
   test "$(git branch --show-current)" = "$acceptance_ref"
   test "$acceptance_ref" != "master"
   test -z "$(git status --porcelain)"
-  for subject in \
-    'test: pin OpenCode provider hook contract' \
-    'feat: add OpenCode provider model routing' \
-    'feat: inject Gateway control headers through OpenCode' \
-    'refactor: remove legacy OpenCode fetch routing' \
-    'test: lock relay Responses forwarding contract' \
-    'test: add protected provider boundary acceptance' \
-    'docs: record OpenCode provider route'
-  do
-    test "$(git log --format='%s' --fixed-strings --grep="$subject" -n 1)" = "$subject"
-  done
   git fetch origin "$acceptance_ref"
   verified_head_sha="$(git rev-parse HEAD)"
   remote_branch_sha="$(git rev-parse "origin/$acceptance_ref")"
   test "$verified_head_sha" = "$remote_branch_sha"
+
+  task_subjects=(
+    'test: pin OpenCode provider hook contract'
+    'feat: add OpenCode provider model routing'
+    'feat: inject Gateway control headers through OpenCode'
+    'refactor: remove legacy OpenCode fetch routing'
+    'test: lock relay Responses forwarding contract'
+    'test: add protected provider boundary acceptance'
+    'docs: record OpenCode provider route'
+  )
+  task_shas=()
+  cursor_sha="$verified_head_sha"
+  for ((index=${#task_subjects[@]} - 1; index >= 0; index--)); do
+    subject="${task_subjects[$index]}"
+    task_sha="$(git log --first-parent --format='%H%x09%s' "$cursor_sha" | \
+      awk -F '\t' -v expected="$subject" '$2 == expected { print $1; exit }')"
+    test -n "$task_sha"
+    test "$(git show -s --format='%s' "$task_sha")" = "$subject"
+    task_shas[$index]="$task_sha"
+    cursor_sha="$(git rev-parse "${task_sha}^")"
+  done
+  task1_sha="${task_shas[0]}"
+  task2_sha="${task_shas[1]}"
+  task3_sha="${task_shas[2]}"
+  task4_sha="${task_shas[3]}"
+  task5_sha="${task_shas[4]}"
+  task6_sha="${task_shas[5]}"
+  task7_sha="${task_shas[6]}"
+  printf '%s\n' \
+    "Task 1 implementation SHA: $task1_sha" \
+    "Task 2 implementation SHA: $task2_sha" \
+    "Task 3 implementation SHA: $task3_sha" \
+    "Task 4 implementation SHA: $task4_sha" \
+    "Task 5 implementation SHA: $task5_sha" \
+    "Task 6 implementation SHA: $task6_sha" \
+    "Task 7 implementation SHA: $task7_sha"
+  test "$task7_sha" = "$verified_head_sha"
+  test "$task7_sha" = "$remote_branch_sha"
 
   environment_json="$(gh api \
     repos/yohi/cf-ai-gw-relay/environments/protected-acceptance)"
@@ -1005,7 +1073,7 @@ OpenCode, and retains no response body or credential value.
       --event workflow_dispatch --branch "$acceptance_ref" --limit 20 \
       --json databaseId,createdAt,headBranch,headSha | \
       jq -r --arg started "$dispatch_started_at" --arg ref "$acceptance_ref" \
-        --arg sha "$verified_head_sha" \
+        --arg sha "$task7_sha" \
         '[.[] | select(.createdAt >= $started and .headBranch == $ref and .headSha == $sha) | .databaseId] | .[]')
     [ -n "$run_ids" ] && break
     sleep 3
@@ -1015,7 +1083,7 @@ OpenCode, and retains no response body or credential value.
   test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
     --json headBranch --jq '.headBranch')" = "$acceptance_ref"
   test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
-    --json headSha --jq '.headSha')" = "$verified_head_sha"
+    --json headSha --jq '.headSha')" = "$task7_sha"
   gh run watch "$run_id" --repo yohi/cf-ai-gw-relay --exit-status
   test "$(gh run view "$run_id" --repo yohi/cf-ai-gw-relay \
     --json conclusion --jq '.conclusion')" = success
@@ -1025,18 +1093,19 @@ OpenCode, and retains no response body or credential value.
     --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'
   ```
 
-  The preflight is deliberately fail-closed: the verified local `HEAD`, remote
-  implementation branch SHA, Environment branch policy, and workflow file
-  version must all identify the same acceptance ref. The dispatch `--ref` and
-  run lookup `--branch` use that same `$acceptance_ref`, and the run's `headSha`
-  must equal the verified local `HEAD`. If the timestamp/SHA filter returns zero
-  or more than one candidate, stop without treating any run as evidence.
-  GitHub's dispatch endpoint does not return a run ID; this check refuses
-  ambiguous near-concurrent dispatches rather than selecting one. Require the
-  workflow conclusion and the boundary-driver step to be `success`; a skipped
-  boundary-driver step, missing configuration validation, ignored local test, or
-  a workflow with only generic tests ignored is not acceptance evidence. The
-  workflow configuration step must validate all six existing
+  The preflight is deliberately fail-closed: the recorded Task 1 through Task 7
+  SHAs must be exact first-parent commits in the required order, and the Task 7
+  SHA must equal local `HEAD`, the remote implementation branch SHA, and the
+  dispatched run's `headSha`. The Environment branch policy and workflow file
+  version must identify the same acceptance ref. The dispatch `--ref` and run
+  lookup `--branch` use that same `$acceptance_ref`. If the timestamp/SHA filter
+  returns zero or more than one candidate, stop without treating any run as
+  evidence. GitHub's dispatch endpoint does not return a run ID; this check
+  refuses ambiguous near-concurrent dispatches rather than selecting one.
+  Require the workflow conclusion and the boundary-driver step to be `success`;
+  a skipped boundary-driver step, missing configuration validation, ignored
+  local test, or a workflow with only generic tests ignored is not acceptance
+  evidence. The workflow configuration step must validate all six existing
   `RELAY_ACCEPTANCE_*` values, including `RELAY_ACCEPTANCE_ORIGIN`; the new
   boundary driver may consume only its documented Gateway/relay subset. A
   missing host capability, inability to inject headers through `chat.headers`,
