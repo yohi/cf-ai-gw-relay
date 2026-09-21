@@ -977,11 +977,21 @@ OpenCode, and retains no response body or credential value.
   remote_branch_sha="$(git rev-parse "origin/$acceptance_ref")"
   test "$verified_head_sha" = "$remote_branch_sha"
 
+  environment_json="$(gh api \
+    repos/yohi/cf-ai-gw-relay/environments/protected-acceptance)"
+  printf '%s' "$environment_json" | jq -e '
+    .deployment_branch_policy.protected_branches == false
+    and
+    .deployment_branch_policy.custom_branch_policies == true
+  ' >/dev/null
+
   policy_json="$(gh api \
     repos/yohi/cf-ai-gw-relay/environments/protected-acceptance/deployment-branch-policies)"
-  printf '%s' "$policy_json" | jq -e --arg ref "$acceptance_ref" \
-    '([.deployment_branch_policies[]? | select(.type == "branch" and .name == $ref)] | length) == 1' \
-    >/dev/null
+  printf '%s' "$policy_json" | jq -e --arg ref "$acceptance_ref" '
+    .total_count == 1
+    and
+    ([.branch_policies[]? | select(.name == $ref)] | length) == 1
+  ' >/dev/null
 
   test "$(gh api \
     "repos/yohi/cf-ai-gw-relay/contents/.github/workflows/acceptance.yml?ref=$acceptance_ref" \
