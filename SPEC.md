@@ -70,12 +70,12 @@ The following invariants apply to the project:
 
 ## 3. OpenCode Host Compatibility
 
-The canonical supported OpenCode range is
-`packages/opencode-plugin/package.json#engines.opencode`. At the current
-repository state it is:
+The canonical supported OpenCode version is pinned by
+`packages/opencode-plugin/package.json#engines.opencode` and the host
+validation contract. At the current repository state it is:
 
 ```text
->=1.18.20 <2
+1.18.31
 ```
 
 The plugin MUST reject activation if:

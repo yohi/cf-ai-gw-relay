@@ -12,7 +12,7 @@ Gateway と固定アップストリームの Deno Deploy relay 経由でルー�
 
 > [!WARNING]
 > **現在、production での supported use は blocked です。** Plugin は OpenCode
-> `>=1.18.20 <2` を宣言しており、fail-closed な activation
+> `1.18.31` を対象とし、fail-closed な activation
 > には、本プロジェクトが必要とする host-version capability と request-blocking
 > capability が OpenCode 側で提供されることも必要です。Release artifact
 > が存在していても、必要 capability が利用可能になり protected acceptance suite
@@ -64,15 +64,16 @@ npm run build
   `openai/gpt-5.6-luna` を Cloudflare AI Gateway Custom Provider 経由に
   ルーティングします。
 - `chat.headers` hook で Gateway と relay の control header を設定します。
-- 元の Codex authorization、account、residency、body stream、abort signal
-  を維持します。
+- OpenCode が所有する OAuth、account、residency、body stream、abort signal の
+  header は変更せず、Plugin は residency header を追加・推測しません。
 - Gateway credential と relay credential を分離します。
 - Fail-closed で動作し、意図的な ChatGPT 直接 fallback を行いません。
 - Deno relay は stateless かつ runtime dependency なしです。
 - Relay 自身で payload を永続化せず、可観測性を Cloudflare AI Gateway
   に委譲します。
-- 現行 legacy path と、将来の固定 provider `/upstream/*` relay contract
-  を分離して定義します。
+- 現行の public hook path と、将来の固定 provider `/upstream/*` relay
+  contract を分離して定義します。「legacy」は削除済みの fetch interposer
+  に限って使用します。
 
 ## Architecture Overview
 
