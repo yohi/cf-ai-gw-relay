@@ -36,20 +36,23 @@ model types, npm/Vitest, Deno 2.x, and GitHub Actions protected acceptance.
 ```text
 RG-001: RESOLVED
 RG-002: RESOLVED
-RG-003: REGRESSED — Major
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED due RG-003
-production implementation: NOT STARTED
+pre-implementation gate: READY
+production implementation: MAY START
 ```
 
 The selected OpenCode-owned OAuth architecture is resolved and must not be
-reopened. No Task 1 through Task 8 may start until a fresh Superpowers Review
-Gate marks this design and plan `READY`. The remaining gate work is limited to
-the RG-003 plan correction: the protected workflow must run the implementation
-branch version, the live boundary driver must remain owned by that protected
-workflow, and Task 6 must have unconditional file ownership and deterministic
-GREEN commands. The plan must not leave an OAuth, runner, broker, PAT, or CI
-credential choice to the implementation agent.
+reopened. A fresh Superpowers Review Gate must mark this design and plan `READY`
+before any of Task 1 through Task 8 starts; the fresh Superpowers Review Gate
+for `474f9e3` has done so.
+
+The remaining gate work was limited to the RG-003 plan correction: the protected
+workflow runs the implementation branch version, the live boundary driver remains
+owned by that protected workflow, and Task 6 has unconditional file ownership and
+deterministic GREEN commands. The plan does not leave an OAuth, runner, broker,
+PAT, or CI credential choice to the implementation agent.
+PAT, or CI credential choice to the implementation agent.
 
 ## Global Constraints
 
@@ -1147,15 +1150,15 @@ OpenCode, and retains no response body or credential value.
 
 ## Handoff
 
-Current handoff state is `BLOCKED`: production implementation is `NOT STARTED`
-and MUST NOT start.
+Current handoff state is `READY`: production implementation `MAY START`.
 
 ```text
 RG-001: RESOLVED
 RG-002: RESOLVED
-RG-003: REGRESSED — Major
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED due RG-003
+pre-implementation gate: READY
+production implementation: MAY START
 ```
 
 The selected OpenCode-owned OAuth architecture is resolved and must not be

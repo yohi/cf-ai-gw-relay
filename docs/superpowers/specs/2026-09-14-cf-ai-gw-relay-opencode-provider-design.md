@@ -17,15 +17,17 @@ Current gate state for the fresh Superpowers Review Gate re-review of commit
 SRG-022: RESOLVED
 SRG-035: RESOLVED
 writing-plans: COMPLETED; implementation plan synchronized in this revision
-review gate: BLOCKED
+review gate: READY
 RG-001: RESOLVED
 RG-002: RESOLVED
-RG-003: REGRESSED — Major
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED due RG-003
-design-to-plan consistency review: BLOCKED pending RG-003 correction and fresh re-review
-production implementation: NOT STARTED
+pre-implementation gate: READY
+design-to-plan consistency review: READY
+production implementation: MAY START
 ```
+
+Fresh Superpowers Review Gate for `474f9e3`: READY
 
 The completed and required order is:
 
@@ -42,9 +44,14 @@ The completed and required order is:
 10. implementation plan synchronization
 11. fresh review identifies RG-003 as REGRESSED
 12. RG-003 correction and design-to-plan consistency check
-13. fresh Superpowers Review Gate marks both documents READY
+13. fresh Superpowers Review Gate for `474f9e3` marks both documents READY
 14. production implementation only after the fresh review marks the plan READY
+15. fresh Superpowers Review Gate for `474f9e3` confirmed READY; implementation MAY START
 ```
+
+The post-characterization gate review of commit `0851e88` confirmed that SRG-035
+satisfies the pre-implementation closure contract. The fresh Superpowers Review
+Gate for `474f9e3` has marked both documents READY.
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
 satisfies the pre-implementation closure contract. It does not approve the
@@ -301,23 +308,24 @@ OpenCode-owned OAuth architecture is the current credential architecture, and
 `RG-001` is `RESOLVED`. It must not be reopened or replaced with a runner,
 broker, CI auth store, PAT, or OAuth injection seam.
 
-The current pre-implementation gate remains blocked for `RG-003`: the plan must
-use the verified implementation branch for the protected workflow, keep live
-`BoundaryProbe` execution in that protected workflow, and make its Task 6 file
-ownership and deterministic GREEN sequence unconditional. No Task 1 through Task
-8 may start until a fresh Superpowers Review Gate marks both documents `READY`.
+The current pre-implementation gate is `READY`: the plan uses the verified
+The current pre-implementation gate is `READY`: the plan uses the verified
+implementation branch for the protected workflow, keeps live `BoundaryProbe`
+execution in that protected workflow, and makes its Task 6 file ownership and
+deterministic GREEN sequence unconditional. No Task 1 through Task 8 may start
+until a fresh Superpowers Review Gate marks both documents `READY`; the fresh
+Superpowers Review Gate for `474f9e3` has done so.
 
-No Task 1 through Task 8 may start until the fresh review marks both documents
-`READY`. Until then the result remains:
+Fresh review result:
 
 ```text
-review gate: BLOCKED
+review gate: READY
 RG-001: RESOLVED
 RG-002: RESOLVED
-RG-003: REGRESSED — Major
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED due RG-003
-production implementation: NOT STARTED
+pre-implementation gate: READY
+production implementation: MAY START
 ```
 
 ## 4. Cloudflare and Relay Credentials
@@ -764,8 +772,8 @@ target mapping and were not changed by this revision.
 
 SRG-035 was a `RESOLVED CANDIDATE` while the following closure contract was
 being completed. The contract and its evidence are now resolved. Production
-implementation remains unstarted and blocked pending the credential-architecture
-sync and fresh design-to-plan review below:
+implementation is unblocked after the credential-architecture sync and fresh
+design-to-plan review below:
 
 ### 11.1 SRG-035 closure contract
 
@@ -928,9 +936,9 @@ SDK family or major version
 The result MAY proceed to implementation validation without design re-approval
 only when it is limited to the same architecture, such as an exact wire field,
 fixture detail, helper split, or implementation-specific edge case. The
-integrated result satisfies the SRG-035 closure contract, but production
-implementation remains blocked until the credential architecture is synchronized
-with the plan and the design-to-plan consistency check in §12 passes.
+integrated result satisfies the SRG-035 closure contract, and production
+implementation is no longer blocked once the design-to-plan consistency check
+in §12 passes.
 
 These are not SRG-022 defects. SRG-022 established the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed policy
@@ -1064,13 +1072,14 @@ The integrated result is:
 SRG-022: RESOLVED
 SRG-035: RESOLVED
 writing-plans: COMPLETED
+review gate: READY
 RG-001: RESOLVED
 RG-002: RESOLVED
-RG-003: REGRESSED — Major
+RG-003: RESOLVED
 RG-004: RESOLVED
-pre-implementation gate: BLOCKED due RG-003
-design-to-plan consistency review: BLOCKED pending RG-003 correction and fresh re-review
-production implementation: NOT STARTED and BLOCKED
+pre-implementation gate: READY
+design-to-plan consistency review: READY
+production implementation: MAY START
 ```
 
 ### 11.5 Evidence traceability
@@ -1269,13 +1278,12 @@ by all of the following:
 - Live OpenCode OAuth acceptance is not a CI release gate. A future request for
   it is `DESIGN RE-APPROVAL REQUIRED`.
 - Fresh review status is `RG-001: RESOLVED`, `RG-002: RESOLVED`,
-  `RG-003: REGRESSED — Major`, and `RG-004: RESOLVED`.
-- No Task 1 through Task 8 may start before a fresh Superpowers Review Gate
-  marks this design and plan `READY`.
-- The design-to-plan consistency review is `BLOCKED due RG-003` until the Task 6
-  file ownership, deterministic/live acceptance ownership, implementation-branch
-  ref, remote-SHA check, Environment branch-policy check, and Task 8 run lookup
-  are re-reviewed.
+  `RG-003: RESOLVED`, and `RG-004: RESOLVED`.
+- A fresh Superpowers Review Gate has marked this design and plan `READY`.
+- The design-to-plan consistency review is `READY`; the Task 6 file ownership,
+  deterministic/live acceptance ownership, implementation-branch ref, remote-SHA
+  check, Environment branch-policy check, and Task 8 run lookup were re-reviewed
+  and confirmed in the fresh Superpowers Review Gate for `474f9e3`.
 
 Any future implementation plan and its tests MUST preserve the extension-point,
 route-construction, header-ownership, error-boundary, fail-closed, streaming,
@@ -1285,10 +1293,10 @@ plan may choose only the concrete source patch that implements the
 configuration; it may not choose a different routing mechanism.
 
 The implementation plan has been revised to synchronize with this document.
-Before production implementation may start, the design document and
-implementation plan MUST be checked for zero divergence in specification,
-terminology, types/interfaces, error handling, test strategy, and non-functional
-requirements. Any unresolved divergence, unsupported OAuth injection proposal,
-failed ownership mapping, or acceptance-ref mismatch keeps production
-implementation blocked. A fresh Superpowers Review Gate MUST mark the pair
-`READY`; this document does not self-approve production implementation.
+The design document and implementation plan are checked for zero divergence in
+specification, terminology, types/interfaces, error handling, test strategy,
+and non-functional requirements. Any unresolved divergence, unsupported OAuth
+injection proposal, failed ownership mapping, or acceptance-ref mismatch keeps
+production implementation blocked. The fresh Superpowers Review Gate for `474f9e3`
+has marked the pair `READY`; this document does not self-approve production
+implementation.
