@@ -62,7 +62,7 @@ describe("createProviderModels", () => {
 
     expect(model.api).toMatchObject({
       id: "gpt-5.6-luna",
-      npm: "@ai-sdk/openai",
+      npm: sourceModel.api.npm,
       url: "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-relay-chatgpt",
     });
     expect(model.api.url).not.toMatch(/\/responses$/);

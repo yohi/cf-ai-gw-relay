@@ -29,7 +29,6 @@ export function createProviderModels(config: ResolvedConfig): ProviderModelsHook
         api: {
           ...source.api,
           id: TARGET_MODEL_ID,
-          npm: "@ai-sdk/openai",
           url: buildGatewayModelUrl(config),
         },
       },

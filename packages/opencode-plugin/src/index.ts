@@ -15,7 +15,7 @@ export {
   resolveConfig,
 } from "./config.js";
 export type { EnvSource, PluginOptions, ResolvedConfig } from "./config.js";
-export { buildGatewayUrl } from "./gateway-url.js";
+export { buildGatewayModelUrl } from "./gateway-url.js";
 export {
   METADATA_HEADER_VALUE,
 } from "./control-headers.js";
