@@ -60,8 +60,8 @@ npm run build
 
 ## Features
 
-- OpenCode の built-in `openai` provider と public `provider.models` hook を使い、
-  `openai/gpt-5.6-luna` を Cloudflare AI Gateway Custom Provider 経由に
+- OpenCode の built-in `openai` provider と public `provider.models` hook
+  を使い、 `openai/gpt-5.6-luna` を Cloudflare AI Gateway Custom Provider 経由に
   ルーティングします。
 - `chat.headers` hook で Gateway と relay の control header を設定します。
 - OpenCode が所有する OAuth、account、residency、body stream、abort signal の
@@ -71,8 +71,8 @@ npm run build
 - Deno relay は stateless かつ runtime dependency なしです。
 - Relay 自身で payload を永続化せず、可観測性を Cloudflare AI Gateway
   に委譲します。
-- 現行の public hook path と、将来の固定 provider `/upstream/*` relay
-  contract を分離して定義します。「legacy」は削除済みの fetch interposer
+- 現行の public hook path と、将来の固定 provider `/upstream/*` relay contract
+  を分離して定義します。「legacy」は削除済みの fetch interposer
   に限って使用します。
 
 ## Architecture Overview
@@ -123,8 +123,7 @@ https://chatgpt.com/backend-api/codex/responses
 
 Relay は request / response body を直接 forwarding し、tools を含む内容を変換
 しません。Managed residency は initial scope では未サポートで、fail-closed
-になります。
-Fallback、retry loop、cache、payload persistence はありません。
+になります。 Fallback、retry loop、cache、payload persistence はありません。
 
 Generic `/upstream/<provider-slug>/*` relay は
 **計画済みですが未実装**です。Normative contract は [SPEC.md](SPEC.md)

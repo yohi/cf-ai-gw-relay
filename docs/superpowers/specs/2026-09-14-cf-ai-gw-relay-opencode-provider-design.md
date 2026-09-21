@@ -56,7 +56,8 @@ production readiness or replace the implementation validation required by the
 later writing plan. The fresh Superpowers Review Gate for `474f9e3` has marked
 both documents READY. The repository now implements the selected public
 `provider.models` route and `chat.headers` control-header path; the legacy
-fetch-interposer details below are retained only as historical migration context.
+fetch-interposer details below are retained only as historical migration
+context.
 
 ## 1. Architecture Decision
 
@@ -67,10 +68,10 @@ Custom Provider endpoint. The relay is not represented as a second OpenCode
 provider identity.
 
 This revision defines the current architecture for OpenCode 1.18.31. The plugin
-entrypoint uses the public `provider.models` hook as the selected transport owner
-and `chat.headers` for control headers. OpenCode's built-in provider remains the
-owner of OAuth semantics and the `Authorization` and `ChatGPT-Account-Id`
-headers.
+entrypoint uses the public `provider.models` hook as the selected transport
+owner and `chat.headers` for control headers. OpenCode's built-in provider
+remains the owner of OAuth semantics and the `Authorization` and
+`ChatGPT-Account-Id` headers.
 
 ```text
 OpenCode 1.18.31 (provider: openai)

@@ -71,8 +71,8 @@ The following invariants apply to the project:
 ## 3. OpenCode Host Compatibility
 
 The canonical supported OpenCode version is pinned by
-`packages/opencode-plugin/package.json#engines.opencode` and the host
-validation contract. At the current repository state it is:
+`packages/opencode-plugin/package.json#engines.opencode` and the host validation
+contract. At the current repository state it is:
 
 ```text
 1.18.31
@@ -113,9 +113,9 @@ slug MUST be percent-encoded as individual path components:
 https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-<slug>
 ```
 
-`model.api.url` MUST NOT include `/responses` or `/v1/responses`; the AI SDK owns
-the `/responses` suffix. The hook MUST fail closed when the provider identity,
-target model, or required route configuration is unavailable.
+`model.api.url` MUST NOT include `/responses` or `/v1/responses`; the AI SDK
+owns the `/responses` suffix. The hook MUST fail closed when the provider
+identity, target model, or required route configuration is unavailable.
 
 ### 4.2 Configuration resolution
 
@@ -272,9 +272,9 @@ hop-by-hop response headers and `Connection`-named headers are removed.
 
 The upstream body MUST be streamed without semantic transformation.
 
-The implemented path preserves upstream 3xx responses, including
-sanitized `Location`, for backward compatibility. The relay itself MUST NOT
-follow the redirect.
+The implemented path preserves upstream 3xx responses, including sanitized
+`Location`, for backward compatibility. The relay itself MUST NOT follow the
+redirect.
 
 ### 5.7 Timeouts
 
