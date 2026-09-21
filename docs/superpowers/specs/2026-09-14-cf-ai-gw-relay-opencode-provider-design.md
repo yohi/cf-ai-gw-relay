@@ -322,6 +322,7 @@ RG-002: RESOLVED
 RG-003: RESOLVED
 RG-004: RESOLVED
 pre-implementation gate: READY
+design-to-plan consistency review: READY
 production implementation: MAY START
 ```
 
