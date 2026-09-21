@@ -19,6 +19,7 @@ export type BoundaryAcceptanceDependencies = {
 
 const ACCEPTANCE_PROVIDER_SLUG = "command-code";
 const ACCEPTANCE_MODEL = "gpt-5.6-luna";
+const BOUNDARY_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_BOUNDARY_RESPONSE_BYTES = 4096;
 const RELAY_UNAUTHORIZED_BODY = '{"error":"unauthorized"}';
 const REQUIRED_ENVIRONMENT_NAMES = [
@@ -176,6 +177,7 @@ async function probeBoundary(
       },
       body: JSON.stringify({ model, input: [], stream: false }),
       redirect: "error",
+      signal: AbortSignal.timeout(BOUNDARY_REQUEST_TIMEOUT_MS),
     },
   );
   try {
