@@ -11,7 +11,7 @@ authorize source changes, tests, dependency changes, deployment changes,
 Cloudflare configuration changes, or production implementation.
 
 Current gate state for the fresh Superpowers Review Gate re-review of commit
-`abf7365`:
+`474f9e3`:
 
 ```text
 SRG-022: RESOLVED
@@ -50,15 +50,13 @@ The completed and required order is:
 ```
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
-satisfies the pre-implementation closure contract. The fresh Superpowers Review
-Gate for `474f9e3` has marked both documents READY.
-
-The post-characterization gate review of commit `0851e88` confirmed that SRG-035
-satisfies the pre-implementation closure contract. It does not approve the
-current plugin source as already migrated, authorize production readiness, or
-replace the implementation validation required by the later writing plan. The
+satisfies the pre-implementation closure contract. Its scope was limited to the
+target-runtime characterization and architecture boundary; it did not approve
+the current plugin source as already migrated, authorize production readiness,
+or replace the implementation validation required by the later writing plan. The
 current source remains the legacy fetch-interposer implementation described
-below.
+below. The fresh Superpowers Review Gate for `474f9e3` has marked both documents
+READY.
 
 ## 1. Architecture Decision
 
@@ -308,7 +306,6 @@ OpenCode-owned OAuth architecture is the current credential architecture, and
 `RG-001` is `RESOLVED`. It must not be reopened or replaced with a runner,
 broker, CI auth store, PAT, or OAuth injection seam.
 
-The current pre-implementation gate is `READY`: the plan uses the verified
 The current pre-implementation gate is `READY`: the plan uses the verified
 implementation branch for the protected workflow, keeps live `BoundaryProbe`
 execution in that protected workflow, and makes its Task 6 file ownership and
@@ -937,8 +934,8 @@ The result MAY proceed to implementation validation without design re-approval
 only when it is limited to the same architecture, such as an exact wire field,
 fixture detail, helper split, or implementation-specific edge case. The
 integrated result satisfies the SRG-035 closure contract, and production
-implementation is no longer blocked once the design-to-plan consistency check
-in §12 passes.
+implementation is no longer blocked once the design-to-plan consistency check in
+§12 passes.
 
 These are not SRG-022 defects. SRG-022 established the provider identity,
 credential ownership, transport route, header boundaries, and fail-closed policy
@@ -1292,11 +1289,11 @@ plan may choose only the concrete source patch that implements the
 `provider.models` -> `model.api.url` route and plugin control-header
 configuration; it may not choose a different routing mechanism.
 
-The implementation plan has been revised to synchronize with this document.
-The design document and implementation plan are checked for zero divergence in
-specification, terminology, types/interfaces, error handling, test strategy,
-and non-functional requirements. Any unresolved divergence, unsupported OAuth
+The implementation plan has been revised to synchronize with this document. The
+design document and implementation plan are checked for zero divergence in
+specification, terminology, types/interfaces, error handling, test strategy, and
+non-functional requirements. Any unresolved divergence, unsupported OAuth
 injection proposal, failed ownership mapping, or acceptance-ref mismatch keeps
-production implementation blocked. The fresh Superpowers Review Gate for `474f9e3`
-has marked the pair `READY`; this document does not self-approve production
-implementation.
+production implementation blocked. The fresh Superpowers Review Gate for
+`474f9e3` has marked the pair `READY`; this document does not self-approve
+production implementation.
