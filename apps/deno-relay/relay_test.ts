@@ -752,11 +752,13 @@ Deno.test("cancels the upstream body when the downstream cancels", async () => {
 });
 
 Deno.test("streams Responses SSE bytes without reconstruction", async () => {
-  const streamBody = [
-    'event: response.output_text.delta\ndata: {"delta":"hello"}\n\n',
-    'event: response.function_call_arguments.done\ndata: {"arguments":"{}"}\n\n',
-    'event: response.completed\ndata: {"status":"completed"}\n\n',
-  ].join("");
+  const streamBody = new TextEncoder().encode(
+    "\uFEFF" + [
+      'event: response.output_text.delta\ndata: {"delta":"hello"}\n\n',
+      'event: response.function_call_arguments.done\ndata: {"arguments":"{}"}\n\n',
+      'event: response.completed\ndata: {"status":"completed"}\n\n',
+    ].join(""),
+  );
   const handler = createRelayHandler({
     getSecret: () => relayToken,
     fetcher: () =>
@@ -769,7 +771,12 @@ Deno.test("streams Responses SSE bytes without reconstruction", async () => {
 
   const response = await handler(createRequest());
 
-  assertEquals(await response.text(), streamBody, "SSE body bytes");
+  const responseBytes = new Uint8Array(await response.arrayBuffer());
+  assert(
+    responseBytes.length === streamBody.length &&
+      responseBytes.every((byte, index) => byte === streamBody[index]),
+    "SSE body bytes",
+  );
 });
 
 Deno.test("propagates an upstream SSE reader error without retry or fallback", async () => {
