@@ -1,7 +1,7 @@
 import { satisfies, valid } from "semver";
 import { UnsupportedOpenCodeVersionError } from "./errors.js";
 
-export const SUPPORTED_OPENCODE_RANGE = ">=1.18.20 <2";
+export const SUPPORTED_OPENCODE_RANGE = "1.18.31";
 export const OPENCODE_SERVER_HEALTH_PATHNAME = "/global/health";
 
 export type HostVersionCapability =

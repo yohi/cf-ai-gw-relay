@@ -5,7 +5,7 @@ import { UnsupportedOpenCodeVersionError } from "../src/errors.js";
 const originalFetch = globalThis.fetch;
 const serverUrl = new URL("https://opencode.test");
 
-function stubHealthyHost(version = "1.18.29"): void {
+function stubHealthyHost(version = "1.18.31"): void {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
     if (String(input) === new URL("/global/health", serverUrl).toString()) {
       return new Response(JSON.stringify({ healthy: true, version }), {
@@ -66,7 +66,7 @@ describe("CloudflareAiGatewayChatgpt", () => {
     vi.stubEnv("RELAY_CF_ACCOUNT_ID", "acct");
     vi.stubEnv("RELAY_CF_GATEWAY_ID", "gw");
     vi.stubEnv("RELAY_SECRET", "sentinel-relay-token");
-    stubHealthyHost("1.18.29");
+    stubHealthyHost("1.18.31");
 
     const hooks = await CloudflareAiGatewayChatgpt(
       { serverUrl } as never,
