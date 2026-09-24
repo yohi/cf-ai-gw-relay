@@ -190,7 +190,6 @@ async function probeBoundary(
     }
     throw new Error("boundary response was not an authentication rejection");
   } catch (error) {
-    await response.body?.cancel();
     throw error;
   }
 }
