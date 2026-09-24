@@ -22,6 +22,7 @@ export function createProviderModels(config: ResolvedConfig): ProviderModelsHook
     }
 
     return {
+      ...provider.models,
       [TARGET_MODEL_ID]: {
         ...source,
         id: TARGET_MODEL_ID,

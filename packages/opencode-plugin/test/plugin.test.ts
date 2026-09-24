@@ -41,6 +41,7 @@ describe("CloudflareAiGatewayChatgpt", () => {
   it("returns both public hooks without mutating global fetch", async () => {
     vi.stubEnv("RELAY_CF_ACCOUNT_ID", "acct");
     vi.stubEnv("RELAY_CF_GATEWAY_ID", "gw");
+    vi.stubEnv("RELAY_CF_AIG_TOKEN", "");
     vi.stubEnv("RELAY_SECRET", "sentinel-relay-token");
     stubHealthyHost();
     const fetchBeforeActivation = globalThis.fetch;
@@ -51,8 +52,33 @@ describe("CloudflareAiGatewayChatgpt", () => {
     );
 
     expect(hooks.provider?.id).toBe("openai");
-    expect(hooks.provider?.models).toBeTypeOf("function");
-    expect(hooks["chat.headers"]).toBeTypeOf("function");
+    const modelsHook = hooks.provider?.models;
+    const headersHook = hooks["chat.headers"];
+    if (typeof modelsHook !== "function" || typeof headersHook !== "function") {
+      throw new Error("plugin hooks were not returned");
+    }
+
+    const models = await modelsHook({
+      id: "openai",
+      models: {
+        "gpt-5.6-luna": {
+          id: "gpt-5.6-luna",
+          api: { id: "gpt-5.6-luna", url: "https://chatgpt.com" },
+        },
+      },
+    } as never, {});
+    expect(models["gpt-5.6-luna"]?.api.url).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-relay-chatgpt",
+    );
+
+    const headers: Record<string, string> = {};
+    await headersHook({
+      model: { providerID: "openai", id: "gpt-5.6-luna" },
+    } as never, { headers });
+    expect(headers["cf-aig-authorization"]).toBe("Bearer sentinel-gw-token");
+    expect(headers["x-chatgpt-relay-authorization"]).toBe(
+      "Bearer sentinel-relay-token",
+    );
     expect(globalThis.fetch).toBe(fetchBeforeActivation);
   });
 

@@ -77,6 +77,16 @@ describe("createProviderModels", () => {
     expect(model.variants).toEqual(sourceModel.variants);
   });
 
+  it("preserves other provider models", async () => {
+    const otherModel = { ...sourceModel, id: "gpt-5.5" };
+    const result = await createProviderModels(config)(
+      provider({ models: { "gpt-5.6-luna": sourceModel, "gpt-5.5": otherModel } }),
+      {},
+    );
+
+    expect(result["gpt-5.5"]).toEqual(otherModel);
+  });
+
   it("rejects a non-OpenAI provider", async () => {
     await expect(
       createProviderModels(config)(provider({ id: "anthropic" }), {}),
