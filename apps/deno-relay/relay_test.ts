@@ -187,6 +187,66 @@ Deno.test("forwards only authenticated requests and sanitizes hop headers", asyn
   );
 });
 
+Deno.test("preserves non-stream Responses status and body bytes", async () => {
+  const body = '{"object":"response","status":"completed"}';
+
+  for (const status of [200, 429]) {
+    let upstreamRequest: Request | undefined;
+    const handler = createRelayHandler({
+      getSecret: () => relayToken,
+      fetcher: (input, init) => {
+        upstreamRequest = new Request(input, init);
+        return Promise.resolve(
+          new Response(body, {
+            status,
+            headers: {
+              "content-type": "application/json",
+              "x-response-marker": "preserved",
+            },
+          }),
+        );
+      },
+    });
+
+    const response = await handler(createRequest({
+      Authorization: "Bearer opaque-oauth",
+      "ChatGPT-Account-Id": "opaque-account",
+      "cf-aig-authorization": "Bearer opaque-gateway",
+    }));
+
+    assertEquals(response.status, status, `response status ${status}`);
+    assertEquals(
+      response.headers.get("content-type"),
+      "application/json",
+      `response content type ${status}`,
+    );
+    assertEquals(await response.text(), body, `response body ${status}`);
+    assertEquals(
+      response.headers.get("x-response-marker"),
+      "preserved",
+      `response header ${status}`,
+    );
+    if (upstreamRequest === undefined) {
+      throw new Error(`upstream request was not made for ${status}`);
+    }
+    assertEquals(
+      upstreamRequest.headers.get("authorization"),
+      "Bearer opaque-oauth",
+      `upstream authorization ${status}`,
+    );
+    assertEquals(
+      upstreamRequest.headers.get("x-chatgpt-relay-authorization"),
+      null,
+      `relay authorization removed ${status}`,
+    );
+    assertEquals(
+      upstreamRequest.headers.get("cf-aig-authorization"),
+      null,
+      `Gateway authorization removed ${status}`,
+    );
+  }
+});
+
 Deno.test("forwards legacy requests with a manual redirect policy", async () => {
   let upstreamRequest: Request | undefined;
   const handler = createRelayHandler({
@@ -643,6 +703,11 @@ Deno.test("detaches abort listeners when the upstream header timeout expires", a
 Deno.test("cancels the upstream body when the downstream cancels", async () => {
   let upstreamCancelled = false;
   let upstreamSignalAborted = false;
+  const streamBody = [
+    'event: response.output_text.delta\ndata: {"delta":"hello"}\n\n',
+    'event: response.function_call_arguments.done\ndata: {"arguments":"{}"}\n\n',
+    'event: response.completed\ndata: {"status":"completed"}\n\n',
+  ].join("");
 
   const handler = createRelayHandler({
     getSecret: () => relayToken,
@@ -657,7 +722,7 @@ Deno.test("cancels the upstream body when the downstream cancels", async () => {
       const encoder = new TextEncoder();
       const body = new ReadableStream<Uint8Array>({
         pull(controller) {
-          controller.enqueue(encoder.encode("event: response.created\n\n"));
+          controller.enqueue(encoder.encode(streamBody));
         },
         cancel() {
           upstreamCancelled = true;
@@ -673,11 +738,120 @@ Deno.test("cancels the upstream body when the downstream cancels", async () => {
 
   const response = await handler(createRequest());
   const reader = response.body!.getReader();
-  await reader.read();
+  const first = await reader.read();
+  assert(first.value !== undefined, "SSE chunk received");
+  assertEquals(
+    new TextDecoder().decode(first.value),
+    streamBody,
+    "SSE body bytes",
+  );
   await reader.cancel("client gone");
 
   assert(upstreamCancelled, "upstream body cancelled");
   assert(upstreamSignalAborted, "upstream fetch aborted");
+});
+
+Deno.test("streams Responses SSE bytes without reconstruction", async () => {
+  const streamBody = new TextEncoder().encode(
+    "\uFEFF" + [
+      'event: response.output_text.delta\ndata: {"delta":"hello"}\n\n',
+      'event: response.function_call_arguments.done\ndata: {"arguments":"{}"}\n\n',
+      'event: response.completed\ndata: {"status":"completed"}\n\n',
+    ].join(""),
+  );
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () =>
+      Promise.resolve(
+        new Response(streamBody, {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      ),
+  });
+
+  const response = await handler(createRequest());
+
+  const responseBytes = new Uint8Array(await response.arrayBuffer());
+  assert(
+    responseBytes.length === streamBody.length &&
+      responseBytes.every((byte, index) => byte === streamBody[index]),
+    "SSE body bytes",
+  );
+});
+
+Deno.test("propagates an upstream SSE reader error without retry or fallback", async () => {
+  let fetchCalls = 0;
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: () => {
+      fetchCalls += 1;
+      const encoder = new TextEncoder();
+      let firstRead = true;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (firstRead) {
+            firstRead = false;
+            controller.enqueue(encoder.encode("event: response.created\n\n"));
+            return;
+          }
+          controller.error(new Error("upstream reader failed"));
+        },
+      });
+      return Promise.resolve(
+        new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    },
+  });
+
+  const response = await handler(createRequest());
+  let errorMessage = "";
+  try {
+    await response.text();
+  } catch (error) {
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else {
+      throw error;
+    }
+  }
+
+  assertEquals(errorMessage, "upstream reader failed", "SSE reader error");
+  assertEquals(fetchCalls, 1, "upstream fetch calls");
+});
+
+Deno.test("forwards function_call_output request bytes unchanged", async () => {
+  const requestBody = JSON.stringify({
+    input: [{
+      type: "function_call_output",
+      call_id: "call_opaque",
+      output: "opaque tool result",
+    }],
+  });
+  let upstreamBody = "";
+  const handler = createRelayHandler({
+    getSecret: () => relayToken,
+    fetcher: async (input, init) => {
+      upstreamBody = await new Request(input, init).text();
+      return new Response("{}", {
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  await handler(
+    new Request("https://relay.example/v1/responses", {
+      method: "POST",
+      headers: {
+        "X-ChatGPT-Relay-Authorization": relayAuthorization,
+        "content-type": "application/json",
+      },
+      body: requestBody,
+    }),
+  );
+
+  assertEquals(upstreamBody, requestBody, "function_call_output request bytes");
 });
 
 Deno.test("does not fetch upstream when already aborted before handler", async () => {
