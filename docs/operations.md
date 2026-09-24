@@ -91,10 +91,13 @@ Client cancellation propagates upstream. It must not trigger retry or fallback.
 
 ## Observability and Data Handling
 
-Cloudflare AI Gateway payload logging is controlled by the plugin configuration.
-The current default is `true`.
+Cloudflare AI Gateway payload logging defaults to `true` through the explicit
+plugin control `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD`. Retention and access remain
+controlled at the Cloudflare Gateway boundary.
 
-If payload collection is not acceptable for the workload, set:
+Payload retention and access remain a Cloudflare Gateway operator boundary. The
+repository does not persist payloads or raw probe logs. If payload collection is
+not acceptable for the workload, set:
 
 ```text
 RELAY_CF_AIG_COLLECT_LOG_PAYLOAD=false
@@ -108,15 +111,25 @@ credential, relay credential, prompt, or response contents.
 ## Protected Acceptance
 
 Run `.github/workflows/acceptance.yml` manually against the
-`protected-acceptance` Environment.
+`protected-acceptance` Environment. The workflow is GitHub-hosted on
+`ubuntu-latest` and first validates all six existing `RELAY_ACCEPTANCE_*`
+values. It then runs the provider boundary driver, which reports only the named
+`gateway-rejected` and `relay-rejected` result classes, followed by the direct
+relay checks owned by `apps/deno-relay/acceptance_test.ts`.
 
 The workflow requires every configured acceptance variable/secret; missing
 configuration fails the workflow instead of skipping it.
 
-The current acceptance environment includes values for both the legacy relay and
-future generic-provider acceptance. Until `/upstream/*` is implemented,
-future-contract test coverage must not be described as implemented runtime
-behavior.
+The boundary driver uses only the existing non-OAuth Gateway, relay, and
+provider controls. It does not install or invoke OpenCode, consume an auth
+store, or prove a live OAuth request. OpenCode OAuth is acquired, stored,
+refreshed, and injected only by the user's local OpenCode 1.18.31 runtime; CI,
+the repository, and the relay never receive it. Protected acceptance does not
+persist credentials, payloads, or raw probe responses.
+
+The current acceptance environment may also include values for future generic-
+provider acceptance. Until `/upstream/*` is implemented, future-contract test
+coverage must not be described as implemented runtime behavior.
 
 For a supported release, protected acceptance should verify the
 production-relevant path with real protected credentials and infrastructure,

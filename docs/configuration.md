@@ -151,6 +151,17 @@ Required values:
 
 The workflow deliberately fails when required values are absent.
 
+Protected acceptance runs on GitHub-hosted `ubuntu-latest` and uses only these
+existing non-OAuth Gateway, relay, and provider controls. It verifies only the
+Gateway/relay boundary status classes; it does not install or invoke OpenCode,
+read an OpenCode auth store, or claim to prove a live OAuth request. OpenCode
+OAuth is acquired, stored, refreshed, and injected only by the user's local
+OpenCode 1.18.31 runtime and is never supplied to CI, this repository, or the
+relay. The repository does not store payloads, raw probes, or OpenCode
+credentials. Gateway payload logging is controlled at the Cloudflare Gateway
+boundary; operators must apply and verify their Gateway retention and access
+policy there.
+
 ## Credential Boundaries
 
 Do not treat these credentials as interchangeable:
