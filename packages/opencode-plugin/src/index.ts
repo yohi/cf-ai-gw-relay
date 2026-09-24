@@ -21,4 +21,5 @@ export {
 } from "./control-headers.js";
 export { createChatHeaders } from "./control-headers.js";
 export { createProviderModels } from "./provider-models.js";
+export type { ChatHeadersHook, ProviderModelsHook } from "./hooks.js";
 export { CloudflareAiGatewayChatgpt } from "./plugin.js";
