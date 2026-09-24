@@ -28,4 +28,5 @@ export {
 } from "./request-rewrite.js";
 export { installFetchInterposer } from "./interposer.js";
 export type { ConfigResolver, FetchLike } from "./interposer.js";
+export type { ChatHeadersHook, ProviderModelsHook } from "./hooks.js";
 export { CloudflareAiGatewayChatgpt } from "./plugin.js";
