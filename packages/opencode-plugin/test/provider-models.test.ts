@@ -62,7 +62,7 @@ describe("createProviderModels", () => {
 
     expect(model.api).toMatchObject({
       id: "gpt-5.6-luna",
-      npm: "@ai-sdk/openai",
+      npm: sourceModel.api.npm,
       url: "https://gateway.ai.cloudflare.com/v1/acct/gw/custom-relay-chatgpt",
     });
     expect(model.api.url).not.toMatch(/\/responses$/);
@@ -75,6 +75,16 @@ describe("createProviderModels", () => {
     expect(model.options).toEqual(sourceModel.options);
     expect(model.headers).toEqual(sourceModel.headers);
     expect(model.variants).toEqual(sourceModel.variants);
+  });
+
+  it("preserves other provider models", async () => {
+    const otherModel = { ...sourceModel, id: "gpt-5.5" };
+    const result = await createProviderModels(config)(
+      provider({ models: { "gpt-5.6-luna": sourceModel, "gpt-5.5": otherModel } }),
+      {},
+    );
+
+    expect(result["gpt-5.5"]).toEqual(otherModel);
   });
 
   it("rejects a non-OpenAI provider", async () => {
