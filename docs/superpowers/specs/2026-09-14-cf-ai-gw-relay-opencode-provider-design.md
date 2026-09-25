@@ -51,12 +51,13 @@ The completed and required order is:
 
 The post-characterization gate review of commit `0851e88` confirmed that SRG-035
 satisfies the pre-implementation closure contract. Its scope was limited to the
-target-runtime characterization and architecture boundary; it did not approve
-the current plugin source as already migrated, authorize production readiness,
-or replace the implementation validation required by the later writing plan. The
-current source remains the legacy fetch-interposer implementation described
-below. The fresh Superpowers Review Gate for `474f9e3` has marked both documents
-READY.
+target-runtime characterization and architecture boundary; it did not authorize
+production readiness or replace the implementation validation required by the
+later writing plan. The fresh Superpowers Review Gate for `474f9e3` has marked
+both documents READY. The repository now implements the selected public
+`provider.models` route and `chat.headers` control-header path; the legacy
+fetch-interposer details below are retained only as historical migration
+context.
 
 ## 1. Architecture Decision
 
@@ -66,11 +67,11 @@ which sets the target model's `model.api.url` to the Cloudflare AI Gateway
 Custom Provider endpoint. The relay is not represented as a second OpenCode
 provider identity.
 
-This revision defines the target architecture for OpenCode 1.18.31. It does not
-claim that the current repository source has already migrated to this
-architecture. The current plugin entrypoint still installs
-`installFetchInterposer()`. That existing path is migration input, not the
-selected target transport owner.
+This revision defines the current architecture for OpenCode 1.18.31. The plugin
+entrypoint uses the public `provider.models` hook as the selected transport
+owner and `chat.headers` for control headers. OpenCode's built-in provider
+remains the owner of OAuth semantics and the `Authorization` and
+`ChatGPT-Account-Id` headers.
 
 ```text
 OpenCode 1.18.31 (provider: openai)
@@ -146,10 +147,11 @@ retry loop, payload persistence, or silent credential substitution.
 
 ### 1.2 REJECTED / SUPERSEDED: Legacy fetch interposer boundary
 
-The current source uses `installFetchInterposer()` together with
+Earlier source revisions used `installFetchInterposer()` together with
 `buildGatewayUrl()` and `request-rewrite.ts` to rewrite a matching global
-`fetch` request. Its current URL shape ends in `/v1/responses`. Those symbols
-are legacy implementation details and are not the selected transport owner.
+`fetch` request. That historical URL shape ended in `/v1/responses`. Those
+symbols are legacy implementation details and are not the selected transport
+owner.
 
 The selected architecture MUST NOT retain global fetch interception as a second
 routing owner for the OpenAI request. A later implementation plan may remove the
@@ -532,10 +534,10 @@ fail closed
 
 ### 6.5 REJECTED / SUPERSEDED: Legacy global fetch interposer
 
-`installFetchInterposer()`, `buildGatewayUrl()`, and `request-rewrite.ts` remain
-the current source implementation's legacy transport path until a later
-implementation change. Their existing `/v1/responses` URL construction is not
-the target `model.api.url` shape.
+`installFetchInterposer()`, `buildGatewayUrl()`, and `request-rewrite.ts` are
+historical implementation details from the superseded transport path. Their
+existing `/v1/responses` URL construction is not the target `model.api.url`
+shape and they are not an active route or fallback.
 
 This path is rejected and superseded as the current routing owner. It is
 retained here only to identify the source migration input.
@@ -731,12 +733,12 @@ provider.models hook
 
 ### Evidence and implementation boundary
 
-The closure decision is about the selected target-runtime architecture, not the
-current repository implementation. The target-runtime probe loaded a
-process-local plugin using the public `provider.models` hook and observed the
-callback execution and effective `model.api.url`. The repository's current
-`plugin.ts` still starts `installFetchInterposer()`; that source path is not
-evidence that the target hook architecture is already implemented.
+The closure decision is about the selected target-runtime architecture and its
+repository implementation. The target-runtime probe loaded a process-local
+plugin using the public `provider.models` hook and observed the callback
+execution and effective `model.api.url`. The repository's `plugin.ts` now
+returns the public `provider.models` and `chat.headers` hooks; the historical
+interposer is not part of the active route.
 
 The exact callback type and header-injection lifecycle belong to the installed
 OpenCode 1.18.31 host API and MUST be pinned during implementation validation.

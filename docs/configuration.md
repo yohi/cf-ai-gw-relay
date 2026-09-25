@@ -140,14 +140,14 @@ Environment.
 
 Required values:
 
-| Name                                    | Kind     | Purpose                                 |
-| --------------------------------------- | -------- | --------------------------------------- |
-| `RELAY_ACCEPTANCE_ORIGIN`               | variable | Direct legacy relay acceptance origin   |
-| `RELAY_ACCEPTANCE_RELAY_SECRET`         | secret   | Legacy direct acceptance authentication |
-| `RELAY_ACCEPTANCE_GATEWAY_BASE_URL`     | variable | Real AI Gateway base path               |
-| `RELAY_ACCEPTANCE_MODEL`                | variable | Model used by acceptance                |
-| `RELAY_ACCEPTANCE_GATEWAY_TOKEN`        | secret   | Gateway credential                      |
-| `RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY` | secret   | Command Code provider credential        |
+| Name                                    | Kind     | Purpose                                |
+| --------------------------------------- | -------- | -------------------------------------- |
+| `RELAY_ACCEPTANCE_ORIGIN`               | variable | Direct relay acceptance origin         |
+| `RELAY_ACCEPTANCE_RELAY_SECRET`         | secret   | Direct relay acceptance authentication |
+| `RELAY_ACCEPTANCE_GATEWAY_BASE_URL`     | variable | Real AI Gateway base path              |
+| `RELAY_ACCEPTANCE_MODEL`                | variable | Model used by acceptance               |
+| `RELAY_ACCEPTANCE_GATEWAY_TOKEN`        | secret   | Gateway credential                     |
+| `RELAY_ACCEPTANCE_COMMAND_CODE_API_KEY` | secret   | Command Code provider credential       |
 
 The workflow deliberately fails when required values are absent.
 

@@ -27,9 +27,11 @@ They MUST NOT share runtime code. Their integration boundary is HTTP.
 The implemented production path is:
 
 ```text
-OpenCode ChatGPT Codex request
-  -> plugin fetch interposer
+OpenCode provider: openai
+  -> plugin provider.models hook
+  -> model.api.url (suffix-free Gateway Custom Provider URL)
   -> Cloudflare AI Gateway Custom Provider
+  -> AI SDK appends /responses
   -> relay POST /v1/responses
   -> https://chatgpt.com/backend-api/codex/responses
 ```
@@ -68,12 +70,12 @@ The following invariants apply to the project:
 
 ## 3. OpenCode Host Compatibility
 
-The canonical supported OpenCode range is
-`packages/opencode-plugin/package.json#engines.opencode`. At the current
-repository state it is:
+The canonical supported OpenCode version is pinned by
+`packages/opencode-plugin/package.json#engines.opencode` and the host validation
+contract. At the current repository state it is:
 
 ```text
->=1.18.20 <2
+1.18.31
 ```
 
 The plugin MUST reject activation if:
@@ -82,8 +84,8 @@ The plugin MUST reject activation if:
 - the exposed version is outside the supported range.
 
 Activation rejection alone is not sufficient to guarantee fail-closed routing if
-the host allows the original matching request to proceed after plugin activation
-fails. Supported production use therefore also depends on OpenCode providing the
+the host allows the configured request to proceed after plugin activation fails.
+Supported production use therefore also depends on OpenCode providing the
 host-side request-blocking capability required to prevent bypass.
 
 Until the required host capabilities are available and protected acceptance
@@ -91,27 +93,29 @@ passes, supported production use is blocked even if release artifacts exist.
 
 ## 4. Plugin Contract
 
-### 4.1 Match rule
+### 4.1 Provider model hook
 
-The plugin MUST intercept only the exact request:
+The plugin MUST use the public `provider.models` hook as the sole routing owner.
+It MUST accept only provider identity `openai` and the fixed production model:
 
 ```text
-POST https://chatgpt.com/backend-api/codex/responses
+OpenCode-visible model: openai/gpt-5.6-luna
+model.api.id: gpt-5.6-luna
+AI SDK model: gpt-5.6-luna via @ai-sdk/openai 3.0.88
+wire-body model: gpt-5.6-luna
 ```
 
-Matching requirements:
+The hook MUST preserve the model ID and set only its routing URL to the
+suffix-free Gateway Custom Provider endpoint. The account, Gateway, and provider
+slug MUST be percent-encoded as individual path components:
 
-- HTTP method is `POST`, case-insensitively.
-- Origin is exactly `https://chatgpt.com`.
-- Pathname is exactly `/backend-api/codex/responses`.
-- Query string is empty.
+```text
+https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-<slug>
+```
 
-Traffic that does not match MUST be delegated unchanged to the fetch
-implementation that was active when the interposer was installed. This includes
-OAuth login/refresh traffic, `auth.openai.com`, `api.openai.com`, and other
-`chatgpt.com` requests.
-
-The interposer MUST be installed at most once per process.
+`model.api.url` MUST NOT include `/responses` or `/v1/responses`; the AI SDK
+owns the `/responses` suffix. The hook MUST fail closed when the provider
+identity, target model, or required route configuration is unavailable.
 
 ### 4.2 Configuration resolution
 
@@ -148,20 +152,9 @@ A base URL override is test-only and MUST be rejected unless
 `RELAY_CF_AIG_TEST_MODE=true` and the origin is exactly
 `https://gateway.test.invalid`.
 
-### 4.3 Gateway URL
+### 4.3 Control headers
 
-The plugin MUST build:
-
-```text
-{gateway-origin}/v1/{account-id}/{gateway-id}/custom-{provider-slug}/v1/responses
-```
-
-Path components supplied by configuration MUST be percent-encoded as individual
-path components.
-
-### 4.4 Control headers
-
-For a matching request, the plugin MUST set:
+For the target `openai/gpt-5.6-luna` request, the `chat.headers` hook MUST set:
 
 ```text
 cf-aig-authorization: Bearer <gateway-token>
@@ -173,14 +166,10 @@ cf-aig-skip-cache: true
 cf-aig-max-attempts: 1
 ```
 
-The plugin MUST preserve the original request method, body stream, abort signal,
-`Authorization`, `ChatGPT-Account-Id`, residency headers, and other Codex
-protocol headers.
-
-The plugin MUST NOT read, parse, buffer, or reserialize the request body.
-
-The plugin MUST return the resulting `Response` without parsing, buffering, or
-reconstructing SSE.
+The plugin MUST configure the control headers without replacing OpenCode-owned
+`Authorization` or `ChatGPT-Account-Id`. OpenCode exclusively acquires,
+interprets, refreshes, and injects ChatGPT OAuth semantics; the plugin and relay
+must treat those credentials as opaque transport data.
 
 ## 5. Implemented Relay Contract
 
@@ -283,9 +272,9 @@ hop-by-hop response headers and `Connection`-named headers are removed.
 
 The upstream body MUST be streamed without semantic transformation.
 
-The implemented legacy path preserves upstream 3xx responses, including
-sanitized `Location`, for backward compatibility. The relay itself MUST NOT
-follow the redirect.
+The implemented path preserves upstream 3xx responses, including sanitized
+`Location`, for backward compatibility. The relay itself MUST NOT follow the
+redirect.
 
 ### 5.7 Timeouts
 
@@ -324,7 +313,7 @@ contract in §8 is planned behavior, not implemented behavior.
 - The relay token MUST stop at the relay and MUST be removed before the upstream
   request.
 - Plugin metadata MUST remain limited to the fixed `source`, `auth_type`, and
-  `plugin` fields defined in §4.4.
+  `plugin` fields defined in §4.3.
 - Agent identifiers, session identifiers, account IDs, OAuth credentials, relay
   credentials, prompts, and response contents MUST NOT be added to plugin
   metadata.
@@ -346,6 +335,12 @@ The implemented ChatGPT path does not provide:
 - direct ChatGPT fallback
 - migration of ChatGPT OAuth traffic onto OpenCode’s built-in Cloudflare native
   passthrough provider
+
+Tools are included in the initial direct-forwarding scope. Managed residency is
+not supported in the initial scope. Requests containing either
+`x-openai-internal-codex-residency` or `X-OpenAI-Fedramp` MUST be rejected with
+`400` before the upstream fetch; the relay MUST NOT guess or add residency
+headers.
 
 ## 8. Planned Generic Fixed-provider Relay Contract
 

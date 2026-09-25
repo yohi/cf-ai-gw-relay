@@ -7,7 +7,7 @@ Route OpenCode ChatGPT Codex traffic through Cloudflare AI Gateway and a fixed-u
 `cf-ai-gw-relay` contains an OpenCode plugin and a small Deno Deploy relay. Together they let ChatGPT subscription traffic use Cloudflare AI Gateway as the observability and policy boundary while preserving the Codex request and response stream.
 
 > [!WARNING]
-> **Supported production use is currently blocked.** The plugin declares OpenCode `>=1.18.20 <2`, and fail-closed activation also depends on OpenCode exposing the host-version and request-blocking capabilities required by this project. Release artifacts may exist, but do not treat them as supported for production use until those capabilities are available and the protected acceptance suite passes.
+> **Supported production use is currently blocked.** The plugin targets OpenCode `1.18.31`, and fail-closed activation also depends on OpenCode exposing the host-version and request-blocking capabilities required by this project. Release artifacts may exist, but do not treat them as supported for production use until those capabilities are available and the protected acceptance suite passes.
 
 ## What This Repository Contains
 
@@ -48,21 +48,24 @@ Success means all tests, type checks, formatting checks, lint checks, and the pa
 
 ## Features
 
-- Intercepts only the ChatGPT Codex Responses request used by OpenCode.
-- Routes that request through a Cloudflare AI Gateway Custom Provider.
-- Preserves the original Codex authorization, account, residency, body stream, and abort signal.
+- Uses OpenCode's built-in `openai` provider and the public `provider.models` hook
+  to route `openai/gpt-5.6-luna` through a Cloudflare AI Gateway Custom Provider.
+- Uses the `chat.headers` hook for Gateway and relay control headers.
+- Leaves OpenCode-owned OAuth, account, residency, body stream, and abort-signal headers unchanged; the plugin does not add or infer residency headers.
 - Uses distinct Gateway and relay credentials.
 - Fails closed: the project does not intentionally fall back directly to ChatGPT.
 - Keeps the Deno relay stateless and free of runtime dependencies.
 - Delegates request observability to Cloudflare AI Gateway instead of persisting payloads in the relay.
-- Defines a future fixed-provider `/upstream/*` relay contract separately from the currently implemented legacy path.
+- Documents the current public-hook path separately from the future fixed-provider `/upstream/*` relay contract; “legacy” refers only to the removed fetch interposer.
 
 ## Architecture Overview
 
 ```text
 OpenCode built-in ChatGPT OAuth
-  -> OpenCode plugin fetch interposer
+  -> OpenCode provider.models hook
+  -> model.api.url (suffix-free Gateway Custom Provider URL)
   -> Cloudflare AI Gateway Custom Provider
+  -> AI SDK appends /responses
   -> Deno Deploy relay
   -> https://chatgpt.com/backend-api/codex/responses
 ```
@@ -73,17 +76,15 @@ The built-in OpenCode `cloudflare-ai-gateway` provider is outside this path. Thi
 
 ## Current Request Path
 
-The plugin intercepts exactly:
+The plugin sets the target model route to this suffix-free URL:
 
 ```text
-POST https://chatgpt.com/backend-api/codex/responses
+https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}
 ```
 
-and rewrites the destination to:
-
-```text
-https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/custom-{provider-slug}/v1/responses
-```
+The AI SDK appends `/responses`; the Custom Provider maps it to the relay route.
+The production mapping is `openai/gpt-5.6-luna` -> `gpt-5.6-luna` ->
+`@ai-sdk/openai 3.0.88` -> wire-body model `gpt-5.6-luna`.
 
 The current relay accepts:
 
@@ -98,6 +99,12 @@ https://chatgpt.com/backend-api/codex/responses
 ```
 
 Other relay routes return `404`.
+
+The relay directly forwards request and response bodies, including tools. Managed
+residency is not supported in the initial scope; requests containing
+`x-openai-internal-codex-residency` or `X-OpenAI-Fedramp` are rejected before
+the upstream request.
+There is no fallback, retry loop, cache, or payload persistence.
 
 The generic `/upstream/<provider-slug>/*` relay is **planned and not implemented**. Its normative contract is documented in [SPEC.md](SPEC.md).
 
