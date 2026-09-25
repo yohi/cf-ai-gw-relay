@@ -269,6 +269,15 @@ export function createRelayHandler(
       return serviceUnavailable();
     }
 
+    if (
+      request.headers.has("x-openai-internal-codex-residency") ||
+      request.headers.has("x-openai-fedramp")
+    ) {
+      return Response.json({ error: "unsupported_request_header" }, {
+        status: 400,
+      });
+    }
+
     const controller = new AbortController();
     let timedOut = false;
     const abortForClientDisconnect = (): void => controller.abort();

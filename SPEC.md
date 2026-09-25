@@ -337,8 +337,10 @@ The implemented ChatGPT path does not provide:
   passthrough provider
 
 Tools are included in the initial direct-forwarding scope. Managed residency is
-not supported in the initial scope and MUST fail closed rather than guessing or
-adding residency headers.
+not supported in the initial scope. Requests containing either
+`x-openai-internal-codex-residency` or `X-OpenAI-Fedramp` MUST be rejected with
+`400` before the upstream fetch; the relay MUST NOT guess or add residency
+headers.
 
 ## 8. Planned Generic Fixed-provider Relay Contract
 

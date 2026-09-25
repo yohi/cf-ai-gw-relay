@@ -101,7 +101,9 @@ https://chatgpt.com/backend-api/codex/responses
 Other relay routes return `404`.
 
 The relay directly forwards request and response bodies, including tools. Managed
-residency is not supported in the initial scope and fails closed.
+residency is not supported in the initial scope; requests containing
+`x-openai-internal-codex-residency` or `X-OpenAI-Fedramp` are rejected before
+the upstream request.
 There is no fallback, retry loop, cache, or payload persistence.
 
 The generic `/upstream/<provider-slug>/*` relay is **planned and not implemented**. Its normative contract is documented in [SPEC.md](SPEC.md).

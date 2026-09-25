@@ -351,6 +351,29 @@ Deno.test("rejects generic relay authorization as legacy relay credentials", asy
   assertEquals(fetchCalls, 0, "upstream fetch calls");
 });
 
+Deno.test("rejects residency and FedRAMP headers before fetching upstream", async () => {
+  for (
+    const header of [
+      "x-openai-internal-codex-residency",
+      "X-OpenAI-Fedramp",
+    ]
+  ) {
+    let fetchCalls = 0;
+    const handler = createRelayHandler({
+      getSecret: () => relayToken,
+      fetcher: () => {
+        fetchCalls += 1;
+        return Promise.resolve(new Response());
+      },
+    });
+
+    const response = await handler(createRequest({ [header]: "US" }));
+
+    assertEquals(response.status, 400, `${header} response status`);
+    assertEquals(fetchCalls, 0, `${header} upstream fetch calls`);
+  }
+});
+
 Deno.test("rejects missing or invalid relay credentials before fetching upstream", async () => {
   let fetchCalls = 0;
   const handler = createRelayHandler({

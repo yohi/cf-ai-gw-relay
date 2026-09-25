@@ -122,8 +122,10 @@ https://chatgpt.com/backend-api/codex/responses
 その他の relay route は `404` です。
 
 Relay は request / response body を直接 forwarding し、tools を含む内容を変換
-しません。Managed residency は initial scope では未サポートで、fail-closed
-になります。 Fallback、retry loop、cache、payload persistence はありません。
+しません。Managed residency は initial scope では未サポートです。
+`x-openai-internal-codex-residency` または `X-OpenAI-Fedramp` を含む request は
+upstream request の前に拒否します。Fallback、retry loop、cache、payload
+persistence はありません。
 
 Generic `/upstream/<provider-slug>/*` relay は
 **計画済みですが未実装**です。Normative contract は [SPEC.md](SPEC.md)
