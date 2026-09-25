@@ -700,9 +700,12 @@ scenarios:
    valid relay secret. PASS requires Gateway rejection (HTTP `401` or `403`)
    with response class `gateway-rejected` (not the relay unauthorized envelope).
 
-The boundary driver enforces `MAX_BOUNDARY_RESPONSE_BYTES = 4096`, reading at
-most 4097 bytes before classification and immediately cancelling the body
-stream. Response bodies and credentials MUST NOT be logged or persisted.
+The boundary driver enforces `MAX_BOUNDARY_RESPONSE_BYTES = 4096`. For each
+complete chunk returned by `reader.read()`, it checks the cumulative size before
+retaining the chunk. If the size exceeds 4096 bytes, it cancels the body stream
+without retaining the oversized chunk or classifying the response. This bounds
+retained bytes but does not guarantee a 4097-byte receive limit. Response bodies
+and credentials MUST NOT be logged or persisted.
 
 The boundary driver is decoupled from `RELAY_ACCEPTANCE_ORIGIN`, which is
 dedicated to direct relay checks in `apps/deno-relay/acceptance_test.ts`.
