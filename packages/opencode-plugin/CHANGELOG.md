@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/yohi/cf-ai-gw-relay/compare/v0.3.1...v0.4.0) (2026-09-25)
+
+
+### Features
+
+* add OpenCode provider model routing ([95a9eec](https://github.com/yohi/cf-ai-gw-relay/commit/95a9eec3462624b3646e0cd76f9705813d867e81))
+* add OpenCode provider model routing ([7ae1405](https://github.com/yohi/cf-ai-gw-relay/commit/7ae14055e898a8ca136680ef172a545fdfeba716))
+* add OpenCode provider model routing ([3ca6265](https://github.com/yohi/cf-ai-gw-relay/commit/3ca62659ba3d233bb2aed4b2c7b1b34ab7dbc531))
+* hook型をルートから公開 ([9d62ee9](https://github.com/yohi/cf-ai-gw-relay/commit/9d62ee92f044447a290abc773afab545b9a104a7))
+* inject Gateway control headers through OpenCode ([d68e39f](https://github.com/yohi/cf-ai-gw-relay/commit/d68e39f5cbec2b214949a336f18641c0b7cdf436))
+* inject Gateway control headers through OpenCode ([c9f9db3](https://github.com/yohi/cf-ai-gw-relay/commit/c9f9db3a57d2b35bc52df0ce015a0acf98131140))
+* inject Gateway control headers through OpenCode ([edf9887](https://github.com/yohi/cf-ai-gw-relay/commit/edf9887eb9045ada0cde558d1e836a9e90409d7c))
+
+
+### Bug Fixes
+
+* OpenAIモデル一覧を維持 ([ff180c1](https://github.com/yohi/cf-ai-gw-relay/commit/ff180c1bb2588986e9d8f0fb184bb6264e17f07b))
+* preserve provider model metadata ([21adf18](https://github.com/yohi/cf-ai-gw-relay/commit/21adf182efe1ef6ad163d1728da819fdda2e0ce9))
+
 ## [0.3.1](https://github.com/yohi/cf-ai-gw-relay/compare/v0.3.0...v0.3.1) (2026-09-08)
 
 
