@@ -39,18 +39,30 @@ GitHub Personal Access Token (classic) を使用し、`read:packages` 権限と�
 repository / package へのアクセス権限が必要です。token の値を
 `opencode.json[c]`、`.npmrc`、または commit 対象のファイルに記載しないでください。
 
-OpenCode の設定に Plugin を登録します。
+OpenCode の設定に Plugin を登録し、routing 対象の model を設定します。
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"]
+  "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"],
+  "model": "openai/gpt-5.6-luna",
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-5.6-luna": {
+          "name": "GPT-5.6 Luna"
+        }
+      }
+    }
+  }
 }
 ```
 
 この version は記載例です。GitHub Packages に公開済みの version を指定して
-ください。Plugin の実行には、OpenCode process の環境に runtime 設定も必要です。
-例:
+ください。Plugin は routing 対象の `openai/gpt-5.6-luna` が
+`provider.openai.models` に定義されていることを必要とし、その model の API URL を
+Gateway route に書き換えます。model 定義がない場合、Plugin の初期化に失敗します。
+また、Plugin の実行には OpenCode process の環境に runtime 設定も必要です。例:
 
 ```sh
 export RELAY_CF_ACCOUNT_ID="<cloudflare-account-id>"

@@ -38,18 +38,32 @@ a GitHub Personal Access Token (classic) with `read:packages` access and access
 to this repository/package. Do not put the token value in `opencode.json[c]`,
 `.npmrc`, or a committed file.
 
-Register the plugin in the OpenCode configuration:
+Register the plugin and configure the model it routes in the OpenCode
+configuration:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"]
+  "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"],
+  "model": "openai/gpt-5.6-luna",
+  "provider": {
+    "openai": {
+      "models": {
+        "gpt-5.6-luna": {
+          "name": "GPT-5.6 Luna"
+        }
+      }
+    }
+  }
 }
 ```
 
 The version is an example; use a version published to GitHub Packages. The
-plugin also requires its runtime settings in the environment of the OpenCode
-process. For example:
+plugin requires the `openai/gpt-5.6-luna` model entry to exist under
+`provider.openai.models`; it rewrites that model's API URL to the Gateway route.
+If the model entry is missing, plugin initialization fails. The plugin also
+requires its runtime settings in the environment of the OpenCode process. For
+example:
 
 ```sh
 export RELAY_CF_ACCOUNT_ID="<cloudflare-account-id>"
