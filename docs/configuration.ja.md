@@ -45,24 +45,16 @@ OpenCode の設定に Plugin を登録し、routing 対象の model を設定し
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"],
-  "model": "openai/gpt-5.6-luna",
-  "provider": {
-    "openai": {
-      "models": {
-        "gpt-5.6-luna": {
-          "name": "GPT-5.6 Luna"
-        }
-      }
-    }
-  }
+  "model": "openai/gpt-5.6-luna"
 }
 ```
 
 この version は記載例です。GitHub Packages に公開済みの version を指定して
-ください。Plugin は routing 対象の `openai/gpt-5.6-luna` が
-`provider.openai.models` に定義されていることを必要とし、その model の API URL を
-Gateway route に書き換えます。model 定義がない場合、Plugin の初期化に失敗します。
-また、Plugin の実行には OpenCode process の環境に runtime 設定も必要です。例:
+ください。Plugin は OpenCode 組み込みの `openai` provider を利用し、選択された
+`openai/gpt-5.6-luna` を Gateway に routing します。`provider.openai` の model 定義を
+追加する必要はありませんが、この model が組み込み provider の catalog に存在する
+必要があります。ChatGPT OAuth 認証は引き続き OpenCode が管理します。また、Plugin
+の実行には OpenCode process の環境に runtime 設定も必要です。例:
 
 ```sh
 export RELAY_CF_ACCOUNT_ID="<cloudflare-account-id>"

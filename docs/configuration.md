@@ -45,25 +45,16 @@ configuration:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"],
-  "model": "openai/gpt-5.6-luna",
-  "provider": {
-    "openai": {
-      "models": {
-        "gpt-5.6-luna": {
-          "name": "GPT-5.6 Luna"
-        }
-      }
-    }
-  }
+  "model": "openai/gpt-5.6-luna"
 }
 ```
 
 The version is an example; use a version published to GitHub Packages. The
-plugin requires the `openai/gpt-5.6-luna` model entry to exist under
-`provider.openai.models`; it rewrites that model's API URL to the Gateway route.
-If the model entry is missing, plugin initialization fails. The plugin also
-requires its runtime settings in the environment of the OpenCode process. For
-example:
+plugin uses OpenCode's built-in `openai` provider and routes the selected
+`openai/gpt-5.6-luna` model to the Gateway. No `provider.openai` model definition
+is needed; the model must be available in the built-in provider catalog. OpenCode
+continues to own ChatGPT OAuth authentication. The plugin also requires its
+runtime settings in the environment of the OpenCode process. For example:
 
 ```sh
 export RELAY_CF_ACCOUNT_ID="<cloudflare-account-id>"
