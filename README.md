@@ -11,7 +11,7 @@ Route OpenCode ChatGPT Codex traffic through Cloudflare AI Gateway and a fixed-u
 
 ## What This Repository Contains
 
-- `packages/opencode-plugin` — npm package `@yohi/cloudflare-ai-gateway-chatgpt`
+- `packages/opencode-plugin` — npm package `@yohi/cf-ai-gw-relay`
 - `apps/deno-relay` — fixed-upstream Deno Deploy egress relay
 - `.github/scripts` — infrastructure provisioning helpers
 
@@ -120,6 +120,8 @@ The generic `/upstream/<provider-slug>/*` relay is **planned and not implemented
 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | Payload logging control; `true` or `false`, default `true` |
 
 See [Configuration](docs/configuration.md) for precedence, defaults, test-only settings, provisioning values, and acceptance configuration.
+The configuration guide also covers installing the plugin from GitHub Packages
+and registering it in `opencode.json[c]`.
 
 ## Documentation
 

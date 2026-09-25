@@ -17,7 +17,7 @@ specification are defects that must be resolved deliberately.
 The repository contains two runtime deliverables:
 
 1. `packages/opencode-plugin` — OpenCode plugin
-   `@yohi/cloudflare-ai-gateway-chatgpt`.
+   `@yohi/cf-ai-gw-relay`.
 2. `apps/deno-relay` — Deno Deploy relay.
 
 They MUST NOT share runtime code. Their integration boundary is HTTP.

@@ -135,7 +135,7 @@ workflow:
 6. creates an npm tarball;
 7. uploads the tarball as a GitHub Release asset.
 
-The package currently declares version `0.3.0` in
+The package name is `@yohi/cf-ai-gw-relay`; its version is declared in
 `packages/opencode-plugin/package.json`. Release history is canonical in
 `packages/opencode-plugin/CHANGELOG.md`.
 
@@ -151,7 +151,10 @@ the repository. A typical npm configuration is:
 //npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
 ```
 
-The token value itself must not be stored in `.npmrc` or committed.
+The token must be a GitHub Personal Access Token (classic) with `read:packages`
+access and permission to access the package. The token value itself must not be
+stored in `.npmrc` or committed. For the OpenCode plugin configuration and
+runtime environment variables, see [configuration.md](configuration.md#install-from-github-packages).
 
 This installation mechanism does not override the project’s current
 supported-use block.

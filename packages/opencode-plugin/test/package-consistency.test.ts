@@ -9,6 +9,7 @@ describe("package metadata consistency", () => {
       "utf8",
     );
     const pkg = JSON.parse(raw) as {
+      name: string;
       peerDependencies: {
         "@opencode-ai/plugin": string;
         opencode?: string;
@@ -19,6 +20,7 @@ describe("package metadata consistency", () => {
       engines: { opencode: string };
       dependencies: Record<string, string>;
     };
+    expect(pkg.name).toBe("@yohi/cf-ai-gw-relay");
     expect(pkg.peerDependencies["@opencode-ai/plugin"]).toBe(">=1.18.31 <1.18.32");
     expect(pkg.peerDependencies.opencode).toBeUndefined();
     expect(pkg.devDependencies["@opencode-ai/plugin"]).toBe("1.18.31");
