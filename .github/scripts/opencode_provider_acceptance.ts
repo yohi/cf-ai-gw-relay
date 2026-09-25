@@ -120,7 +120,9 @@ export async function runBoundaryAcceptance(
   }
 }
 
-async function readBoundaryResponse(response: Response): Promise<string> {
+export async function readBoundaryResponse(
+  response: Response,
+): Promise<string> {
   if (response.body === null) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
