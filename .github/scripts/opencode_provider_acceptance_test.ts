@@ -1,5 +1,6 @@
 import {
   buildBoundaryGatewayUrl,
+  readBoundaryResponse,
   runBoundaryAcceptance,
 } from "./opencode_provider_acceptance.ts";
 import type {
@@ -108,8 +109,29 @@ Deno.test("rejects wrong status and response classes", async () => {
   }
 });
 
+Deno.test("rejects an oversized single response chunk and cancels the stream", async () => {
+  let canceled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(8192));
+    },
+    pull(controller) {
+      controller.close();
+    },
+    cancel() {
+      canceled = true;
+    },
+  }, { highWaterMark: 0 });
+
+  await assertRejects(
+    () => readBoundaryResponse(new Response(body)),
+    "boundary response exceeded the size limit",
+  );
+  if (!canceled) throw new Error("oversized response stream was not canceled");
+});
+
 async function assertRejects(
-  operation: () => Promise<void>,
+  operation: () => Promise<unknown>,
   message: string,
 ): Promise<void> {
   try {
