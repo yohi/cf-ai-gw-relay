@@ -143,16 +143,15 @@ Generic `/upstream/<provider-slug>/*` relay は
 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | Payload logging。`true` / `false`、既定 `true` |
 
 優先順位、既定値、test-only 設定、provisioning、acceptance 設定は
-[Configuration](docs/configuration.md) を参照してください。GitHub Packages からの
-Plugin の導入と `opencode.json[c]` の記載方法も説明しています。
+[Configuration の日本語版](docs/configuration.ja.md) を参照してください。GitHub
+Packages からの Plugin の導入と `opencode.json[c]` の記載方法も説明しています。
 
 ## Documentation
 
 - [SPEC.md](SPEC.md) — normative architecture、HTTP
   contract、invariant、security semantics、compatibility、将来 generic relay
   contract
-- [Configuration](docs/configuration.md) — 人間向けの完全な configuration
-  reference
+- [Configuration の日本語訳](docs/configuration.ja.md) — 人間向けの設定リファレンス
 - [Deployment](docs/deployment.md) — Deno Deploy、Cloudflare AI
   Gateway、provisioning、release workflow
 - [Operations](docs/operations.md) — monitoring、failure、protected

@@ -1,5 +1,7 @@
 # Configuration
 
+[日本語](configuration.ja.md)
+
 This document is the complete human-facing configuration reference for
 `cf-ai-gw-relay`. Normative protocol behavior is defined in
 [../SPEC.md](../SPEC.md).
