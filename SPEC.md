@@ -707,6 +707,13 @@ stream. Response bodies and credentials MUST NOT be logged or persisted.
 The boundary driver is decoupled from `RELAY_ACCEPTANCE_ORIGIN`, which is
 dedicated to direct relay checks in `apps/deno-relay/acceptance_test.ts`.
 
+Protected acceptance MUST NOT claim to verify OpenCode OAuth availability or
+refresh-state persistence, live OpenCode non-stream output, cancellation, or
+tool choice. Adding any of these as a live CI assertion requires explicit
+architecture and security re-approval. OAuth state MUST remain outside CI; this
+condition does not authorize placing it in GitHub Secrets, workflow
+environments, artifacts, caches, logs, or other CI storage.
+
 Legacy and future generic acceptance are distinct test concerns. The generic
 contract, once implemented, requires live-path verification through real
 Cloudflare AI Gateway, real Deno Deploy, and the Command Code provider,
