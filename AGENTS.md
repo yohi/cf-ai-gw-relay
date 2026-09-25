@@ -14,7 +14,7 @@ contract in `SPEC.md`:
 - `apps/deno-relay` — Deno Deploy egress relay; zero external runtime
   dependencies.
 - `packages/opencode-plugin` — npm package
-  `@yohi/cloudflare-ai-gateway-chatgpt`; runtime dependency constrained to
+  `@yohi/cf-ai-gw-relay`; runtime dependency constrained to
   `semver`.
 - `.github/scripts` — Deno-based infrastructure provisioning and acceptance
   helpers.

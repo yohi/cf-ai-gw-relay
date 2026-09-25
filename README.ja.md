@@ -20,7 +20,7 @@ Gateway と固定アップストリームの Deno Deploy relay 経由でルー�
 
 ## このリポジトリの構成
 
-- `packages/opencode-plugin` — npm package `@yohi/cloudflare-ai-gateway-chatgpt`
+- `packages/opencode-plugin` — npm package `@yohi/cf-ai-gw-relay`
 - `apps/deno-relay` — 固定アップストリームの Deno Deploy egress relay
 - `.github/scripts` — infrastructure provisioning helper
 
@@ -143,7 +143,8 @@ Generic `/upstream/<provider-slug>/*` relay は
 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | Payload logging。`true` / `false`、既定 `true` |
 
 優先順位、既定値、test-only 設定、provisioning、acceptance 設定は
-[Configuration](docs/configuration.md) を参照してください。
+[Configuration](docs/configuration.md) を参照してください。GitHub Packages からの
+Plugin の導入と `opencode.json[c]` の記載方法も説明しています。
 
 ## Documentation
 
