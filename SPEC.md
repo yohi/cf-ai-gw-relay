@@ -114,8 +114,10 @@ https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/custom-<slug>
 ```
 
 `model.api.url` MUST NOT include `/responses` or `/v1/responses`; the AI SDK
-owns the `/responses` suffix. The hook MUST fail closed when the provider
-identity, target model, or required route configuration is unavailable.
+owns the `/responses` suffix, which Cloudflare Custom Provider base URL
+(`https://.../v1`) resolves to the relay's `POST /v1/responses` route. The hook
+MUST preserve other models in the provider catalog and MUST fail closed when the
+provider identity, target model, or required route configuration is unavailable.
 
 ### 4.2 Configuration resolution
 
@@ -257,7 +259,12 @@ MUST remain available to authenticate the ChatGPT Codex upstream.
 ### 5.5 Body forwarding
 
 The relay MUST forward the inbound request body stream without JSON parsing,
-buffering, or reconstruction.
+buffering, or reconstruction (`REQUEST_PROTOCOL = DIRECT_FORWARDING`).
+
+This includes OpenAI Responses payloads containing tools and tool continuation
+items (`function_call` in responses and `function_call_output` in subsequent
+requests). Tool arguments and results remain opaque request data forwarded
+without body rewriting.
 
 The inbound abort signal MUST abort the upstream fetch. After streaming begins,
 downstream cancellation MUST cancel the upstream response body and abort the
@@ -268,9 +275,17 @@ No cancellation path may trigger fallback or retry.
 ### 5.6 Response behavior
 
 Upstream status and remaining response headers MUST be passed through after
-hop-by-hop response headers and `Connection`-named headers are removed.
+hop-by-hop response headers and `Connection`-named headers are removed
+(`RESPONSE_PROTOCOL = DIRECT_FORWARDING`).
 
-The upstream body MUST be streamed without semantic transformation.
+The upstream body MUST be streamed without semantic transformation
+(`STREAMING_PROTOCOL = DIRECT_FORWARDING`). Responses SSE event families
+(`response.created`, `response.in_progress`, `response.output_item.*`,
+`response.content_part.*`, `response.output_text.*`,
+`response.function_call_arguments.*`, and `response.completed`) are passed
+directly to the downstream client. If the upstream response carries an SSE body
+without an explicit `Content-Type` header, the relay preserves that header state
+without synthesizing a mapping.
 
 The implemented path preserves upstream 3xx responses, including sanitized
 `Location`, for backward compatibility. The relay itself MUST NOT follow the
@@ -673,6 +688,25 @@ Current required values are:
 
 Missing required values MUST fail rather than skip the workflow.
 
+The workflow executes GitHub-hosted on `ubuntu-latest` without accessing or
+requiring OpenCode OAuth state (`auth.json` or `OPENCODE_AUTH_CONTENT`). It
+evaluates the provider boundary using `BoundaryProbe` sentinels across two
+scenarios:
+
+1. `valid-gateway-invalid-relay`: Sends the valid Gateway token and an invalid
+   relay sentinel. PASS requires HTTP `401` with response class `relay-rejected`
+   and body `{"error":"unauthorized"}`.
+2. `invalid-gateway-valid-relay`: Sends an invalid Gateway sentinel and the
+   valid relay secret. PASS requires Gateway rejection (HTTP `401` or `403`)
+   with response class `gateway-rejected` (not the relay unauthorized envelope).
+
+The boundary driver enforces `MAX_BOUNDARY_RESPONSE_BYTES = 4096`, reading at
+most 4097 bytes before classification and immediately cancelling the body
+stream. Response bodies and credentials MUST NOT be logged or persisted.
+
+The boundary driver is decoupled from `RELAY_ACCEPTANCE_ORIGIN`, which is
+dedicated to direct relay checks in `apps/deno-relay/acceptance_test.ts`.
+
 Legacy and future generic acceptance are distinct test concerns. The generic
 contract, once implemented, requires live-path verification through real
 Cloudflare AI Gateway, real Deno Deploy, and the Command Code provider,
@@ -704,7 +738,42 @@ specification.
 - AI agent behavior: `AGENTS.md`
 - Plugin release history: `packages/opencode-plugin/CHANGELOG.md`
 
-## Appendix B. Non-normative Future Considerations
+## Appendix B. Architecture Decisions and Superseded Alternatives
+
+The following records the technical rationale behind key architecture decisions
+and explicitly rejects superseded approaches:
+
+1. **`provider.models` Hook vs. `config` Hook `baseURL`**:
+   - An earlier approach attempted to set `provider.openai.options.baseURL` via
+     the `config` hook. Target-runtime validation on OpenCode `1.18.31` proved
+     that this setting had no effect on ChatGPT OAuth requests, which continued
+     directly to `chatgpt.com`.
+   - The public `provider.models` hook, setting the target model's
+     `model.api.url`, was validated as the effective routing owner.
+
+2. **Superseded Global `fetch` Interposer**:
+   - Previous versions used a global `fetch` interceptor
+     (`installFetchInterposer`), URL constructor ending in `/v1/responses`, and
+     request rewriters.
+   - This approach was removed in favor of OpenCode 1.18.31's public hook
+     lifecycle (`provider.models` and `chat.headers`), eliminating global state
+     mutation and interposer side-effects.
+
+3. **OpenCode-Owned OAuth vs. PAT / External Credential Management**:
+   - Personal Access Tokens (PAT) and external credential broker architectures
+     were rejected. OpenCode's native authentication mechanism
+     (`$XDG_DATA_HOME/opencode/auth.json`) owns credential acquisition, storage,
+     refresh, and header injection.
+   - The plugin and relay treat `Authorization` and `ChatGPT-Account-Id` as
+     opaque transport data without inspecting, modifying, or persisting tokens.
+
+4. **Managed Residency Scoping**:
+   - Managed residency (`x-openai-internal-codex-residency` or
+     `X-OpenAI-Fedramp`) is not supported in the initial scope. Rather than
+     guessing or forwarding unverified residency headers, the relay rejects
+     matching requests with HTTP `400` to guarantee fail-closed behavior.
+
+## Appendix C. Non-normative Future Considerations
 
 The following remain possible future work and are not committed behavior:
 
