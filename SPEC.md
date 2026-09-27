@@ -152,6 +152,15 @@ Ordinary `openai/<model>` traffic MUST retain its existing provider identity and
 ChatGPT/Codex routing. C1 delegation MUST be explicit opt-in and MUST NOT affect
 other OpenAI or third-party providers.
 
+OpenCode's `enabled_providers` remains owned by the host user. The plugin MUST
+NOT append `cf-ai-gw-relay` to a user-supplied allowlist or bypass the host's
+provider filter. When `enabled_providers` is absent, normal host provider
+discovery rules apply. When it is present, `cf-ai-gw-relay` MUST be listed for
+the dedicated provider to be available; if it is excluded, C1 is unavailable and
+MUST fail closed without fallback. The user's configuration continues to control
+whether ordinary `openai/*` is enabled. Runtime acceptance fixtures that test
+both routes MUST explicitly enable both `openai` and `cf-ai-gw-relay`.
+
 ### 4.2 Effective credential provider
 
 Provider identity and credential identity are distinct:
@@ -184,8 +193,10 @@ It MUST NOT synthesize a conflicting OpenAI model profile for the same model ID.
 
 ### 4.3 Configuration resolution
 
-The C1 dedicated provider resolves configuration as defined in
-[docs/configuration.md](docs/configuration.md).
+This specification defines the normative C1 configuration contract. The
+human-facing English and Japanese configuration guides MUST be synchronized
+with this contract by the C1 implementation plan; they do not override this
+specification.
 
 Required values:
 
@@ -218,6 +229,20 @@ cf-aig-collect-log-payload: false
 ```
 
 The C1 path MUST NOT override this setting to `true`.
+
+The plugin `config` hook MUST resolve and validate the complete C1 configuration
+before changing the host config. It MUST construct the complete dedicated
+provider entry before assigning it, so a failed attempt cannot partially
+register `cf-ai-gw-relay`. OpenCode 1.18.31 logs and ignores external plugin
+`config` hook exceptions; the plugin MUST NOT rely on such an exception aborting
+host or plugin initialization.
+
+The plugin `chat.headers` hook MUST first check the selected provider identity.
+For any non-C1 model, including ordinary `openai/*`, it MUST return without
+reading C1 closure state or adding C1 headers, even if configuration resolution
+failed. For `cf-ai-gw-relay` traffic, absent or invalid resolved C1 configuration
+MUST throw the existing `PluginConfigurationError` before network dispatch. No
+Gateway request or fallback is permitted in that state.
 
 The production Gateway base origin is:
 
@@ -442,6 +467,12 @@ contract in §8 is planned behavior, not implemented behavior.
   converting an upstream rejection into fallback behavior.
 - Gateway, relay, or upstream failures MUST surface to OpenCode. No layer may
   retry or fall back to ordinary `openai/*` automatically.
+- The OpenCode 1.18.31 plugin host ignores external `config` hook exceptions
+  after logging them; C1 MUST fail closed at the dedicated `chat.headers`
+  boundary and MUST leave ordinary providers unaffected when config resolution
+  failed.
+- Explicit `enabled_providers` filtering remains user-owned as specified in
+  §4.1; a filtered dedicated provider is unavailable and cannot fall back.
 - Diagnostics MAY identify the failing boundary and safe error category, but MUST
   NOT log credentials, request bodies, or response bodies.
 
