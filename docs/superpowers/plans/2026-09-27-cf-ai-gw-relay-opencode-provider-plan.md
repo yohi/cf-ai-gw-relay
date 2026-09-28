@@ -1,305 +1,480 @@
-# Issue #28 C1 Provider Implementation Plan
+# Issue #28 Dedicated OpenCode Provider Implementation Plan
 
-> **For agentic workers:** Execute each task in dependency order with RED → verify RED → minimum GREEN → verify GREEN → REFACTOR → commit. This is a non-normative execution document; review against `SPEC.md` before implementation. This document authorizes no implementation, commit, deployment, or release.
+> **For agentic workers:** Execute tasks in the dependency order below. Each implementation task uses RED → verify RED → minimum GREEN → verify GREEN → REFACTOR → commit. Do not declare production-ready until Task 11 passes on the released minimum-supported OpenCode artifact.
 
-## Goal
+**Goal:** Implement Issue #28 so users select `cf-ai-gw-relay/openai/<model>` for Gateway-routed traffic while OpenCode reuses its existing ChatGPT OAuth, ordinary `openai/<model>` remains unchanged, and the final package is `@yohi/cf-ai-gw-relay` under `apps/opencode-plugin/`.
 
-Implement Issue #28 so users can select `cf-ai-gw-relay/openai/<model>` while reusing the existing OpenCode-owned ChatGPT OAuth credential and leaving ordinary `openai/<model>` behavior unchanged.
+**Architecture:** The selected provider identity is `cf-ai-gw-relay`; the bounded credential/model-semantics owner is `openai`. The plugin registers a dedicated provider through OpenCode's public plugin API and passes the exact provider options; the host implements the C1 resolver and OAuth/Codex semantics. Gateway/relay configuration is resolved and validated only when a dedicated request is selected.
 
-## Architecture
+**Repository location decision:** Use `apps/opencode-plugin/` because this repository groups runtime deliverables under `apps/` (`apps/deno-relay` is the existing precedent); retain the npm package boundary there. Do not add a root npm package beside the Deno root configuration, create another `packages/` package, or vendor the OpenCode framework.
 
-- Selected provider identity: `cf-ai-gw-relay`; effective credential owner: `openai`.
-- One shared resolver: `credentialProviderID`; OAuth lifecycle owner: OpenCode; model/profile semantics owner: `openai`; transport target owner: `cf-ai-gw-relay`.
-- The project plugin registers the dedicated provider using the existing `config` hook and supplies only Gateway/relay controls. OpenCode core delegates credential semantics explicitly while keeping selected provider ID and Gateway route intact. No generic delegation graph.
+**Tech Stack:** OpenCode public plugin/provider API; TypeScript; `@opencode-ai/plugin` as a peer dependency plus exact development dependency; `@ai-sdk/openai` host integration; Bun and Vitest for OpenCode upstream; Node.js 22, npm, TypeScript and Vitest for the plugin package; Deno 2.x relay.
 
-## Tech Stack
+**Canonical Spec:** `SPEC.md`; product-requirement authority: GitHub Issue #28 (`yohi/cf-ai-gw-relay#28`). If the plan and SPEC disagree with Issue #28, Issue #28 wins. This plan is non-normative and MUST NOT amend Issue #28.
 
-OpenCode `1.18.31` (commit `014614d35b397775e5d397a490fc72368c894ec2`), TypeScript, Bun, `@ai-sdk/openai` `3.0.88`, `@opencode-ai/plugin` hooks, `@opencode-ai/core` `ConfigProviderV1`, built-in `CodexAuthPlugin`, Cloudflare AI Gateway, `@yohi/cf-ai-gw-relay` plugin, Deno `cf-ai-gw-relay`.
-
-## Canonical Spec
-
-`SPEC.md` §§1.1–1.3, 2–4.5, 5.1–5.8, 6, 9.1–9.2, 10 and Appendix B. It alone is normative. The OpenCode commit above is an **implementation inspection baseline**, not another specification. Historical deleted plans/specs are not inputs. Run OpenCode steps in a clean worktree at that commit; the inspected local OpenCode checkout is at a later, dirty commit and MUST NOT be modified or used as an unpinned execution baseline. In this document `OpenCode:` paths refer to the upstream OpenCode source root; `Project:` paths refer to this repository root. Never copy machine-specific absolute paths into either repository.
-
-## Validated Runtime Baseline
-
-Disposable spike: stock `openai/gpt-6-sol` PASS; first C1 reached Gateway/relay but returned HTTP 400 due to incomplete credential-owner request/model semantics; bounded fix propagated auth lookup, request preparation, materialization/profile, hooks and target-aware transport. Final `cf-ai-gw-relay/openai/gpt-6-sol` Gateway/relay/upstream HTTP 200 with usable response; subsequent ordinary `openai/gpt-6-sol` HTTP 200. Credential owner `openai`; no raw OAuth exposure to project plugin; no direct rewrite for C1. This is validated architecture evidence, **not** production integration or host-capability acceptance.
+**C1 Validation Baseline:** Disposable patched OpenCode `1.18.31`, commit `014614d35b397775e5d397a490fc72368c894ec2`, bundled `@ai-sdk/openai` `3.0.88`, model `gpt-6-sol`. The dedicated C1 request and stock ordinary OpenAI regression both returned HTTP 200 after a bounded credential-owner/model-semantics fix. This validates architecture only; it does not set the production minimum host or prove the current source tree is production-ready.
 
 ## Global Constraints
 
-- DO NOT expose raw OAuth access/refresh tokens to project plugin code or read OpenCode's private auth store there. No new OAuth persistence/login, PAT, `CODEX_ACCESS_TOKEN`, or provider credential API.
-- DO NOT collapse provider identity to `openai`; change ordinary `openai/*` routing; or fall back automatically from dedicated traffic to `openai/*` or direct ChatGPT.
-- Delegation requires explicit `provider.cf-ai-gw-relay.options.credentialProvider = "openai"`; any other pairing fails closed. No retry, cache, body rewrite or payload persistence.
-- Keep Gateway/relay credentials separate from opaque upstream `Authorization` and `ChatGPT-Account-Id`; never log token/header values, full auth objects or payloads.
-- Keep the plugin runtime dependency constraint (`semver` only), Deno relay zero-dependency/stateless and existing host-version/request-blocking and OAuth-free protected acceptance gates. No CI OAuth state.
+- Issue #28 is the product authority; `SPEC.md` is its canonical technical expression.
+- Final plugin source/package root: `apps/opencode-plugin/`. `packages/opencode-plugin/` MUST be removed; the publishable npm package itself remains.
+- Use only public OpenCode plugin/provider/authentication contracts from a released supported host. The plugin MUST NOT import OpenCode private modules, read its private auth store, or vendor OpenCode source.
+- Selected provider identity remains `cf-ai-gw-relay`; credential owner remains `openai`; selected namespace remains `cf-ai-gw-relay/openai/<model>`.
+- Do not define or require `provider.openai` in user config. Reuse OpenCode-owned ChatGPT OAuth; never expose its raw value to plugin logic or relay.
+- Support provider options and equivalent environment variables for `accountId`, `gatewayId`, `gatewayToken`, and `relaySecret`; precedence is ENV > provider option. Environment values that are present but empty/invalid fail; they do not fall back to the option.
+- Loading/registering the plugin MUST succeed with incomplete C1 settings. Resolve completeness only on selected C1 use. Missing/invalid config MUST fail before network dispatch and MUST NOT affect ordinary `openai/*`.
+- The plugin MUST NOT mutate `openai/*`, append to `enabled_providers`, or automatically fall back. Gateway/relay/upstream failures remain fail-closed.
+- No secrets, raw auth objects, prompts, or bodies in errors/logs. No OAuth persistence, PAT, `CODEX_ACCESS_TOKEN`, retry, cache, or payload persistence.
+- Gateway payload collection for C1 is fixed false; setting `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD=true` is rejected when C1 is selected.
+- Preserve streaming, abort, relay HTTP contract, protected OAuth-free CI scope, and the release gate in `SPEC.md`.
 
 ## Out of Scope
 
-Generic `/upstream/*` contract, C2, separate OAuth flow, token extraction, new public plugin auth API, new credential store, generic N-to-N delegation, large provider refactor, production deployment, Cloudflare resource mutation, or declaring supported production release before §10 gates.
+Anthropic/Google upstream implementations, generic credential graphs, plugin-owned OAuth, PAT/`CODEX_ACCESS_TOKEN`, direct fallback, generic `/upstream/*` implementation, OpenCode framework vendoring, and Cloudflare resource changes are not part of Issue #28's initial OpenAI release.
 
 ## Files to Modify
 
-**OpenCode upstream (planned only):**
+### Project repository
 
-| File | Exact responsibility |
+| Final path | Responsibility |
 | --- | --- |
-| `packages/opencode/src/provider/provider.ts` | Provider init/fetch, owner profile and loader, `resolveSDK` target retention and `Provider.Interface`. |
-| `packages/core/src/v1/config/provider.ts` | Type `ConfigProviderV1.Info.options.credentialProvider` as optional literal `"openai"`. |
-| `packages/opencode/src/session/llm.ts` | `LLM.run` effective-owner auth lookup and request-prep input. |
-| `packages/opencode/src/session/llm/request.ts` | `LLMRequestPrep.PrepareInput`, `prepare` OAuth request semantics. |
-| `packages/opencode/src/agent/agent.ts` | `Agent.generate` effective-owner auth/stream path. |
-| `packages/opencode/src/plugin/openai/codex.ts` | `CodexAuthPlugin` hooks and built-in auth-loader fetch target selection. |
+| `apps/opencode-plugin/package.json` | Published `@yohi/cf-ai-gw-relay` manifest; public SDK peer/dev dependency and supported-host range. |
+| `apps/opencode-plugin/package-lock.json` | Reproducible plugin dependency lock. |
+| `apps/opencode-plugin/tsconfig.json` | Plugin TypeScript build/typecheck. |
+| `apps/opencode-plugin/vitest.config.ts` | Plugin test configuration. |
+| `apps/opencode-plugin/src/index.ts` | Public package exports and OpenCode plugin entrypoint. |
+| `apps/opencode-plugin/src/plugin.ts` | `CloudflareAiGatewayChatgpt`, public `config`, `provider.models`, and `chat.headers` hooks. |
+| `apps/opencode-plugin/src/config.ts` | `C1ProviderOptions`, `ResolvedRelayConfig`, and request-time `resolveRequestConfig`. |
+| `apps/opencode-plugin/src/errors.ts` | Exact redacted `MissingRelayConfigurationError`, `InvalidRelayConfigurationError`, and `UnsupportedUpstreamError`. |
+| `apps/opencode-plugin/src/provider-models.ts` | Dedicated provider defaults and user-over-plugin model merge. |
+| `apps/opencode-plugin/src/gateway-url.ts` | `buildGatewayModelUrl`, `buildRegisteredModelUrl`, and non-dispatch registration placeholder. |
+| `apps/opencode-plugin/src/control-headers.ts` | C1-only Gateway/relay controls; ordinary OpenAI no-op. |
+| `apps/opencode-plugin/src/host-version.ts` | Gate against the minimum released OpenCode version established by Task 5. |
+| `apps/opencode-plugin/src/core.ts` | Final stable plugin name. |
+| `apps/opencode-plugin/src/hooks.ts` | Public SDK hook types. |
+| `apps/opencode-plugin/test/config.test.ts` | Source precedence, lazy validation, missing/invalid key enumeration. |
+| `apps/opencode-plugin/test/plugin.test.ts` | Registration, allowlist preservation, and lazy error isolation. |
+| `apps/opencode-plugin/test/provider-models.test.ts` | Default models, custom models, and partial user override merge. |
+| `apps/opencode-plugin/test/gateway-url.test.ts` | Gateway route construction and placeholder no-dispatch guard. |
+| `apps/opencode-plugin/test/control-headers.test.ts` | C1 header set, ordinary OpenAI isolation, secret redaction. |
+| `apps/opencode-plugin/test/host-version.test.ts` | Minimum/unsupported host boundary. |
+| `apps/opencode-plugin/test/package-consistency.test.ts` | Final package root/name/exports and removed legacy path. |
+| `apps/opencode-plugin/test/redaction.test.ts` | Error messages exclude secret values. |
+| `apps/opencode-plugin/test/smoke.test.ts` | Public package entrypoint smoke test. |
+| `apps/opencode-plugin/README.md` | Published package usage and supported host notice. |
+| `apps/opencode-plugin/CHANGELOG.md` | Release history relocated with package. |
+| `.gitignore` | Ignore `apps/opencode-plugin/node_modules/` and `apps/opencode-plugin/dist/`; remove old package entries. |
+| `deno.json` | Exclude `apps/opencode-plugin/` from Deno formatting/lint scans; keep relay workspace/entrypoint unchanged. |
+| `.release-please-config.json` | Move release component key to `apps/opencode-plugin`. |
+| `.release-please-manifest.json` | Move version key to `apps/opencode-plugin`. |
+| `.github/workflows/ci.yml` | Run plugin CI from `apps/opencode-plugin`; cache its lockfile. |
+| `.github/workflows/release.yml` | Release/publish/pack from `apps/opencode-plugin`. |
+| `README.md`, `README.ja.md` | Dedicated provider install/config/model-selection journey and production status. |
+| `docs/configuration.md`, `docs/configuration.ja.md` | Exact provider options, environment pairs, precedence, lazy validation, secrets. |
+| `docs/deployment.md`, `docs/operations.md` | Relocated package path/release gate references; relay operation contract unchanged. |
+| `AGENTS.md` | Replace old package path/tooling instructions and verification commands. |
 
-**Project (planned only):**
+The migration moves all tracked files from the old package path, except generated `dist/` and `node_modules/`, into the listed `apps/opencode-plugin/` paths. No second copy of the plugin package remains.
 
-| File | Exact responsibility |
+### OpenCode upstream repository (external prerequisite/implementation)
+
+| Final upstream path | Responsibility |
 | --- | --- |
-| `packages/opencode-plugin/src/plugin.ts` | `CloudflareAiGatewayChatgpt` dedicated provider config hook and control-header hook; remove old provider-model hook registration. |
-| `packages/opencode-plugin/src/config.ts` | `ResolvedConfig`/`resolveConfig`: force disabled Gateway payload logging for C1. |
-| `packages/opencode-plugin/src/gateway-url.ts` | `buildGatewayModelUrl`: append suffix-free `/v1`. |
-| `packages/opencode-plugin/src/control-headers.ts` | `createChatHeaders`: dedicated provider only, fixed no-payload control header. |
-| `docs/configuration.md` | Synchronize public C1 configuration guidance and examples with `SPEC.md`. |
-| `docs/configuration.ja.md` | Japanese equivalent of the C1 configuration guidance; keep behavior and precedence in parity with English. |
+| `packages/core/src/v1/config/provider.ts` | Publicly type provider option `credentialProvider?: "openai"`. |
+| `packages/opencode/src/provider/credential-provider.ts` | One shared bounded `credentialProviderID` resolver. |
+| `packages/opencode/src/provider/provider.ts` | Dedicated model/profile materialization, owner loader, request-time C1 URL/option semantics. |
+| `packages/opencode/src/session/llm.ts` | Owner-key auth lookup while preserving selected provider identity. |
+| `packages/opencode/src/session/llm/request.ts` | Owner-aware OpenAI/Codex request preparation. |
+| `packages/opencode/src/agent/agent.ts` | Owner-aware auth/model generation. |
+| `packages/opencode/src/plugin/openai/codex.ts` | Owner-aware hooks and target-aware built-in OAuth transport. |
+| `packages/opencode/test/provider/provider.test.ts` | Resolver, profile, route, and missing-settings host behavior. |
+| `packages/opencode/test/session/llm.test.ts` | Auth lookup and request semantics. |
+| `packages/opencode/test/agent/agent.test.ts` | Agent/model generation semantics. |
+| `packages/opencode/test/plugin/codex.test.ts` | Hooks, OAuth transport, target marker, direct-route regression. |
+
+The project plugin consumes only the published public contract (`@opencode-ai/plugin` plus documented provider configuration). Internal host helper symbols above are OpenCode implementation details and MUST NOT be imported by `apps/opencode-plugin`.
 
 ## Files to Create
 
-| File | Exact responsibility |
-| --- | --- |
-| OpenCode: `packages/opencode/src/provider/credential-provider.ts` | Shared, synchronous bounded resolver and redacted failure type. |
+- OpenCode upstream: `packages/opencode/src/provider/credential-provider.ts`.
+- Project package files are relocated from `packages/opencode-plugin/` to `apps/opencode-plugin/`; no parallel legacy package is created.
+- Plan output: this file only.
 
-## Test Files to Modify/Create
+## Files Explicitly Not Modified in This Documentation Task
 
-| File | Exact responsibility |
-| --- | --- |
-| OpenCode: `packages/opencode/test/provider/provider.test.ts` | Resolver, config, owner init/model materialization/loader/URL. |
-| OpenCode: `packages/opencode/test/session/llm.test.ts` | Effective-owner auth, request shape, ordinary route regression. |
-| OpenCode: `packages/opencode/test/plugin/codex.test.ts` | Built-in hook parity, refresh/injection, URL and marker behavior. |
-| OpenCode: `packages/opencode/test/agent/agent.test.ts` | `Agent.generate` OAuth owner branch. |
-| Project: `packages/opencode-plugin/test/plugin.test.ts` | Dedicated registration and ordinary-provider isolation. |
-| Project: `packages/opencode-plugin/test/control-headers.test.ts` | Dedicated-only control headers, no payload logging or OAuth handling. |
-| Project: `packages/opencode-plugin/test/gateway-url.test.ts` | Exact Gateway `/v1/responses` path composition. |
-| Project: `packages/opencode-plugin/test/config.test.ts` | Reject payload-log opt-in; environment-only secret resolution. |
-| Project: `packages/opencode-plugin/test/redaction.test.ts` | Verify exact C1 unavailable error does not include config/secret values. |
+All source/test/package/workflow/configuration files listed above are future implementation targets only. In this task modify only `SPEC.md` and this implementation plan. Do not modify Issue #28, Cloudflare resources, or the relay source/tests.
 
-## Files Explicitly Not Modified
+## Exact Configuration and Runtime Interfaces
 
-`SPEC.md` (normative), `apps/deno-relay/**` (current fixed upstream), `.github/**` (protected acceptance/CI), all lockfiles/manifests/dependencies, `packages/opencode-plugin/src/provider-models.ts` and its existing tests (historical implementation snapshot: do not invoke the old hook), deleted historical design/plan paths, Issue #28 and Cloudflare resources. This file is the only artifact of the **planning** session; file tables above describe future implementation work, not edits made now.
+### Provider option/environment map
 
-## Exact contracts and decision rules
+| `provider.cf-ai-gw-relay.options` key | Environment variable | Resolver result field | Required on C1 use |
+| --- | --- | --- | --- |
+| `accountId` | `RELAY_CF_ACCOUNT_ID` | `accountId` | Yes |
+| `gatewayId` | `RELAY_CF_GATEWAY_ID` | `gatewayId` | Yes |
+| `gatewayToken` | `RELAY_CF_AIG_TOKEN` | `gatewayToken` | Yes |
+| `relaySecret` | `RELAY_SECRET` | `relaySecret` | Yes |
+| `providerSlug` | `RELAY_CF_PROVIDER_SLUG` | `providerSlug` | No; default `relay-chatgpt` |
 
-1. Configuration, read in `ConfigV1.Info.provider["cf-ai-gw-relay"].options` (`packages/core/src/v1/config/provider.ts:Info`): `credentialProvider?: "openai"`; absent means self. Only `cf-ai-gw-relay` may use the literal. Project `config` hook installs `{ provider: { "cf-ai-gw-relay": { npm: "@ai-sdk/openai", api: gatewayURL, options: { credentialProvider: "openai" }, models: { "openai/gpt-6-sol": { id: "gpt-6-sol", provider: { npm: "@ai-sdk/openai", api: gatewayURL } } } } }` by mutating the passed config. Do not assign `apiKey`, `Authorization`, `ChatGPT-Account-Id`, or `fetch` in this hook. `gatewayURL` ends in `/custom-relay-chatgpt/v1`; SDK adds `/responses`. Selected model ID is `openai/gpt-6-sol`; wire ID is `gpt-6-sol`. Owner catalog profile is copied inside OpenCode before exposing the model, so the minimal config entry is not a conflicting second profile. Resolve provider slug from `RELAY_CF_PROVIDER_SLUG`, then the existing `cfg.provider["cf-ai-gw-relay"]?.options?.providerSlug`, then `relay-chatgpt`; reject conflicting existing dedicated model definitions and credential-owner values rather than silently overwriting. Preserve `cfg.enabled_providers` exactly: do not append, remove, or bypass entries. With the property absent use normal provider discovery; if it is present, dedicated use requires `cf-ai-gw-relay`; both-route acceptance also requires `openai`. An excluded dedicated provider is unavailable, fails closed, and never falls back.
-2. New symbols in `packages/opencode/src/provider/credential-provider.ts`:
+For each row, if the environment key exists it wins, then the chosen value is validated. An empty/malformed present ENV value is an error, not permission to fall back. Test-only variables are `RELAY_CF_AIG_BASE_URL` and `RELAY_CF_AIG_TEST_MODE`; production origin is `https://gateway.ai.cloudflare.com`, test origin is exactly `https://gateway.test.invalid`. C1 payload collection is hard-coded false; `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD=true` is a C1 request-time configuration error.
 
-   ```ts
-   export class CredentialProviderError extends Error {}
-   export const CODEX_TARGET_HEADER = "x-opencode-codex-target"
-   export function credentialProviderID(provider: Pick<Provider.Info, "id" | "options">): ProviderV2.ID
-   ```
+### Exact plugin configuration symbols
 
-   `Provider.Info` and `ProviderV2.ID` are type-only imports. Consumes selected provider identity and provider options; produces effective owner ID. Return selected ID if no marker (including ordinary `openai`); return `ProviderV2.ID.openai` only for marked `cf-ai-gw-relay`; throw `CredentialProviderError("Invalid credential provider delegation")` for any other marker/value/pair without echoing the value. Both core and built-in Codex hooks import this *same function*; no consumer reimplements ownership decisions. Verify the selected provider and owner exist before model/SDK use. `credentialProvider` is metadata: remove it from options passed into SDK factories, model options, wire headers and logs.
-3. Materialization: from selected `cfg.provider["cf-ai-gw-relay"]`, resolve owner `database["openai"].models["gpt-6-sol"]` **after** the OpenAI OAuth `provider.models` hook; build dedicated `openai/gpt-6-sol` from that owner model, overriding `id`, `providerID`, `api.id`, `api.url`, explicit per-model config and variants. Never overwrite the owner's entry or alter the dedicated provider's configured URL; do not clone token-bearing provider options. In `getLanguage`, select `s.modelLoaders[credentialProviderID(provider)]` while `resolveSDK` uses selected provider URL and owner `fetch`/dummy API key only. Guard owner missing/model missing with existing `ModelNotFoundError`; invalid marker with `CredentialProviderError`; do not silently synthesize fallback models.
-4. Core `resolveSDK` imports `CODEX_TARGET_HEADER` from the shared resolver module and inserts value `"gateway"` only in dedicated SDK request headers after validating explicit delegation; normal OpenAI gets no marker. Built-in `auth.loader` fetch imports the same constant, removes marker before dispatch and *only* skips ChatGPT rewrite when it equals `"gateway"` and request URL is the configured Gateway host/path. Marker is **not** a credential, not an application log value, and does not enter project plugin hooks. Reject unexpected marker values or gateway marker with non-Gateway URL; do not infer safety from an arbitrary URL passed into fetch. With experimental WebSocket enabled, dedicated requests use HTTP fetch (WebSocket cannot target Gateway); ordinary route retains existing WebSocket behavior.
-5. Cloudflare contract: Gateway ID `relay-gateway`; stored Custom Provider slug `relay-chatgpt`; route `custom-relay-chatgpt`; stored Custom Provider base origin `https://cf-ai-gw-relay.yohi.deno.net/` (no path); Gateway model URL `https://gateway.ai.cloudflare.com/v1/<account>/relay-gateway/custom-relay-chatgpt/v1`; relay `POST /v1/responses`; fixed upstream `https://chatgpt.com/backend-api/codex/responses`. `cf-aig-authorization` authenticates Gateway, `x-chatgpt-relay-authorization` authenticates relay, `Authorization` carries OpenCode-owned OAuth, `ChatGPT-Account-Id` remains OpenCode-owned where required. Set `cf-aig-collect-log: true`, `cf-aig-collect-log-payload: false`, `cf-aig-skip-cache: true`, `cf-aig-max-attempts: 1`. Static `cf-aig-metadata` fields only: `source`, `auth_type`, `plugin`.
+In `apps/opencode-plugin/src/config.ts` define:
 
-6. Host allowlist: in OpenCode `packages/opencode/src/provider/provider.ts`, `Provider` applies `enabled_providers` after plugin `config` hooks and filters provider IDs without mutating the config. C1 preserves this user-owned behavior. Absent allowlist uses standard discovery; explicit allowlist including `cf-ai-gw-relay` allows C1; explicit list excluding it makes C1 unavailable; no fallback. Tests for ordinary `openai/*` must set `enabled_providers: ["openai", "cf-ai-gw-relay"]` when asserting both routes.
-
-7. Config hook errors: in OpenCode 1.18.31 `packages/opencode/src/plugin/index.ts` logs and ignores external `config` hook exceptions, so project code MUST NOT treat a throw as plugin-init abort. Use existing `PluginConfigurationError` from `packages/opencode-plugin/src/errors.ts`. Resolve configuration into locals, construct the full provider value, then assign atomically. In `createChatHeaders`, check `input.model.providerID !== "cf-ai-gw-relay"` first and return `{}` without reading the config closure; only then read resolved C1 state and throw `PluginConfigurationError("C1 configuration unavailable")` if absent. Thus failed C1 resolution cannot change config or break normal OpenAI; dedicated request stops before dispatch.
-
-8. Human documentation contract: update both `docs/configuration.md` and `docs/configuration.ja.md` in Task 8. They are explanatory guides, not normative authority. Both must identify `cf-ai-gw-relay/openai/gpt-6-sol`, provider identity and credential owner, `credentialProvider`, env-only `RELAY_CF_AIG_TOKEN`/`RELAY_SECRET`, no plugin `apiKey`/`relayToken` secret fallbacks, payload collection fixed false with `true` rejected, provider slug precedence, explicit `enabled_providers` rules, and ordinary `openai/*` separation.
-
-## Dependency graph and execution commands
-
-```text
-Task 1 resolver/config → Task 2 provider initialization/model/profile
-Task 1 → Task 5 Codex hooks
-Task 2 + Task 5 → Task 6 transport
-Task 6 → Task 3 LLM auth → Task 4 request prep → Task 7 agent/generation
-Task 2 + Task 6 → Task 8 project plugin + EN/JA docs integration
-Task 7 + Task 8 → Task 9 security boundary → Task 10 ordinary OpenAI regression
-Task 9 + Task 10 → Task 11 production-source runtime acceptance
+```ts
+export type EnvSource = Readonly<Record<string, string | undefined>>;
+export type RequiredRelayOption = "accountId" | "gatewayId" | "gatewayToken" | "relaySecret";
+export type RelayConfigKey = RequiredRelayOption | "credentialProvider" | "providerSlug" | "collectLogPayload" | "gatewayBaseUrl";
+export type C1ProviderOptions = Readonly<{
+  credentialProvider?: unknown;
+  accountId?: unknown;
+  gatewayId?: unknown;
+  gatewayToken?: unknown;
+  relaySecret?: unknown;
+  providerSlug?: unknown;
+  collectLogPayload?: unknown;
+}>;
+export type ResolvedRelayConfig = Readonly<{
+  accountId: string;
+  gatewayId: string;
+  gatewayToken: string;
+  relaySecret: string;
+  providerSlug: string;
+  gatewayBaseUrl: string;
+}>;
+export class MissingRelayConfigurationError extends Error {
+  readonly missingKeys: readonly RequiredRelayOption[];
+  constructor(missingKeys: readonly RequiredRelayOption[]);
+}
+export class InvalidRelayConfigurationError extends Error {
+  readonly invalidKeys: readonly RelayConfigKey[];
+  constructor(invalidKeys: readonly RelayConfigKey[]);
+}
+export class UnsupportedUpstreamError extends Error {
+  readonly upstream: string;
+  constructor(upstream: string);
+}
+export type PartialRouteConfig = Readonly<{
+  accountId?: unknown;
+  gatewayId?: unknown;
+  providerSlug?: unknown;
+  gatewayBaseUrl?: unknown;
+}>;
+export const MISSING_C1_ROUTE_URL = "https://gateway.ai.cloudflare.com/v1/0/0/custom-relay-chatgpt/v1";
+export function buildRegisteredModelUrl(config: PartialRouteConfig): string;
+export function buildGatewayModelUrl(config: ResolvedRelayConfig): string;
+export function resolveRequestConfig(
+  env: EnvSource,
+  options: C1ProviderOptions,
+): ResolvedRelayConfig;
 ```
 
-Tasks 2 and 5 can be developed independently after Task 1 (different consumers); Task 8 can be developed alongside Tasks 3–4 after Task 6 (different repositories). Integrate and run both suites before either merged commit; never share mutable working trees. All `bun test ...` and `bun typecheck` commands below run in OpenCode `packages/opencode`; all `npm test -- ...` commands run in Project `packages/opencode-plugin`. Never run Bun tests from the OpenCode repository root. RED must be a behavior assertion failing against unchanged implementation, not an import/compiler failure; when adding a test for a new symbol, import it only after the RED test uses an existing public seam, or treat the missing symbol as an explicitly stated RED signal.
+The plugin `config` hook installs the exact static marker `credentialProvider: "openai"` in `provider.cf-ai-gw-relay.options`; a user-supplied conflicting value is preserved during merge then rejected on C1 use, never silently changed. `resolveRequestConfig` checks that marker, then iterates required keys in stable order `accountId`, `gatewayId`, `gatewayToken`, `relaySecret`; it selects ENV when defined, otherwise the provider option; it records missing and invalid keys without including values. If one or more required keys are absent it throws `MissingRelayConfigurationError(missingKeys)` with message `Missing required cf-ai-gw-relay configuration: ${missingKeys.join(", ")}`. If any supplied key has a wrong type, empty value, invalid slug, wrong `credentialProvider`, or invalid C1 payload-collection setting it throws `InvalidRelayConfigurationError(invalidKeys)` with message `Invalid cf-ai-gw-relay configuration: ${invalidKeys.join(", ")}`; invalid values take precedence over missing values when both exist. Secrets are validated as strings with non-whitespace content and returned unchanged; they are never trimmed, normalized, logged, or serialized into errors.
 
-OpenCode runtime provenance is fixed for all tasks: Task 1 creates `C1_INTEGRATED_OPENCODE` from the clean worktree at the pinned base and creates a detached `C1_BASELINE_OPENCODE` at that exact base commit. Tasks 1–7 modify and commit only `C1_INTEGRATED_OPENCODE`; run their commands from `$C1_INTEGRATED_OPENCODE/packages/opencode`. Task 10 and Task 11 GREEN use `C1_INTEGRATED_OPENCODE`; Task 11 RED uses `C1_BASELINE_OPENCODE` and runs from `$C1_BASELINE_OPENCODE/packages/opencode`. Never reset the integrated worktree to baseline or use it for baseline RED.
+`MissingRelayConfigurationError(missingKeys)` renders `Missing required cf-ai-gw-relay configuration: ${missingKeys.join(", ")}`. `InvalidRelayConfigurationError(invalidKeys)` renders `Invalid cf-ai-gw-relay configuration: ${invalidKeys.join(", ")}`; invalid keys take precedence if a request has both invalid and absent settings. `UnsupportedUpstreamError(upstream)` renders `Unsupported cf-ai-gw-relay upstream: <upstream>. Only openai is supported.` These fixed messages contain names only, never configured values. `providerSlug` uses ENV > option > `relay-chatgpt`; present empty/invalid ENV/option values are errors on C1 use. `collectLogPayload` is not user-overridable for C1: false is emitted; true from ENV or provider options adds `collectLogPayload` to the invalid keys.
 
-### Task 1 — Explicit configuration and bounded resolver (A)
+At plugin activation, do not call `resolveRequestConfig`. The `config` hook registers a provider/model catalog without completeness or type validation and stores raw provider options in a closure. If `accountId` or `gatewayId` is absent or invalid during registration, `buildRegisteredModelUrl` uses the syntactically valid non-dispatch placeholder `https://gateway.ai.cloudflare.com/v1/0/0/custom-relay-chatgpt/v1`. On selected C1 `chat.headers`, call `resolveRequestConfig` before setting headers; the thrown error must abort dispatch. The OpenCode C1 host transport must ensure the same preflight happens before any request is sent. Ordinary models return before reading the C1 closure.
 
-**Files:** OpenCode create `packages/opencode/src/provider/credential-provider.ts`; modify `packages/core/src/v1/config/provider.ts` `Info.options`; modify `packages/opencode/test/provider/provider.test.ts`.
+In `apps/opencode-plugin/src/gateway-url.ts`, retain `buildGatewayModelUrl(config: Pick<ResolvedRelayConfig, "accountId" | "gatewayId" | "providerSlug">): string`. It independently `encodeURIComponent`s account ID, Gateway ID and slug, and returns a suffix-free URL ending `/v1`; the AI SDK adds `/responses`.
 
-**Consumes:** `Provider.Info.id`, `.options.credentialProvider`, `ProviderV2.ID`. **Produces:** `credentialProviderID(Pick<Provider.Info, "id" | "options">): ProviderV2.ID`, `CredentialProviderError`.
+## Issue #28 Acceptance Traceability
 
-- [ ] **PROVENANCE PREPARATION:** From the clean OpenCode 1.18.31 worktree capture the integrated worktree and its exact starting commit, verify cleanliness, and create the baseline worktree:
+Every criterion below is a separate acceptance row. All are open before implementation; C1 rows note architecture validation only where evidence exists.
+
+| Issue #28 criterion | SPEC | Task | Required test/manual acceptance | Pre-implementation status |
+| --- | --- | --- | --- | --- |
+| 1. Install `@yohi/cf-ai-gw-relay` as an OpenCode plugin | §§1, 4.1 | 6, 10 | Local package entrypoint smoke + released-package install in Task 11 | Open; C1 architecture only |
+| 2. Remove independent `packages/opencode-plugin` structure | §1 | 6 | Package-layout RED/GREEN; old path absent and new package root builds | Open |
+| 3. Do not vendor OpenCode SDK/framework | §§3, 4.1 | 1, 6 | Package consistency asserts no SDK source copy; source import scan | Open |
+| 4. Use public plugin SDK/API dependency | §§3, 4.1 | 1, 5, 6 | Released public SDK contract/typecheck and manifest dependency assertion | Open |
+| 5. Define `provider.cf-ai-gw-relay` in `opencode.json[c]` | §§4.1, 4.4 | 6, 8 | Registration hook test and isolated runtime config fixture | Open |
+| 6. Do not require `provider.openai` config | §4.1 | 8, 9, 11 | Runtime fixture with only dedicated provider and OpenCode OAuth | Open |
+| 7. Reuse existing OpenCode ChatGPT OAuth identity and subscription quota | §§4.2, 6 | 1–4, 9, 11 | Upstream auth-owner tests and released-host runtime using the existing subscription identity; no separate OAuth/billing path | C1 architecture validated; production open |
+| 8. Select `cf-ai-gw-relay/openai/<model>` | §4.1 | 2, 8, 11 | Provider/model resolution test and runtime model invocation | C1 architecture validated; production open |
+| 9. Plugin provides baseline models | §4.1 | 8 | Default model catalog availability test | Open |
+| 10. User can add models | §4.1 | 8 | User-only custom model fixture is retained | Open |
+| 11. User can partially override plugin model | §4.1 | 8 | Merge table test: user fields override; unspecified defaults remain | Open |
+| 12. Provider options and ENV both configure | §4.3 | 7 | Table-driven config-only/ENV-only tests for all four required fields | Open |
+| 13. ENV overrides provider options | §4.3 | 7 | Table-driven conflicting sentinel test for each field | Open |
+| 14. Missing settings validated on provider use, not plugin load | §4.4 | 7, 8 | Plugin registration PASS with all four absent; selected C1 raises before fetch | Open |
+| 15. Missing OAuth gives actionable error | §§4.6, 6 | 3, 9, 11 | Host test asserts sign-in guidance and no outbound request | C1 architecture validated; production open |
+| 16. Unsupported upstream rejected explicitly | §4.1 | 8, 9 | `cf-ai-gw-relay/anthropic/...` test yields unsupported-upstream error | Open |
+| 17. Gateway/relay failure has no direct fallback | §§4.6, 5, 6 | 9, 11 | Failure injection asserts one request, no direct ChatGPT/OpenAI second request | C1 architecture validated; production open |
+| 18. Ordinary and dedicated routes coexist | §§4.1, 4.2 | 8, 9, 11 | Both-enabled XDG fixture yields separate HTTP 200 paths | C1 architecture validated; production open |
+| 19. Plugin does not intercept/rewrite `openai/*` | §§4.1, 6 | 3, 4, 8, 9, 11 | Ordinary hook/request characterization before GREEN and integrated regression | C1 architecture validated; production open |
+| 20. Remove old fetch interception | §§1.1, 4.1 | 6, 8 | Legacy symbol/path scan and package test; no compatibility mode | Open |
+| 21. No OpenCode private/internal API copy/dependency | §§3, 4.2 | 1, 5, 6 | SDK public-contract tests and package import/source scan | Open |
+| 22. Determine minimum supported OpenCode version | §3.2 | 1, 5, 11 | Official released artifact/type contract and min/predecessor runtime matrix | Open; exact min deliberately determined by Task 5 |
+| 23. Resolve fetch-interposition production blocker | §§3.2, 4.5, 10 | 1–5, 11 | Released-host C1 acceptance proves dedicated Gateway target and no direct rewrite | C1 architecture validated; production open |
+| 24. Check for any other production blockers | §10 | 5, 9, 11 | Release checklist covers security, streams, abort, errors, compatibility | Open |
+| 25. README may say production-ready only after gates | §§3.2, 10 | 10, 11 | README assertion/status test; production wording remains gated until Task 11 passes | Open |
+| 26. Major flows have automated tests | §4.6 | 1–4, 7–9 | Full OpenCode and plugin suites/typecheck/build | Open |
+| 27. Manual real Cloudflare acceptance passes | §§5, 9, 10 | 11 | Protected manual real Gateway/relay acceptance and local OAuth C1 runtime | Open; C1 disposable validation only |
+| 28. README main path updated | §1, 4.1 | 10 | English/Japanese README check for dedicated install/config/model examples | Open |
+
+## Dependency Graph
+
+```text
+Task 1 public OpenCode C1 contract + core capability
+  -> Task 2 model/profile and request-time target materialization
+  -> Task 3 LLM auth, request-prep, and agent consumers
+  -> Task 4 Codex hooks and target-aware OAuth transport
+  -> Task 5 released minimum-host determination and compatibility gate
+  -> Task 6 move package to apps/opencode-plugin and rewire build/release paths
+  -> Task 7 provider-option/ENV resolver and lazy missing-config errors
+  -> Task 8 dedicated registration, models, and config-hook isolation
+  -> Task 9 security, OAuth-missing, unsupported-upstream, streaming, regressions
+  -> Task 10 README/config/deployment/operations/docs and release workflows
+  -> Task 11 production-host runtime acceptance and production-ready decision
+```
+
+No implementation task is parallelized: package and host types cross these boundaries, and committing out of order would obscure the required public-host dependency.
+
+## OpenCode Worktree Provenance
+
+At Task 1 start, set `C1_OPENCODE_SOURCE` to the root of the clean OpenCode source worktree at commit `014614d35b397775e5d397a490fc72368c894ec2`. Task 5 verifies its `origin` matches the public repository URL published in `@opencode-ai/plugin` metadata. Capture it as `C1_INTEGRATED_OPENCODE`, create a detached `C1_BASELINE_OPENCODE` at that commit, and install its dependencies with `bun install --frozen-lockfile`. Tasks 1–4 modify and commit only `C1_INTEGRATED_OPENCODE`; `C1_BASELINE_OPENCODE` remains unchanged for Task 11 RED. Task 5 uses the merged/released public artifact; Task 11 GREEN runs the official minimum-supported OpenCode binary, not the local patched source tree. Never claim production readiness from the C1 patched validation worktree.
+
+## Task 1 — Public OpenCode C1 Option and Shared Credential Owner
+
+**Files (OpenCode upstream worktree):** Modify `packages/core/src/v1/config/provider.ts` (`ConfigProviderV1.Info.options`); create `packages/opencode/src/provider/credential-provider.ts`; modify `packages/opencode/test/provider/provider.test.ts`.
+
+**Consumes:** provider ID, provider options, and the existing `ProviderV2.ID`. **Produces:** public config option `credentialProvider?: "openai"`; internal shared symbol `credentialProviderID(provider: Pick<Provider.Info, "id" | "options">): ProviderV2.ID`; internal `CredentialProviderError` with no secret-bearing message; `OpenAIOAuthRequiredError` that maps missing owner auth to a sign-in action.
+
+Exact new OpenCode error signature in `packages/opencode/src/provider/credential-provider.ts`:
+
+```ts
+export class OpenAIOAuthRequiredError extends Error {
+  readonly providerID: ProviderV2.ID;
+  constructor(providerID: ProviderV2.ID);
+}
+```
+
+Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through OpenCode before using cf-ai-gw-relay/openai/<model>.` The existing host `ProviderAuth.OauthMissing` remains the auth lookup result; the C1 branch maps that result to this actionable error for credential owner `openai`.
+
+- [ ] **PROVENANCE:** From the clean upstream checkout, run `C1_INTEGRATED_OPENCODE="$(git rev-parse --show-toplevel)"`; assert `git rev-parse HEAD` equals `014614d35b397775e5d397a490fc72368c894ec2` and `git status --porcelain` is empty. Set `C1_BASELINE_PARENT="$(mktemp -d)"`, `C1_BASELINE_OPENCODE="$C1_BASELINE_PARENT/opencode-baseline"`; run `git -C "$C1_INTEGRATED_OPENCODE" worktree add --detach "$C1_BASELINE_OPENCODE" 014614d35b397775e5d397a490fc72368c894ec2`, then `(cd "$C1_BASELINE_OPENCODE" && bun install --frozen-lockfile)`. Export all three variables; all Task 1–4 commands run from `$C1_INTEGRATED_OPENCODE/packages/opencode`.
+- [ ] **RED:** Add `test("credentialProviderID is self-owned except explicit C1 delegation", ...)` and `test("provider config accepts explicit credentialProvider", ...)` in `packages/opencode/test/provider/provider.test.ts`. Cases: normal `openai` → `openai`; marked `cf-ai-gw-relay` → `openai`; unmarked `anthropic` → itself; marked non-C1/unknown owner throws without echo; provider config schema accepts only explicit `"openai"`. Run `bun test test/provider/provider.test.ts -t "credentialProviderID is self-owned|provider config accepts explicit credentialProvider"` from `$C1_INTEGRATED_OPENCODE/packages/opencode`. Expected: failing resolver and config-schema assertions, not import failures.
+- [ ] **GREEN:** Add `credentialProvider?: "openai"` to `ConfigProviderV1.Info.options`; export one bounded resolver from `packages/opencode/src/provider/credential-provider.ts`. Only `cf-ai-gw-relay` with the exact `openai` opt-in delegates; all unmarked providers resolve to themselves; other marker values throw `CredentialProviderError` with a fixed redacted message. In C1, map existing `ProviderAuth.OauthMissing({ providerID: ProviderV2.ID.openai })` to `OpenAIOAuthRequiredError(ProviderV2.ID.openai)` with the exact message above. Run the schema/resolver tests and `bun typecheck`; expected PASS and exit 0.
+- [ ] **REFACTOR:** None required. **Commit (OpenCode upstream):** `git add packages/core/src/v1/config/provider.ts packages/opencode/src/provider/credential-provider.ts packages/opencode/test/provider/provider.test.ts && git commit -m "feat(opencode): add explicit relay credential owner"`.
+
+## Task 2 — OpenCode Owner Model/Profile and Late Route Materialization
+
+**Files (OpenCode upstream worktree):** Modify `packages/opencode/src/provider/provider.ts` (`InstanceState.make`, model loops, `getLanguage`, `resolveSDK`); modify `packages/opencode/test/provider/provider.test.ts`.
+
+**Consumes:** Task 1 `credentialProviderID`; user `provider.cf-ai-gw-relay.options`; built-in `openai` model/profile and loader. **Produces:** a dedicated model with provider ID `cf-ai-gw-relay`, OpenAI owner model semantics, Responses loader, and request-time Gateway target resolution without mutating the OpenAI model.
+
+- [ ] **RED:** Add `it.instance("C1 materializes OpenAI owner profile under dedicated identity", ...)` and `it.instance("C1 model resolution does not validate absent route credentials", ...)`. Assert inherited OpenAI profile/variants/limits and Responses loader, selected provider remains C1, unresolved account/Gateway settings do not collapse the provider into `openai` or send a request. Run `bun test test/provider/provider.test.ts -t "C1 materializes|C1 model resolution"`. Expected: profile/loader parity fails on the dedicated candidate; absent settings must not cause model-not-found.
+- [ ] **GREEN:** In `Provider` model materialization, load the owner profile through `credentialProviderID`, overwrite only selected identity/model API target, and keep provider options. Resolve the Gateway target on selected C1 request using the public C1 provider options; ordinary OpenAI retains its existing API URL and loader. Run the same focused command and `bun typecheck`; expected PASS, with no auth value copied to a public provider record.
+- [ ] **REFACTOR:** Centralize all ownership decisions in Task 1. **Commit:** `git add packages/opencode/src/provider/provider.ts packages/opencode/test/provider/provider.test.ts && git commit -m "feat(opencode): preserve owner model semantics for relay"`.
+
+## Task 3 — LLM Auth, Request Preparation, and Agent Consumers
+
+**Files (OpenCode upstream worktree):** Modify `packages/opencode/src/session/llm.ts` (`LLM.run`), `packages/opencode/src/session/llm/request.ts` (`PrepareInput`, `prepare`), `packages/opencode/src/agent/agent.ts` (`Agent.generate`); modify corresponding `packages/opencode/test/session/llm.test.ts` and `packages/opencode/test/agent/agent.test.ts`.
+
+**Consumes:** Task 1 resolver, Task 2 selected model/owner profile, existing `Auth.Service.get`. **Produces:** owner-key auth lookup and OAuth-aware OpenAI/Codex request/generation semantics while retaining selected provider ID and target model.
+
+- [ ] **CHARACTERIZATION before GREEN:** Add and run `it.instance("ordinary openai auth lookup and request preparation remain unchanged", ...)` in `test/session/llm.test.ts`, asserting auth key `openai`, ordinary provider ID, and existing OpenAI OAuth request shape. Run `bun test test/session/llm.test.ts -t "ordinary openai auth lookup and request preparation remain unchanged"`; expected PASS on unchanged OpenCode.
+- [ ] **RED:** Add `it.instance("C1 uses owner auth and OpenAI OAuth request semantics", ...)` to the same test, recording `Auth.Service.get` key and captured prepared request; add `it.instance("C1 missing OAuth requests OpenCode sign-in", ...)` asserting `OpenAIOAuthRequiredError` has provider ID `openai`, the exact message from Task 1, and a zero-call fetch recorder; add `it.instance("C1 agent generation uses OpenAI OAuth semantics", ...)` in `test/agent/agent.test.ts`. Assert auth key `openai`, selected provider remains `cf-ai-gw-relay`, `instructions`/`store` behavior matches the stock OpenAI OAuth request, and the selected Gateway model is passed to generation. Run `bun test test/session/llm.test.ts -t "C1 uses owner auth|C1 missing OAuth"` and `bun test test/agent/agent.test.ts -t "C1 agent generation"`. Expected: current consumers look up selected provider ID and omit owner semantics/actionable OAuth error.
+- [ ] **GREEN:** Pass `credentialProviderID` from `LLM.run` to `LLMRequestPrep.prepare`; resolve auth using the owner; make `Agent.generate` use the same resolver. Gate OpenAI OAuth behavior on effective owner `openai` and auth type `oauth`, never by changing `model.providerID`. If delegated owner auth is absent, map `ProviderAuth.OauthMissing` to Task 1's `OpenAIOAuthRequiredError`. Run focused tests and `bun typecheck`; expected PASS.
+- [ ] **REFACTOR:** None required. Commit `feat(opencode): propagate delegated credential semantics` with only these files/tests.
+
+## Task 4 — Codex Hooks and Target-Aware OAuth Transport
+
+**Files (OpenCode upstream worktree):** Modify `packages/opencode/src/plugin/openai/codex.ts` (`CodexAuthPlugin` hooks and auth-loader fetch), `packages/opencode/src/provider/provider.ts` (`resolveSDK`); modify `packages/opencode/test/plugin/codex.test.ts` and `packages/opencode/test/provider/provider.test.ts`.
+
+**Consumes:** Tasks 1–3. **Produces:** C1 OAuth headers/`chat.params` Codex semantics with Gateway target preserved; ordinary OpenAI keeps its existing direct Codex rewrite.
+
+- [ ] **CHARACTERIZATION before GREEN:** Add `test("ordinary openai OAuth hooks and direct route remain unchanged", ...)` in `test/plugin/codex.test.ts`; run `bun test test/plugin/codex.test.ts -t "ordinary openai OAuth hooks and direct route remain unchanged"`. Expected PASS before changes.
+- [ ] **RED:** Add `test("C1 applies Codex hooks and preserves Gateway target", ...)` with synthetic OAuth and local fetch recorder. Assert OpenAI owner hooks apply, the configured Gateway URL remains the target, `chatgpt.com` rewrite does not occur for C1, the internal marker is stripped before network, and no OAuth value is recorded. Add ordinary provider assertion to the same fixture but separately named. Run `bun test test/plugin/codex.test.ts -t "C1 applies Codex hooks"` and `bun test test/provider/provider.test.ts -t "C1 resolveSDK"`. Expected: C1 hooks return early or direct transport rewrite changes the destination.
+- [ ] **GREEN:** Use `credentialProviderID` for OpenAI semantics; use selected provider ID for route choice. Inject OAuth/account headers through the host owner path; preserve Gateway URL for C1; strip any internal target marker before dispatch; disable incompatible WebSocket target only for C1. Run focused tests and `bun typecheck`; expected PASS.
+- [ ] **REFACTOR:** None required. Commit `feat(opencode): preserve target-aware Codex OAuth transport`.
+
+## Task 5 — Establish the Released Minimum OpenCode Host
+
+**Files:** OpenCode official release/source evidence; later modify `apps/opencode-plugin/package.json`, `apps/opencode-plugin/src/host-version.ts`, and `apps/opencode-plugin/test/host-version.test.ts` in Task 6. Do not change the disposable validation baseline.
+
+**Consumes:** Tasks 1–4 public host capability and tests merged into the authoritative OpenCode source repository. **Produces:** exact `C1_MINIMUM_SUPPORTED_VERSION`, exact published `@opencode-ai/plugin` SDK version paired with it, and a tested compatibility interval. The value is derived from an official released artifact containing the public C1 commit, not chosen from the `1.18.31` patched spike or an unmerged branch.
+
+- [ ] **BASELINE EVIDENCE:** On the detached stock OpenCode `1.18.31` worktree, run `if git -C "$C1_BASELINE_OPENCODE" grep -n credentialProvider -- packages/core/src/v1/config/provider.ts; then exit 1; fi`. Expected: no C1 public option in the stock baseline. Record the pinned commit and this negative result as architecture-validation context only; do not label this host production-supported.
+- [ ] **RELEASE VERIFICATION:** Only after OpenCode Tasks 1–4 are merged into the authoritative upstream, run from the OpenCode source root and save the resulting values for Tasks 6 and 11:
 
   ```sh
-  C1_INTEGRATED_OPENCODE="$(git rev-parse --show-toplevel)"
-  C1_CORE_BASELINE_COMMIT="$(git rev-parse HEAD)"
-  test "$C1_CORE_BASELINE_COMMIT" = "014614d35b397775e5d397a490fc72368c894ec2"
-  test -z "$(git -C "$C1_INTEGRATED_OPENCODE" status --porcelain)"
-  C1_CORE_BASELINE_PARENT="$(mktemp -d)"
-  C1_BASELINE_OPENCODE="$C1_CORE_BASELINE_PARENT/opencode-baseline"
-  git -C "$C1_INTEGRATED_OPENCODE" worktree add --detach "$C1_BASELINE_OPENCODE" "$C1_CORE_BASELINE_COMMIT"
-  (cd "$C1_BASELINE_OPENCODE" && bun install --frozen-lockfile)
-  export C1_INTEGRATED_OPENCODE C1_CORE_BASELINE_COMMIT C1_CORE_BASELINE_PARENT C1_BASELINE_OPENCODE
+  C1_PUBLIC_CORE_COMMIT="$(git rev-parse HEAD)"
+  C1_OPEN_CODE_SDK_REPO_URL="$(npm view @opencode-ai/plugin@1.18.31 repository.url)"
+  C1_OPEN_CODE_REPO_URL="${C1_OPEN_CODE_SDK_REPO_URL#git+}"
+  C1_OPEN_CODE_REPOSITORY="$(node --input-type=module -e 'const url = new URL(process.argv[1]); const [owner, repo] = url.pathname.split("/").filter(Boolean); console.log(`${owner}/${repo.endsWith(".git") ? repo.slice(0, -4) : repo}`)' "$C1_OPEN_CODE_REPO_URL")"
+  C1_SOURCE_REPOSITORY_URL="$(git remote get-url origin)"
+  C1_SOURCE_REPOSITORY_URL="${C1_SOURCE_REPOSITORY_URL#git+}"
+  C1_SOURCE_REPOSITORY="$(node --input-type=module -e 'const raw = process.argv[1].startsWith("git@github.com:") ? `https://github.com/${process.argv[1].slice("git@github.com:".length)}` : process.argv[1]; const url = new URL(raw); const [owner, repo] = url.pathname.split("/").filter(Boolean); console.log(`${owner}/${repo.endsWith(".git") ? repo.slice(0, -4) : repo}`)' "$C1_SOURCE_REPOSITORY_URL")"
+  test "$C1_SOURCE_REPOSITORY" = "$C1_OPEN_CODE_REPOSITORY"
+  git fetch --tags origin
+  C1_MINIMUM_RELEASE_TAG=""
+  for tag in $(git tag --sort=version:refname --contains "$C1_PUBLIC_CORE_COMMIT"); do
+    case "$tag" in *-*) continue ;; esac
+    version="${tag#v}"
+    if gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" >/dev/null 2>&1 && npm view "@opencode-ai/plugin@$version" version >/dev/null 2>&1; then
+      C1_MINIMUM_RELEASE_TAG="$tag"
+      C1_MINIMUM_SUPPORTED_VERSION="$version"
+      C1_PLUGIN_SDK_VERSION="$(npm view "@opencode-ai/plugin@$version" version)"
+      break
+    fi
+  done
+  test -n "$C1_MINIMUM_RELEASE_TAG"
+  export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_MINIMUM_RELEASE_TAG C1_MINIMUM_SUPPORTED_VERSION C1_PLUGIN_SDK_VERSION
   ```
 
-  Keep both worktrees and variables until Task 11 completes. Only `C1_BASELINE_OPENCODE` is disposable; `C1_INTEGRATED_OPENCODE` is the implementation worktree and MUST NOT be removed.
+  The loop selects the lowest stable release tag containing the public C1 host commit for which both the official release and matching public SDK package exist. On that release's source checkout, run `bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts`; the C1 Codex/transport tests MUST use synthetic OAuth and a local fetch recorder to prove the released host preserves the Gateway URL and owner semantics. Then install and invoke its released CLI for Task 11's full product runtime acceptance. Verify the immediately preceding stable release is rejected by `host-version.test.ts`. Record `C1_PUBLIC_CORE_COMMIT`, release tag/URL, `C1_MINIMUM_SUPPORTED_VERSION`, `C1_PLUGIN_SDK_VERSION`, and test output in the task handoff. If the loop finds no qualifying release, stop and keep production support blocked; do not select the disposable patched `1.18.31` runtime.
+- [ ] **GREEN metadata verification:** Set `apps/opencode-plugin/package.json#engines.opencode` to the exact minimum produced above; set `peerDependencies["@opencode-ai/plugin"]` to the tested compatible range and `devDependencies["@opencode-ai/plugin"]` to the SDK version shipped with that host. Add `it("accepts the minimum released host and rejects the preceding release", ...)` in `apps/opencode-plugin/test/host-version.test.ts`; run `(cd apps/opencode-plugin && npm test -- --run test/host-version.test.ts -t "minimum released host" && npm run typecheck)`. Expected: supported minimum accepted; preceding version rejected.
 
-- [ ] **RED:** In `test/provider/provider.test.ts` add `test("C1 credential owner is explicit and bounded", ...)`: normal `openai` → `openai`; marked `cf-ai-gw-relay` → `openai`; unmarked `anthropic` → itself; marked `anthropic` or unknown owner throws without echo. Run `bun test test/provider/provider.test.ts -t "C1 credential owner is explicit and bounded"`. Expected FAIL: missing resolver export or wrong delegated value; proves no shared bounded decision exists yet.
-- [ ] **GREEN:** Add the exact symbol and error above; add optional literal field in `ConfigProviderV1.Info.options` (rest fields stay intact). Run `bun test test/provider/provider.test.ts -t "C1 credential owner is explicit and bounded"`; expected PASS for all four identity categories. Run `bun typecheck`; expected exit 0.
-- [ ] **REFACTOR:** None required. **Commit (OpenCode):** `git add packages/core/src/v1/config/provider.ts packages/opencode/src/provider/credential-provider.ts packages/opencode/test/provider/provider.test.ts && git commit -m "feat(opencode): resolve explicit relay credential owner"`.
+## Task 6 — Relocate the Publishable Plugin Package
 
-### Task 2 — Provider initialization, owner profile and loader (A, D)
+**Files:** Move every tracked `packages/opencode-plugin/{CHANGELOG.md,README.md,package-lock.json,package.json,tsconfig.json,vitest.config.ts,src/**,test/**}` to the same relative path under `apps/opencode-plugin/`; modify `.gitignore`, `deno.json`, `.release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
 
-**Files:** OpenCode modify `packages/opencode/src/provider/provider.ts` (`layer`'s `InstanceState.make` config/model loops, plugin auth loader, `resolveSDK`, `getLanguage`); modify `packages/opencode/test/provider/provider.test.ts`.
+**Consumes:** Task 5 minimum host version/SDK version. **Produces:** one npm-publishable `@yohi/cf-ai-gw-relay` package rooted at `apps/opencode-plugin/`; zero `packages/opencode-plugin/` directory; no vendor copy of OpenCode SDK.
 
-**Consumes:** Task 1 resolver, `ConfigProviderV1.Info`, existing OpenAI database/profile/`CustomModelLoader`. **Produces:** dedicated `Provider.Model` with `providerID = cf-ai-gw-relay`, `id = openai/gpt-6-sol`, `api.id = gpt-6-sol`, `api.npm = @ai-sdk/openai`, `api.url` = Gateway `/v1`, owner capabilities/variants/limits and owner Responses loader; selected provider SDK options remain route owner.
-
-- [ ] **CHARACTERIZATION + RED:** In `test/provider/provider.test.ts`, add `it.instance("enabled_providers preserves explicit C1 allowlist policy", ...)` with three exact fixtures: property absent → default discovery includes C1 after plugin config; `enabled_providers: ["openai", "cf-ai-gw-relay"]` → both remain available; `enabled_providers: ["openai"]` → C1 absent, OpenAI present, input list unchanged and no fallback. Assert provider listing/model lookup results, not only config-hook mutation. Run `bun test test/provider/provider.test.ts -t "enabled_providers preserves explicit C1 allowlist policy"`; this is a host-behavior characterization and MUST PASS on unmodified OpenCode 1.18.31: the test fixture supplies config-hook output before provider enumeration, and the existing `enabled_providers` filter omits C1 without changing the list. It is not a RED implementation step because C1 does not modify the host filter; project hook allowlist mutation is tested in Task 8. Also add `it.instance("C1 model inherits OAuth OpenAI profile without losing Gateway target", ...)` with synthetic OAuth, owner reasoning/variants/limits, selected ID and Gateway URL, and OpenAI Responses loader assertions; add `it.instance("C1 refuses missing owner model", ...)` asserting `Provider.ModelNotFoundError` before fetch. Run `bun test test/provider/provider.test.ts -t "enabled_providers|C1"`. Expected RED in the C1 model test: selected owner profile/Responses loader is not yet materialized; the allowlist characterization passes. No import/type failure is accepted as RED. Actual wire-body parity is checked after Task 6 in Task 4's integrated `llm.test.ts` scenario.
-- [ ] **GREEN:** In config model materialization, copy the *post-hook* owner `gpt-6-sol` profile for only this pair; override selected identity, wire ID, Gateway URL, explicit model options/variants; preserve owner model unchanged. In plugin auth loader initialization, use the same resolver to copy OpenAI loader-produced **`fetch` and dummy `apiKey` only into core's selected provider runtime state**, not into `toPublicInfo` or project plugin; apply after config re-merge so config `credentialProvider`/URL survive. In `resolveSDK`, remove `credentialProvider` from SDK options, retain selected `baseURL`, and use owner `fetch`/dummy API key; in `getLanguage`, choose owner model loader and pass dedicated model as selected. Run `bun test test/provider/provider.test.ts -t "C1"` (PASS), `bun typecheck` (exit 0). No new persistent auth entry.
-- [ ] **REFACTOR:** Remove any duplicated owner tests in the two provider initialization loops; both call Task 1 resolver. Rerun `bun test test/provider/provider.test.ts -t "C1"`. **Commit (OpenCode):** `git add packages/opencode/src/provider/provider.ts packages/opencode/test/provider/provider.test.ts && git commit -m "feat(opencode): materialize delegated OpenAI model profile"`.
-
-### Task 3 — LLM authentication lookup (B)
-
-**Files:** OpenCode modify `packages/opencode/src/session/llm.ts` `LLM.run`; modify `packages/opencode/test/session/llm.test.ts`.
-
-**Consumes:** Task 1 resolver, Task 6 transport, selected `input.model.providerID`, `provider.getProvider`, `Auth.Service.get`. **Produces:** `auth.get(openai)` result for C1 while `input.model.providerID` remains dedicated.
-
-- [ ] **CHARACTERIZATION — ordinary OpenAI behavior:** Add `it.instance("ordinary OpenAI auth lookup remains self-owned", ...)` to `test/session/llm.test.ts`; assert `Auth.Service.get` receives `openai` for selected `openai/gpt-6-sol`. Run `bun test test/session/llm.test.ts -t "ordinary OpenAI auth lookup remains self-owned"`. Expected PASS against unchanged OpenCode; this locks the existing self-owned behavior before Task 3's GREEN.
-- [ ] **RED:** Add `it.instance("C1 LLM uses OpenAI auth without changing provider identity", ...)` to `test/session/llm.test.ts`, using its `drain`, `Provider.use.getModel`, and an `Auth.Service.get` test layer recording the lookup key. Assert key `openai` while `input.model.providerID` is `cf-ai-gw-relay`; use a synthetic OAuth result and the Task 6 local transport test endpoint, without exposing an auth value in output. Run `bun test test/session/llm.test.ts -t "C1 LLM uses OpenAI auth"`. Expected FAIL: `LLM.run` calls `auth.get(input.model.providerID)` (recorded key is `cf-ai-gw-relay`), independently of Task 4's request-prep behavior.
-- [ ] **GREEN:** In `run` resolve selected provider before auth (split the current concurrent `Effect.all`, because `auth.get` depends on `provider.getProvider`), then `auth.get(credentialProviderID(item))`; retain the effective ID locally; Task 4 adds it to `PrepareInput`. Never rewrite the selected provider/model. Run `bun test test/session/llm.test.ts -t "C1 LLM uses OpenAI auth"` (PASS) and `bun typecheck` (exit 0). **REFACTOR:** None required. **Commit (OpenCode):** `git add packages/opencode/src/session/llm.ts packages/opencode/test/session/llm.test.ts && git commit -m "feat(opencode): use delegated credential for LLM auth"`.
-
-### Task 4 — Request preparation semantics (C)
-
-**Files:** OpenCode modify `packages/opencode/src/session/llm/request.ts` `PrepareInput`, `prepare`, `packages/opencode/src/session/llm.ts` `LLM.run`; modify `packages/opencode/test/session/llm.test.ts`.
-
-**Consumes:** Task 3's effective owner ID, `input.auth?.type`, `ProviderTransform.options`. **Produces:** OpenAI OAuth `instructions` and no system-message duplication under dedicated provider; unchanged selected IDs.
-
-- [ ] **CHARACTERIZATION — ordinary OpenAI behavior:** Add `it.instance("ordinary OpenAI OAuth request preparation is unchanged", ...)` in `test/session/llm.test.ts`; assert OpenAI OAuth still produces `instructions`, no synthetic system message and `store: false`. Run `bun test test/session/llm.test.ts -t "ordinary OpenAI OAuth request preparation is unchanged"`. Expected PASS before Task 4's GREEN; this captures current ordinary-provider semantics.
-- [ ] **RED:** Add `it.instance("C1 request preparation matches OpenAI OAuth instructions", ...)` in `test/session/llm.test.ts`; capture both requests through `waitRequest` and assert `instructions` present, no synthetic `system` message, `store: false`, and selected model stays dedicated. Run `bun test test/session/llm.test.ts -t "C1 request preparation"`. Expected FAIL: `prepare` currently checks `input.provider.id === "openai"`.
-- [ ] **GREEN:** Extend `PrepareInput` with `readonly credentialProviderID: ProviderV2.ID`; change `LLM.run` in `packages/opencode/src/session/llm.ts` to pass Task 3's local effective ID; set `isOpenaiOauth = input.credentialProviderID === ProviderV2.ID.openai && input.auth?.type === "oauth"`. Leave tool handling and hooks' selected provider context unchanged. Run `bun test test/session/llm.test.ts -t "C1 request preparation"` (PASS) and `bun typecheck` (exit 0). **REFACTOR:** None required. **Commit (OpenCode):** `git add packages/opencode/src/session/llm.ts packages/opencode/src/session/llm/request.ts packages/opencode/test/session/llm.test.ts && git commit -m "feat(opencode): preserve delegated Codex request preparation"`.
-
-### Task 5 — Built-in Codex hooks (E)
-
-**Files:** OpenCode modify `packages/opencode/src/plugin/openai/codex.ts` `CodexAuthPlugin` `chat.params`/`chat.headers`; modify `packages/opencode/test/plugin/codex.test.ts`.
-
-**Consumes:** `credentialProviderID(input.provider)` from Task 1, selected `input.model.providerID`; built-in hook only (not project plugin). **Produces:** `maxOutputTokens: undefined`, Codex originator/user-agent/session headers for C1 and unchanged normal OpenAI; no token in hook output.
-
-- [ ] **CHARACTERIZATION — ordinary OpenAI behavior:** Add `test("ordinary OpenAI Codex hooks remain unchanged", ...)` to `test/plugin/codex.test.ts`; assert current OpenAI OAuth `chat.params` and `chat.headers` outputs, including `originator`, `session-id`, and cleared `maxOutputTokens`. Run `bun test test/plugin/codex.test.ts -t "ordinary OpenAI Codex hooks remain unchanged"`. Expected PASS before Task 5's GREEN; this protects the pre-existing hook behavior independently of C1.
-- [ ] **RED:** Add `test("C1 hooks honor delegated OpenAI semantics and ordinary OpenAI", ...)` to `test/plugin/codex.test.ts`: invoke both hooks with dedicated `model.providerID`, `provider.options.credentialProvider = "openai"` (`@opencode-ai/plugin.ProviderContext`), normal `openai`, and unmarked other provider. Assert both OpenAI paths set `originator`, `session-id`, clear `maxOutputTokens`; unmarked path untouched. Run `bun test test/plugin/codex.test.ts -t "C1 hooks"`. Expected FAIL: dedicated hooks return early on selected provider ID.
-- [ ] **GREEN:** Replace both selected-ID guards with `credentialProviderID({ id: ProviderV2.ID.make(input.model.providerID), options: input.provider.options }) === ProviderV2.ID.openai`; `ProviderContext` exposes `.options`, but not `.id`, so do not pass it to the resolver directly. Do not put OAuth access/refresh on hook input or output. Run same command (PASS) and `bun typecheck` (exit 0). **REFACTOR:** None required. **Commit (OpenCode):** `git add packages/opencode/src/plugin/openai/codex.ts packages/opencode/test/plugin/codex.test.ts && git commit -m "feat(opencode): apply Codex hooks to delegated provider"`.
-
-### Task 6 — Target-aware OAuth transport (F)
-
-**Files:** OpenCode modify `packages/opencode/src/provider/provider.ts` `resolveSDK`; modify `packages/opencode/src/plugin/openai/codex.ts` `CodexAuthPlugin.auth.loader` returned `fetch`; modify `packages/opencode/test/plugin/codex.test.ts` and `packages/opencode/test/provider/provider.test.ts`.
-
-**Consumes:** Task 2 owner fetch, Task 5 hooks, selected configured Gateway URL, Task 1 resolver. **Produces:** OAuth Authorization/account injection with Gateway URL unchanged for C1, existing direct ChatGPT rewrite for normal OpenAI, no marker on wire.
-
-- [ ] **CHARACTERIZATION — ordinary OpenAI behavior:** Add `test("ordinary OpenAI OAuth transport keeps direct rewrite and no C1 marker", ...)` in `test/plugin/codex.test.ts`; use synthetic OAuth and a local fetch recorder to assert the existing direct Codex destination and absence of `CODEX_TARGET_HEADER`. Run `bun test test/plugin/codex.test.ts -t "ordinary OpenAI OAuth transport keeps direct rewrite and no C1 marker"`. Expected PASS after Task 5 and before Task 6's GREEN; this records the baseline transport boundary.
-- [ ] **RED:** Add `test("C1 OAuth fetch keeps Gateway URL and strips internal target marker", ...)` to `test/plugin/codex.test.ts` using `Bun.serve` and `CodexAuthPlugin` with synthetic OAuth. Invoke loader fetch with Gateway `/v1/responses` and marker `gateway`, inspect destination/header *presence* and absent marker; call unmarked OpenAI `/v1/responses` and assert existing Codex rewrite. Add `it.instance("C1 resolveSDK selects Gateway transport target", ...)` to `test/provider/provider.test.ts` asserting core adds marker only to dedicated internal fetch invocation, not normal. Run `bun test test/plugin/codex.test.ts -t "C1 OAuth fetch"` and `bun test test/provider/provider.test.ts -t "C1 resolveSDK"`. Expected FAIL: current fetch rewrites any `/v1/responses` to direct ChatGPT; core lacks marker.
-- [ ] **GREEN:** Core adds `CODEX_TARGET_HEADER` internally for the dedicated selected SDK only; built-in loader strips it before HTTP/WebSocket dispatch, validates marker/Gateway target, retains OAuth injection/refresh, disables WebSocket for dedicated target, retains normal routing. Reject mismatched target before any network request; do not ship marker to Gateway. Run `bun test test/plugin/codex.test.ts -t "C1 OAuth fetch"` and `bun test test/provider/provider.test.ts -t "C1 resolveSDK"` (both PASS), then `bun typecheck` (exit 0). **REFACTOR:** Centralize marker stripping in the one fetch path so WebSocket and HTTP do not diverge. Rerun `bun test test/plugin/codex.test.ts -t "C1 OAuth fetch"` and `bun test test/provider/provider.test.ts -t "C1 resolveSDK"` (both PASS). **Commit (OpenCode):** `git add packages/opencode/src/provider/provider.ts packages/opencode/src/plugin/openai/codex.ts packages/opencode/test/provider/provider.test.ts packages/opencode/test/plugin/codex.test.ts && git commit -m "feat(opencode): preserve gateway target in Codex OAuth transport"`.
-
-### Task 7 — Agent generation consumer (G)
-
-**Files:** OpenCode modify `packages/opencode/src/agent/agent.ts` `Agent.generate`; modify `packages/opencode/test/agent/agent.test.ts`.
-
-**Consumes:** `provider.getModel`, `provider.getProvider`, `credentialProviderID`, `auth.get`, `provider.getLanguage`. **Produces:** delegated OAuth `streamObject` instructions branch with dedicated selected model; normal `generateObject` for unmarked providers.
-
-- [ ] **RED:** Add `it.instance("C1 Agent.generate selects OpenAI OAuth semantics", ...)` in `test/agent/agent.test.ts` using a local Responses fixture/stream and a dedicated selected model. Assert no system role, `instructions` present, selected Gateway target retained; normal non-OAuth branch unaffected. Run `bun test test/agent/agent.test.ts -t "C1 Agent.generate"`. Expected FAIL: `Agent.generate` looks up `auth.get(model.providerID)` and checks selected ID.
-- [ ] **GREEN:** Lookup `provider.getProvider(model.providerID)`, call shared resolver, use `auth.get(credentialProviderID(selected))` in `Agent.generate` and gate existing `streamObject` branch on owner OpenAI plus OAuth. Preserve selected `resolved` for model/`ProviderTransform.providerOptions`. Run `bun test test/agent/agent.test.ts -t "C1 Agent.generate"` (PASS) and `bun typecheck` (exit 0). **REFACTOR:** None required. **Commit (OpenCode):** `git add packages/opencode/src/agent/agent.ts packages/opencode/test/agent/agent.test.ts && git commit -m "feat(opencode): use credential owner for agent generation"`.
-
-### Task 8 — Dedicated project plugin registration and controls
-
-**Files:** Project modify `packages/opencode-plugin/src/plugin.ts` `CloudflareAiGatewayChatgpt`, `packages/opencode-plugin/src/config.ts` `ResolvedConfig`/`resolveConfig`, `packages/opencode-plugin/src/gateway-url.ts` `buildGatewayModelUrl`, `packages/opencode-plugin/src/control-headers.ts` `createChatHeaders`, `docs/configuration.md`, `docs/configuration.ja.md`; modify `packages/opencode-plugin/test/plugin.test.ts`, `packages/opencode-plugin/test/control-headers.test.ts`, `packages/opencode-plugin/test/gateway-url.test.ts`, `packages/opencode-plugin/test/config.test.ts`, `packages/opencode-plugin/test/redaction.test.ts`.
-
-**Consumes:** Task 1 config contract, `ResolvedConfig` gateway/relay values, `@opencode-ai/plugin.Hooks.config`. **Produces:** dedicated provider config with `openai/gpt-6-sol` and C1 control headers; untouched ordinary OpenAI; payload logging always false.
-
-- [ ] **RED — registration, controls and ordinary-provider isolation:** Add `it("registers only cf-ai-gw-relay provider with explicit OpenAI owner", ...)` in `test/plugin.test.ts` invoking returned `config` hook on `{ provider: { openai: sentinelProvider } }`; assert `openai` deep-equals the sentinel, `cf-ai-gw-relay.options.credentialProvider === "openai"`, model `openai/gpt-6-sol` maps to wire `gpt-6-sol`, and no OAuth fields are registered. Add `it("does not register legacy OpenAI provider model hook", ...)` in `test/plugin.test.ts`, asserting `hooks.provider?.models` is absent. Add `it("ordinary OpenAI config and headers are untouched", ...)` in the same file; run the C1 `config` hook on a fixture with sentinel `openai` config and assert it remains deep-equal, then call the returned `chat.headers` hook with `openai/gpt-6-sol` and assert no throw, C1 header, or mutation. Add `it("adds C1 controls only for dedicated model", ...)` in `test/control-headers.test.ts`, `it("adds /v1 to the Gateway model URL", ...)` in `test/gateway-url.test.ts`, and `it("rejects C1 payload-log opt-in", ...)` in `test/config.test.ts`. Run `npm test -- --run test/plugin.test.ts test/control-headers.test.ts test/gateway-url.test.ts test/config.test.ts`. Expected FAIL: current plugin exposes the legacy `provider.models` hook and has no `config` hook; its model hook rewrites the pre-C1 OpenAI target model. URL has no `/v1`; current payload logging defaults to true. These assertion failures demonstrate RED; module/import failures do not.
-- [ ] **RED:** Add `it("scopes failed C1 configuration to dedicated provider", ...)` in `test/plugin.test.ts` using a missing required Gateway token. Assert plugin factory returns hooks; invoke `config`, catch its expected `PluginConfigurationError`, and assert input config has no `cf-ai-gw-relay` entry. Then invoke `chat.headers` for `openai/gpt-6-sol` and assert no throw, no C1 headers and no mutation; invoke it for `cf-ai-gw-relay/openai/gpt-6-sol` and assert `PluginConfigurationError("C1 configuration unavailable")` and zero fetches. The hooks test calls `config` and catches its error because OpenCode logs/ignores that hook failure; it must not assert plugin activation fails. Add `it("C1 unavailable diagnostic is fixed and redacted", ...)` in `test/redaction.test.ts`; it asserts exact class/message and no sentinel gateway/relay values. Run `npm test -- --run test/plugin.test.ts test/control-headers.test.ts test/gateway-url.test.ts test/config.test.ts test/redaction.test.ts`. Expected FAIL: current plugin construction throws before returning hooks when the required Gateway token is missing; the first assertion requires hook creation to succeed so ordinary/C1 failure paths can be tested independently. The current implementation has no `config` hook, so the test's config-hook assertion also fails behaviorally. No module-resolution failure is accepted as RED.
-- [ ] **CHARACTERIZATION — allowlist preservation:** The project `config` hook MUST preserve `enabled_providers` and never append C1. Cover this assertion in `test/plugin.test.ts` alongside the registration tests above; run `npm test -- --run test/plugin.test.ts -t "enabled_providers"`. Expected PASS on the old implementation because it does not mutate the allowlist; this is a characterization, not a claimed failing RED. The OpenCode host filtering cases live in Task 2 and pass against the pinned host baseline.
-- [ ] **PROVENANCE PREPARATION — preserve local baseline artifact for Task 11:** Before modifying Project source, run these commands from the Project repository root. They capture the current committed Project source in a detached worktree so Task 11 can run its RED preflight against a local package without consulting npm for `@yohi/cf-ai-gw-relay`:
+- [ ] **PROVENANCE PREPARATION:** Before editing the package tree, run from project root:
 
   ```sh
   PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+  git diff --quiet
+  git diff --cached --quiet
   C1_PROJECT_BASELINE_COMMIT="$(git rev-parse HEAD)"
-  C1_BASELINE_PARENT="$(mktemp -d)"
-  C1_BASELINE_PROJECT="$C1_BASELINE_PARENT/project-baseline"
+  C1_PROJECT_BASELINE_PARENT="$(mktemp -d)"
+  C1_BASELINE_PROJECT="$C1_PROJECT_BASELINE_PARENT/project-baseline"
   git -C "$PROJECT_ROOT" worktree add --detach "$C1_BASELINE_PROJECT" "$C1_PROJECT_BASELINE_COMMIT"
   npm --prefix "$C1_BASELINE_PROJECT/packages/opencode-plugin" ci --ignore-scripts
   npm --prefix "$C1_BASELINE_PROJECT/packages/opencode-plugin" run build
   test -f "$C1_BASELINE_PROJECT/packages/opencode-plugin/dist/index.js"
   C1_BASELINE_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_BASELINE_PROJECT/packages/opencode-plugin")"
-  export PROJECT_ROOT C1_PROJECT_BASELINE_COMMIT C1_BASELINE_PARENT C1_BASELINE_PROJECT C1_BASELINE_PLUGIN_SPEC
+  export PROJECT_ROOT C1_PROJECT_BASELINE_COMMIT C1_PROJECT_BASELINE_PARENT C1_BASELINE_PROJECT C1_BASELINE_PLUGIN_SPEC
   ```
 
-  Require `C1_BASELINE_PLUGIN_SPEC` to begin with `file://` and point to this detached local package directory. Keep the worktree and variables until Task 11 completes; do not publish or install this package by registry specifier. Task 11's `verify_plugin_spec` helper checks URL identity, package name, and local `main` file before execution.
-- [ ] **GREEN:** In `config.ts` define `resolveConfig(env: EnvSource, options: PluginOptions = {}, providerOptions: { providerSlug?: unknown } = {}): ResolvedConfig`; use the existing generic `PluginConfigurationError` from `packages/opencode-plugin/src/errors.ts` with the exact message `C1 configuration unavailable`, and test redaction in `packages/opencode-plugin/test/redaction.test.ts`. Require `RELAY_CF_AIG_TOKEN` and `RELAY_SECRET` from environment only; reject `apiKey`/`relayToken` as secret fallbacks; resolve slug from `RELAY_CF_PROVIDER_SLUG`, then `providerOptions.providerSlug`, then `relay-chatgpt`; reject `collectLogPayload: true` and `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD=true`, and always return `collectLogPayload: false`. In `CloudflareAiGatewayChatgpt`, retain host-version validation. `config` MUST first resolve config and construct `nextProvider` in local variables; only after success assign `cfg.provider = { ...cfg.provider, "cf-ai-gw-relay": nextProvider }`, preserving any `enabled_providers` value exactly. No mutation occurs on resolution/construction failure. The host logs and ignores this exception, so the plugin remains loaded: in `chat.headers`, first return `{}` if `input.model.providerID !== "cf-ai-gw-relay"`, without reading closure state; for C1, if closure state is unset, throw `new PluginConfigurationError("C1 configuration unavailable")` before returning any headers or dispatch. Update `test/config.test.ts` to assert environment-only secret sources; update `test/plugin.test.ts` config errors at hook time plus the 3 allowlist and 3 failed-config cases in RED; never expect an exception to abort plugin activation. Remove `provider.models` registration. Build `options.credentialProvider = "openai"`, preserve validated dedicated `providerSlug`, reject conflicting existing config, set `api`/per-model `provider.api` from `buildGatewayModelUrl`, and model `openai/gpt-6-sol` → wire `gpt-6-sol`; never add auth/refresh/options.apiKey. `buildGatewayModelUrl` appends `/v1`; `createChatHeaders` scopes by selected provider/model and fixes payload header false. Run `npm test -- --run test/plugin.test.ts test/control-headers.test.ts test/gateway-url.test.ts test/config.test.ts test/redaction.test.ts` (PASS), `npm run typecheck` (exit 0), `npm run build` (exit 0). After build, create `C1_INTEGRATED_PLUGIN_SPEC` as the file URL of `$PROJECT_ROOT/packages/opencode-plugin` using the Node `pathToFileURL(process.argv[1]).href` command from the Task 8 RED baseline procedure; verify `$PROJECT_ROOT/packages/opencode-plugin/dist/index.js` exists and the spec is `file://`. Update both public guides: model example `cf-ai-gw-relay/openai/gpt-6-sol`; selected provider/owner split and exact `credentialProvider`; env-only tokens/no plugin secret fallback; payload=false and true rejected; slug precedence; explicit allowlist behavior; ordinary `openai/*` remains separate. Preserve current host capability/release gate language. **REFACTOR:** Remove only obsolete `createProviderModels` invocation/import from `plugin.ts`; update existing tests that expect `apiKey`, `relayToken`, or payload logging true. Keep `provider-models.ts` historical snapshot unchanged. Run `npm test -- --run test/plugin.test.ts test/control-headers.test.ts test/gateway-url.test.ts test/config.test.ts test/redaction.test.ts`, `npm run typecheck`, `npm run build` (all pass). Run `rg -n 'openai/gpt-5\\.6-luna' docs/configuration.md docs/configuration.ja.md` and expect no matches. Run `rg -n 'apiKey|relayToken|defaults to `true`' docs/configuration.md docs/configuration.ja.md`; every match must explicitly say C1 does not accept that option/precedence or that payload collection is no longer true by default—no active example/table may advertise it. Run `rg -n 'cf-ai-gw-relay/openai/gpt-6-sol|credentialProvider|RELAY_CF_AIG_TOKEN|RELAY_SECRET|enabled_providers' docs/configuration.md docs/configuration.ja.md`; each concept must appear in both documents with equivalent guidance. **Commit (Project implementation):** `git add packages/opencode-plugin/src/plugin.ts packages/opencode-plugin/src/config.ts packages/opencode-plugin/src/gateway-url.ts packages/opencode-plugin/src/control-headers.ts packages/opencode-plugin/test/plugin.test.ts packages/opencode-plugin/test/control-headers.test.ts packages/opencode-plugin/test/gateway-url.test.ts packages/opencode-plugin/test/config.test.ts packages/opencode-plugin/test/redaction.test.ts && git commit -m "feat(plugin): register dedicated relay provider without OAuth access"`. **Separate documentation commit:** `git add docs/configuration.md docs/configuration.ja.md && git commit -m "docs: C1設定ガイドを日英で同期"`.
+  Keep this detached worktree, local file URL, and environment values through Task 11 RED. The pre-migration package artifact is local; do not install it by npm registry specifier.
 
-### Task 9 — Security boundaries (H)
+- [ ] **RED:** In the existing `packages/opencode-plugin/test/package-consistency.test.ts`, add `it("uses apps/opencode-plugin as the only package root", ...)` asserting `apps/opencode-plugin/package.json` exists, `packages/opencode-plugin/package.json` does not, and manifest/release config point to the new root. Run `npm test -- --run test/package-consistency.test.ts` from `packages/opencode-plugin`; expected FAIL because the final path is absent and old metadata still points at `packages/`.
+- [ ] **GREEN:** `git mv packages/opencode-plugin apps/opencode-plugin`; update package scripts/config references and the consistency test. Use `peerDependencies["@opencode-ai/plugin"]` for the host-supplied SDK contract and an exact matching `devDependencies["@opencode-ai/plugin"]` for typecheck/tests; do not bundle or list the SDK as a runtime dependency. Set `engines.opencode` to the released minimum from Task 5. Keep `semver` as the only runtime dependency. Update `.gitignore`, release-please paths, workflow working directories/cache path, and Deno fmt/lint exclusions. Run `(cd apps/opencode-plugin && npm ci --ignore-scripts && npm run typecheck && npm test && npm run build)`; expected all pass. Run `test ! -e packages/opencode-plugin`.
+- [ ] **REFACTOR:** Remove stale path aliases and release references; do not maintain a compatibility copy/symlink. Run `rg -n 'packages/opencode-plugin' .github .release-please-config.json .release-please-manifest.json deno.json .gitignore`; expected no active references. Stage only the package move and layout config with `git add -A packages/opencode-plugin apps/opencode-plugin .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml` and commit `refactor: relocate OpenCode plugin under apps`.
 
-**Files:** OpenCode modify `packages/opencode/test/provider/provider.test.ts`, `packages/opencode/test/plugin/codex.test.ts`; Project modify `packages/opencode-plugin/test/plugin.test.ts`, `packages/opencode-plugin/test/control-headers.test.ts`.
+## Task 7 — Provider Options, ENV Resolver, and Request-Time Errors
 
-**Consumes:** Tasks 6–8 runtime state, fake OAuth access/refresh sentinels, separate Gateway/relay sentinels. **Produces:** proof of privilege isolation and fail-closed behavior.
+**Files:** Modify `apps/opencode-plugin/src/config.ts`, `apps/opencode-plugin/src/errors.ts`, `apps/opencode-plugin/src/plugin.ts`; tests `apps/opencode-plugin/test/config.test.ts`, `apps/opencode-plugin/test/redaction.test.ts`, `apps/opencode-plugin/test/plugin.test.ts`.
 
-- [ ] **RED:** Add OpenCode `test("C1 marker alone cannot access OAuth credential object", ...)` in `test/plugin/codex.test.ts` (a marker with absent/invalid owner cannot dispatch); provider test `it.instance("C1 rejects absent credential owner and model", ...)` (no network). Add Project `it("config hook exposes no OAuth credential or private auth store", ...)` in `test/plugin.test.ts` with a throwing fake `client.auth` getter, asserting no read of `auth.json`, access or refresh and no such fields in returned hooks; `it("control headers keep auth and account opaque", ...)` in `test/control-headers.test.ts` verifies OAuth-related header unchanged and no secret in metadata. Run `bun test test/plugin/codex.test.ts -t "C1 marker alone"`, `bun test test/provider/provider.test.ts -t "C1 rejects absent"`, `npm test -- --run test/plugin.test.ts test/control-headers.test.ts`. Expected FAIL only at assertions requiring missing fail-closed guard or old plugin behavior; if an assertion already passes on unchanged source, record it as baseline regression protection instead of claiming RED.
-- [ ] **GREEN:** Enforce missing owner/model and invalid target guards in exact Task 2/6 functions, and prevent project plugin activation from accessing `client.auth`/raw tokens in `CloudflareAiGatewayChatgpt`. No new credential API. Run `bun test test/plugin/codex.test.ts -t "C1 marker alone"`, `bun test test/provider/provider.test.ts -t "C1 rejects absent"`, and `npm test -- --run test/plugin.test.ts test/control-headers.test.ts` (all PASS), then `bun typecheck` and `npm run typecheck` (exit 0). **REFACTOR:** None required. **Commit:** OpenCode `git add packages/opencode/test/provider/provider.test.ts packages/opencode/test/plugin/codex.test.ts && git commit -m "test(opencode): guard delegated OAuth boundaries"`; Project `git add packages/opencode-plugin/test/plugin.test.ts packages/opencode-plugin/test/control-headers.test.ts && git commit -m "test(plugin): protect delegated OAuth boundary"`.
+**Consumes:** Task 6 package root and `C1ProviderOptions` public contract. **Produces:** exact exported types and `resolveRequestConfig(env, options)` signature in “Exact Configuration and Runtime Interfaces”; `MissingRelayConfigurationError` for absent keys and `InvalidRelayConfigurationError` for supplied invalid keys; no startup completeness validation.
 
-### Task 10 — Final ordinary OpenAI regression verification (I)
+- [ ] **RED:** In `apps/opencode-plugin/test/config.test.ts`, add table-driven tests for all four fields `accountId`, `gatewayId`, `gatewayToken`, and `relaySecret`: `it("resolves required config from provider options", ...)`, `it("resolves required config from ENV", ...)`, `it("ENV wins for conflicting config", ...)`, `it("present empty ENV does not fall back to option", ...)`, and `it("reports each absent required key", ...)` with one field removed per case. Add `it("reports all absent required keys in stable order", ...)` and use safe distinct sentinels compared only inside tests. Add `it("rejects malformed values without echoing sentinels", ...)` and `it("rejects payload collection true for C1", ...)`. In `redaction.test.ts`, add `it("configuration errors omit all secret sentinels", ...)`. Run `npm test -- --run test/config.test.ts test/redaction.test.ts` from `apps/opencode-plugin`; expected failures for unsupported option keys, incorrect precedence, and absent request-time resolver.
+- [ ] **GREEN:** Implement `resolveRequestConfig(env: EnvSource, options: C1ProviderOptions): ResolvedRelayConfig` exactly as specified above. If any required value is absent, throw `MissingRelayConfigurationError(missingKeys)`; if supplied fields are invalid, throw `InvalidRelayConfigurationError(invalidKeys)` with invalid taking precedence; preserve secret bytes and never echo values. ENV presence takes precedence before validation. Resolve slug ENV > option > default; reject C1 payload collection true. Run the same focused tests; expected PASS.
+- [ ] **RED — lazy registration and provider-option wiring:** Add `it("registers C1 without complete settings and isolates ordinary OpenAI", ...)` in `apps/opencode-plugin/test/plugin.test.ts`; with all four fields absent, invoke plugin factory/config successfully, assert the provider/default catalog is registered, then invoke ordinary `openai/gpt-6-sol` headers and assert no throw, mutation, or C1 header. Add `it("selected C1 request resolves provider-options-only credentials", ...)`; set all four provider options to safe distinct sentinels, invoke config and C1 `chat.headers`, and assert the expected gateway/relay header values by equality without logging. Add `it("C1 missing config fails before fetch with exact missing keys", ...)` and assert ordered keys plus a zero fake-fetch count. Run `npm test -- --run test/plugin.test.ts -t "registers C1 without complete settings|provider-options-only credentials|C1 missing config fails before fetch"`; expected FAIL because current plugin validates at activation and does not read provider-level settings.
+- [ ] **GREEN:** Make the plugin factory and `config` hook register successfully with all four fields absent. Capture provider options/environment without completeness validation. In `chat.headers`, return for any non-C1 model before reading the captured C1 options; for C1, call `resolveRequestConfig` before writing Gateway/relay headers. Run the three tests above; expect registration and ordinary OpenAI pass, C1 missing config raises `MissingRelayConfigurationError` with zero fetch calls, and provider-option sentinels reach only their intended headers.
+- [ ] **REFACTOR:** Remove `apiKey` and `relayToken` aliases; retain no duplicate resolver. Stage `apps/opencode-plugin/src/config.ts`, `errors.ts`, `plugin.ts`, `test/config.test.ts`, `test/redaction.test.ts`, and `test/plugin.test.ts`; commit `feat: resolve C1 settings lazily with ENV precedence`.
 
-**Files:** No files created or modified. Re-run only tests introduced in Tasks 3, 4, 5, 6 and 8.
+## Task 8 — Dedicated Registration, Model Catalog, Merge, and Routing
 
-**Consumes:** Integrated Tasks 1–9 and the ordinary-OpenAI guards established before the corresponding GREEN changes. **Produces:** final proof that stock `openai/gpt-6-sol` remains self-owned, uses its existing direct Codex transport, receives no C1 marker or project control headers, and is unaffected by failed C1 config.
+**Files:** Modify `apps/opencode-plugin/src/plugin.ts` (`CloudflareAiGatewayChatgpt`), `apps/opencode-plugin/src/provider-models.ts` (`createProviderModels`), `apps/opencode-plugin/src/gateway-url.ts` (`buildGatewayModelUrl`), `apps/opencode-plugin/src/control-headers.ts` (`createChatHeaders`); tests `apps/opencode-plugin/test/plugin.test.ts`, `provider-models.test.ts`, `gateway-url.test.ts`, `control-headers.test.ts`.
 
-- [ ] **VERIFY:** From `$C1_INTEGRATED_OPENCODE/packages/opencode`, run `bun test test/session/llm.test.ts -t "ordinary OpenAI auth lookup remains self-owned"`, `bun test test/session/llm.test.ts -t "ordinary OpenAI OAuth request preparation is unchanged"`, `bun test test/plugin/codex.test.ts -t "ordinary OpenAI Codex hooks remain unchanged"`, and `bun test test/plugin/codex.test.ts -t "ordinary OpenAI OAuth transport keeps direct rewrite and no C1 marker"`. From `$PROJECT_ROOT/packages/opencode-plugin`, run `npm test -- --run test/plugin.test.ts -t "ordinary OpenAI config and headers are untouched"`. Expected: all PASS. If any fails, stop and classify as a regression; do not edit production code in this verification task.
-- [ ] **Full verification:** From `$C1_INTEGRATED_OPENCODE/packages/opencode`, run `bun test test/provider/provider.test.ts test/session/llm.test.ts test/plugin/codex.test.ts test/agent/agent.test.ts` and `bun typecheck`; from `$PROJECT_ROOT/packages/opencode-plugin`, run `npm test`, `npm run typecheck`, `npm run build`. Expected: all exit 0.
+**Consumes:** Task 1–5 released public C1 host; Task 7 resolver. **Produces:** config hook registers `cf-ai-gw-relay`; `provider.models` provides OpenAI upstream models only for this provider; URL and headers target the Gateway; user-added/overridden models merge with user values taking precedence.
 
-**RED:** Not applicable; Task 10 creates no tests and makes no implementation change. The characterization tests were added and passed before their associated production GREEN changes in Tasks 3/4/5/6/8.
+- [ ] **RED:** Add `it("registers cf-ai-gw-relay without changing openai", ...)` to `test/plugin.test.ts`; assert exact provider ID, `credentialProvider: "openai"`, no `provider.openai` requirement, and unchanged normal OpenAI config. Add `it("provider models hook is scoped to C1", ...)` asserting ordinary `openai` provider model input is returned unchanged, with no C1 routing URL or mutation. Add `it("provides gpt-6-sol and merges custom C1 models", ...)` to `provider-models.test.ts`; assert the plugin supplies `openai/gpt-6-sol` when present in the OpenAI owner catalog, preserves other C1 models, allows a user-only model, and lets a partial user override replace only supplied fields. Add `it("constructs encoded Gateway v1 base URL", ...)` to `gateway-url.test.ts` and `it("adds controls only to selected C1 model", ...)` to `control-headers.test.ts`. Run `npm test -- --run test/plugin.test.ts test/provider-models.test.ts test/gateway-url.test.ts test/control-headers.test.ts`; expected fail because current hook targets built-in `openai`, no dedicated provider is registered, and the URL/control headers use old IDs.
+- [ ] **GREEN:** In `CloudflareAiGatewayChatgpt`, use public `config` hook to atomically register `provider.cf-ai-gw-relay`, preserving user options/models and adding static `credentialProvider: "openai"` only when absent; reject conflicting markers on C1 use. `createProviderModels` MUST return ordinary providers untouched before reading C1 state. Merge the C1 model map so `openai/gpt-6-sol` is included when present in the owner catalog, user-only models are retained, and user fields win over plugin defaults. The model base URL uses resolved route settings when available; when account/Gateway ID is absent at load, use `MISSING_C1_ROUTE_URL = "https://gateway.ai.cloudflare.com/v1/0/0/custom-relay-chatgpt/v1"`, which is never dispatched because Task 7 request preflight errors first. `createChatHeaders` returns before C1 state access for non-C1; for C1 it resolves config then adds Gateway/relay controls and fixed payload false. Run focused tests; expected PASS and zero ordinary OpenAI mutation.
+- [ ] **REFACTOR:** Remove old `provider.models` registration under `openai` and hard-coded `gpt-5.6-luna` target. Keep one provider-scoped model builder and route helper. Stage `apps/opencode-plugin/src/plugin.ts`, `provider-models.ts`, `gateway-url.ts`, `control-headers.ts`, and their four tests; commit `feat: register dedicated cf-ai-gw-relay provider`.
 
-**GREEN:** Verification only; all five ordinary-provider guards and full suite pass.
+## Task 9 — OAuth Errors, Unsupported Upstream, Security, and Ordinary Regression
 
-**REFACTOR:** None required. **Commit:** None; no Task-10-only test or implementation changes.
+**Files:** OpenCode modify `packages/opencode/src/session/llm.ts`, `packages/opencode/src/provider/credential-provider.ts`, and tests `packages/opencode/test/session/llm.test.ts`, `packages/opencode/test/plugin/codex.test.ts`; Project modify `apps/opencode-plugin/src/errors.ts`, `apps/opencode-plugin/src/plugin.ts`, and tests `apps/opencode-plugin/test/plugin.test.ts`, `apps/opencode-plugin/test/control-headers.test.ts`, `apps/opencode-plugin/test/redaction.test.ts`.
 
-### Task 11 — Production-source runtime acceptance (J; last)
+**Consumes:** Tasks 1–8. **Produces:** missing OAuth guidance; explicit unsupported-upstream error; no credentials in logs; tests for streaming/abort and no fallback; ordinary OpenAI invariant.
 
-**Files:** No tracked source, test, configuration, or documentation edits. Use only the detached OpenCode/Project baseline worktrees and isolated XDG config fixture created below; the integrated runtime uses the existing Tasks 1–7 OpenCode implementation worktree and Task-8 Project implementation worktree. No commit.
+- [ ] **CHARACTERIZATION before GREEN:** In OpenCode `test/session/llm.test.ts` and `test/plugin/codex.test.ts`, assert ordinary `openai/gpt-6-sol` self-owned auth, current request shape, current direct Codex transport, and no C1 marker. Run those tests before the associated C1 GREEN if not already run in Tasks 3–4; expected PASS on stock baseline.
+- [ ] **RED:** Add `it.instance("C1 missing OpenAI auth raises actionable OAuth error", ...)` in OpenCode `packages/opencode/test/session/llm.test.ts`, asserting `OpenAIOAuthRequiredError` tells the user to sign in through OpenCode and a fetch spy remains zero. Add `it("unsupported upstream fails before fetch", ...)`, `it("C1 missing config reports names and sends no request", ...)`, and `it("invalid C1 config leaves ordinary OpenAI unaffected", ...)` to Project `apps/opencode-plugin/test/plugin.test.ts`; add `it("C1 headers never contain provider-option secret values", ...)` in `control-headers.test.ts` and `it("C1 errors omit secret sentinels", ...)` in `redaction.test.ts`. Add `test("C1 preserves Responses SSE and propagates abort", ...)` in OpenCode `packages/opencode/test/session/llm.test.ts`, asserting the SSE event stream is forwarded and cancelling downstream aborts the upstream fetch. Run `bun test test/session/llm.test.ts -t "C1 missing OpenAI auth|C1 preserves Responses SSE"` from the OpenCode worktree and `(cd apps/opencode-plugin && npm test -- --run test/plugin.test.ts test/control-headers.test.ts test/redaction.test.ts)`; expected failures identify missing explicit auth/unsupported/config errors, token/header leakage, stream regression, or route/fallback regression.
+- [ ] **GREEN:** On missing delegated OAuth, OpenCode throws `OpenAIOAuthRequiredError` (with provider ID `openai`) and the user-facing message instructs OpenCode sign-in; no fetch occurs. Project `chat.headers` resolves only selected C1 settings; unsupported upstream throws `UnsupportedUpstreamError` before Gateway. Preserve direct OpenAI routing and C1 Gateway target. Run both focused commands, full Project `npm test`, OpenCode provider/session/agent/Codex suites and typechecks; expected pass, with fetch spies confirming zero network on config/auth errors.
+- [ ] **REFACTOR:** Remove duplicated test fixtures via one named safe-sentinel helper per test package; do not add new auth-store APIs. Commit OpenCode tests with `git add packages/opencode/test/session/llm.test.ts packages/opencode/test/plugin/codex.test.ts && git commit -m "test(opencode): protect C1 OAuth and failure semantics"`; commit Project tests with `git add apps/opencode-plugin/test/plugin.test.ts apps/opencode-plugin/test/control-headers.test.ts apps/opencode-plugin/test/redaction.test.ts && git commit -m "test(plugin): protect C1 failures and ordinary OpenAI isolation"`.
 
-**Consumes:** `C1_BASELINE_OPENCODE` at commit `014614d35b397775e5d397a490fc72368c894ec2`; `C1_INTEGRATED_OPENCODE` containing the seven Task 1–7 commits; Task-8 Project implementation worktree and its `dist/index.js`; detached Task-8 baseline Project worktree and its local `dist/index.js`; existing local OpenCode OAuth in the existing `XDG_DATA_HOME` (OpenCode alone reads it); valid Gateway/relay runtime configuration; deployed existing Custom Provider and relay. **Produces:** sanitized, provenance-verified baseline RED plus integrated C1/ordinary OpenAI acceptance evidence.
+## Task 10 — Package/Release/Documentation Synchronization
 
-| Phase | OpenCode runtime | Project plugin | Expected result |
-| --- | --- | --- | --- |
-| RED | `C1_BASELINE_OPENCODE`, HEAD exactly `014614d35b397775e5d397a490fc72368c894ec2` | detached baseline Project package via local file URL | C1 unavailable; ordinary `openai/gpt-6-sol` HTTP 200; no Gateway fallback |
-| GREEN | `C1_INTEGRATED_OPENCODE`, Tasks 1–7 commits present and base is ancestor; HEAD is not required or expected to equal the pinned base | Task-8 integrated Project package via local file URL | C1 HTTP 200 and ordinary `openai/gpt-6-sol` HTTP 200 under the stated allowlist fixtures |
+**Files:** Project `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.release-please-config.json`, `.release-please-manifest.json`, `.gitignore`, `deno.json`, `README.md`, `README.ja.md`, `docs/configuration.md`, `docs/configuration.ja.md`, `docs/deployment.md`, `docs/operations.md`, `AGENTS.md`, and `apps/opencode-plugin/README.md`/`CHANGELOG.md`.
 
-- [ ] **Prepare isolated runtime config and verify OpenCode provenance:** With Task 1's `C1_BASELINE_OPENCODE`, `C1_INTEGRATED_OPENCODE`, `C1_CORE_BASELINE_COMMIT`, and Task 8's `PROJECT_ROOT`, `C1_BASELINE_PROJECT`, `C1_BASELINE_PLUGIN_SPEC`, and `C1_PROJECT_BASELINE_COMMIT` values exported, run:
+**Consumes:** final package path and exact released host/config contract. **Produces:** no active docs/build/release reference to the old package path and equivalent English/Japanese product guidance.
+
+- [ ] **RED:** Add `it("release, build, and user documentation paths use apps/opencode-plugin", ...)` in `apps/opencode-plugin/test/package-consistency.test.ts` asserting release config/workflows and user docs refer to `apps/opencode-plugin`, package `main`/`exports` resolve under that root, and the old package root is absent. Run `(cd apps/opencode-plugin && npm test -- --run test/package-consistency.test.ts -t "paths use apps/opencode-plugin")`; expected fail while old paths are present.
+- [ ] **GREEN:** Update both READMEs to install `@yohi/cf-ai-gw-relay`, require OpenCode OpenAI/ChatGPT OAuth, define provider `cf-ai-gw-relay`, select `cf-ai-gw-relay/openai/<model>`, explain direct `openai/*` coexistence and no fallback, state only `openai` upstream is initially supported, and route future upstreams to a non-normative future section. State the established `C1_MINIMUM_SUPPORTED_VERSION` and keep production-ready claims blocked until Task 11 succeeds. Update both configuration guides with provider option keys, matching ENV keys, ENV > provider precedence, request-time missing-config behavior, and secret handling: token options are supported but must not be committed; environment variables let users keep secret values out of Git-managed files. Update deployment/operations package references, release-please component/manifest path, CI/release working directory/cache path, `deno.json` lint/fmt exclusion, `.gitignore`, and AGENTS.
+
+  Verify the produced npm package is installable without resolving the plugin itself from a registry:
 
   ```sh
-  test "$(git -C "$C1_BASELINE_OPENCODE" rev-parse HEAD)" = "014614d35b397775e5d397a490fc72368c894ec2"
-  test -z "$(git -C "$C1_BASELINE_OPENCODE" status --porcelain)"
-  test "$C1_CORE_BASELINE_COMMIT" = "014614d35b397775e5d397a490fc72368c894ec2"
-  git -C "$C1_INTEGRATED_OPENCODE" merge-base --is-ancestor "$C1_CORE_BASELINE_COMMIT" HEAD
-  test -z "$(git -C "$C1_INTEGRATED_OPENCODE" status --porcelain)"
-  for subject in \
-    'feat(opencode): resolve explicit relay credential owner' \
-    'feat(opencode): materialize delegated OpenAI model profile' \
-    'feat(opencode): use delegated credential for LLM auth' \
-    'feat(opencode): preserve delegated Codex request preparation' \
-    'feat(opencode): apply Codex hooks to delegated provider' \
-    'feat(opencode): preserve gateway target in Codex OAuth transport' \
-    'feat(opencode): use credential owner for agent generation'
-  do
-    git -C "$C1_INTEGRATED_OPENCODE" log --format=%s "$C1_CORE_BASELINE_COMMIT..HEAD" | rg -Fxq "$subject" || exit 1
-  done
-  test -f "$C1_INTEGRATED_OPENCODE/packages/opencode/src/provider/credential-provider.ts"
-  rg -q '^export function credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/provider/credential-provider.ts"
-  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/session/llm.ts"
-  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/session/llm/request.ts"
-  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/agent/agent.ts"
-  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/plugin/openai/codex.ts"
-  test "$(git -C "$C1_BASELINE_PROJECT" rev-parse HEAD)" = "$C1_PROJECT_BASELINE_COMMIT"
-  test -z "$(git -C "$C1_BASELINE_PROJECT" status --porcelain)"
-  test -f "$C1_BASELINE_PROJECT/packages/opencode-plugin/package.json"
-  test -f "$C1_BASELINE_PROJECT/packages/opencode-plugin/dist/index.js"
-  case "$C1_BASELINE_PLUGIN_SPEC" in file://*) ;; *) exit 1 ;; esac
-  verify_plugin_spec() {
+  C1_PACKAGE_PACK_DIR="$(mktemp -d)"
+  npm --prefix apps/opencode-plugin pack --pack-destination "$C1_PACKAGE_PACK_DIR"
+  C1_PACKAGE_TARBALL="$(node --input-type=module -e 'import { readdirSync } from "node:fs"; const files = readdirSync(process.argv[1]).filter((name) => name.endsWith(".tgz")); if (files.length !== 1) process.exit(1); console.log(`${process.argv[1]}/${files[0]}`)' "$C1_PACKAGE_PACK_DIR")"
+  C1_PACKAGE_SMOKE_DIR="$(mktemp -d)"
+  npm --prefix "$C1_PACKAGE_SMOKE_DIR" init -y
+  npm --prefix "$C1_PACKAGE_SMOKE_DIR" install --ignore-scripts --legacy-peer-deps "$C1_PACKAGE_TARBALL"
+  (cd "$C1_PACKAGE_SMOKE_DIR" && node --input-type=module -e 'import { CloudflareAiGatewayChatgpt } from "@yohi/cf-ai-gw-relay"; if (typeof CloudflareAiGatewayChatgpt !== "function") process.exit(1)')
+  ```
+
+  Expected: the locally packed artifact installs and its public entrypoint imports; only declared runtime dependencies may resolve from npm. Run the package reference test, English/Japanese parity grep checks, `deno fmt --check`, and `deno lint`; expected no active `packages/opencode-plugin` references outside SPEC's explicitly historical notice, this plan's migration steps, and the package-consistency negative assertion. Commit build/release path changes and `package-consistency.test.ts` with `git add .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml apps/opencode-plugin/test/package-consistency.test.ts && git commit -m "build: release plugin from apps path"`. Commit human docs separately with `git add README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md AGENTS.md apps/opencode-plugin/README.md apps/opencode-plugin/CHANGELOG.md && git commit -m "docs: document Issue 28 dedicated provider"`.
+- [ ] **REFACTOR:** Remove obsolete install instructions and stale `apiKey`/`relayToken` precedence from human docs. Run `rg -n 'packages/opencode-plugin|openai/gpt-5\.6-luna|apiKey|relayToken|defaults to .true.' README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md apps/opencode-plugin/README.md .github .release-please-config.json .release-please-manifest.json deno.json`; permitted `apiKey`/`relayToken` matches must explicitly label them as rejected legacy options, and the two named model/path strings must have no active user guidance/config matches. Separately scan production/config paths (excluding the deliberate negative migration assertion in `apps/opencode-plugin/test/package-consistency.test.ts`) for `packages/opencode-plugin`; require zero matches outside SPEC's explicit historical note and this implementation plan. Positive checks for `cf-ai-gw-relay/openai/gpt-6-sol`, `credentialProvider`, `accountId`, `gatewayId`, `gatewayToken`, `relaySecret`, and all four ENV names must find equivalent guidance in English/Japanese. Commit source/config path synchronization with `git add .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml && git commit -m "build: relocate plugin package release paths"`; commit English/Japanese human docs with `git add README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md AGENTS.md apps/opencode-plugin/README.md apps/opencode-plugin/CHANGELOG.md && git commit -m "docs: document Issue 28 dedicated provider"`.
+
+## Task 11 — Production Host/Runtime Acceptance (last)
+
+**Files:** No source/test edits for acceptance; only local `dist/` builds and temporary worktrees/XDG config outside tracked files.
+
+**Consumes:** Task 5 released minimum OpenCode host; Tasks 1–4 released public C1 core capability; Task 6–10 implementation and documentation; existing local OpenCode OAuth state. **Produces:** redacted RED/GREEN runtime evidence and a production-readiness decision based only on the released host artifact.
+
+| Phase | OpenCode artifact | Plugin artifact | Required result |
+| --- | --- | --- | --- |
+| RED | Detached stock source worktree at `014614d35b397775e5d397a490fc72368c894ec2`, invoked by its `bun run src/index.ts` | Local file URL to the detached pre-migration `packages/opencode-plugin` package | C1 unavailable before network; ordinary OpenAI HTTP 200; no fallback |
+| GREEN | Official released `C1_MINIMUM_SUPPORTED_VERSION` CLI containing the C1 public core commit | Local file URL to the Task 6–10 `apps/opencode-plugin` build | C1 and ordinary OpenAI HTTP 200; lazy configuration and all three allowlist cases pass |
+
+- [ ] **Prepare local plugin artifacts and isolated config:** From Project root run `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" ci --ignore-scripts`, then `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" run build`; require `dist/index.js`. Generate `C1_INTEGRATED_PLUGIN_SPEC` as a file URL to the package directory:
+
+  ```sh
+  C1_INTEGRATED_PLUGIN_DIR="$PROJECT_ROOT/apps/opencode-plugin"
+  C1_INTEGRATED_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_INTEGRATED_PLUGIN_DIR")"
+  test -n "$C1_INTEGRATED_PLUGIN_SPEC"
+  test -f "$C1_INTEGRATED_PLUGIN_DIR/package.json"
+  test -f "$C1_INTEGRATED_PLUGIN_DIR/dist/index.js"
+  C1_MINIMUM_OPEN_CODE_BIN="$(command -v opencode)"
+  C1_ACTUAL_OPEN_CODE_VERSION="$("$C1_MINIMUM_OPEN_CODE_BIN" --version)"
+  test "$C1_ACTUAL_OPEN_CODE_VERSION" = "$C1_MINIMUM_SUPPORTED_VERSION"
+  export C1_INTEGRATED_PLUGIN_SPEC C1_MINIMUM_OPEN_CODE_BIN C1_ACTUAL_OPEN_CODE_VERSION
+  ```
+
+  For RED use `C1_BASELINE_PLUGIN_SPEC` generated in Task 6. Verify each URL decodes to its stated local package directory, `package.json.name` is `@yohi/cf-ai-gw-relay`, and `package.json.main` resolves to that same directory's `dist/index.js`. Run `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" pack --dry-run` and verify the generated package contains `dist/index.js` and no OpenCode SDK source. A bare registry specifier MUST NOT be used.
+
+  Create and export an isolated config directory; preserve the existing `XDG_DATA_HOME` for OpenCode OAuth and remove environment overrides that could reintroduce global config:
+
+  ```sh
+  C1_XDG_CONFIG_HOME="$(mktemp -d)"
+  mkdir -p "$C1_XDG_CONFIG_HOME/opencode"
+  unset OPENCODE_CONFIG OPENCODE_CONFIG_DIR
+  export XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME"
+  ```
+
+  Define this config writer for all scenarios:
+
+  ```sh
+  write_c1_config() {
+    C1_CONFIG_FILE="$C1_XDG_CONFIG_HOME/opencode/opencode.json" \
+    C1_PLUGIN_SPEC="$1" \
+    C1_ENABLED_PROVIDERS_JSON="$2" \
+    C1_PROVIDER_OPTIONS_JSON="$3" \
+      node --input-type=module -e '
+        import { writeFileSync } from "node:fs";
+        const config = {
+          plugin: [process.env.C1_PLUGIN_SPEC],
+          model: "openai/gpt-6-sol",
+          provider: { "cf-ai-gw-relay": { options: JSON.parse(process.env.C1_PROVIDER_OPTIONS_JSON) } },
+        };
+        if (process.env.C1_ENABLED_PROVIDERS_JSON !== "") {
+          config.enabled_providers = JSON.parse(process.env.C1_ENABLED_PROVIDERS_JSON);
+        }
+        writeFileSync(process.env.C1_CONFIG_FILE, JSON.stringify(config, null, 2));
+      '
+  }
+  ```
+
+  Verify the local package URL with this exact helper before either runtime phase:
+
+  ```sh
+  verify_c1_plugin_spec() {
     C1_PLUGIN_DIR="$1" C1_PLUGIN_SPEC="$2" node --input-type=module -e '
       import { existsSync, readFileSync } from "node:fs";
       import { resolve } from "node:path";
@@ -311,80 +486,51 @@ OpenCode runtime provenance is fixed for all tasks: Task 1 creates `C1_INTEGRATE
       if (pathToFileURL(dir).href !== process.env.C1_PLUGIN_SPEC) process.exit(1);
     '
   }
-  verify_plugin_spec "$C1_BASELINE_PROJECT/packages/opencode-plugin" "$C1_BASELINE_PLUGIN_SPEC"
-  test -f "$PROJECT_ROOT/packages/opencode-plugin/dist/index.js"
-  C1_XDG_CONFIG_HOME="$(mktemp -d)"
-  mkdir -p "$C1_XDG_CONFIG_HOME/opencode"
-  unset OPENCODE_CONFIG OPENCODE_CONFIG_DIR
-  export XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME"
+  verify_c1_plugin_spec "$C1_BASELINE_PROJECT/packages/opencode-plugin" "$C1_BASELINE_PLUGIN_SPEC"
+  verify_c1_plugin_spec "$C1_INTEGRATED_PLUGIN_DIR" "$C1_INTEGRATED_PLUGIN_SPEC"
+  export C1_XDG_CONFIG_HOME
   ```
 
-  Preserve the existing `XDG_DATA_HOME` so OpenCode reuses its own OAuth state; do not import or merge global user config. Define this exact config writer and use it for each fixture:
+  The provider-option JSON for runtime acceptance contains `credentialProvider: "openai"`, plus account/Gateway IDs when testing option-sourced configuration. Do not write real `gatewayToken` or `relaySecret` into the file; supply live secret values through the existing environment/secret mechanism only.
+
+- [ ] **RED — baseline OpenCode + local pre-migration plugin:** Call `write_c1_config "$C1_BASELINE_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' '{"credentialProvider":"openai"}'`. From `$C1_BASELINE_OPENCODE/packages/opencode`, run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-baseline.log" 2>&1)`; require nonzero exit and `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/c1-baseline.log"`. Confirm no Gateway/relay event occurred. Then run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run --model openai/gpt-6-sol "Reply OK")`; expect usable HTTP 200 with direct Codex routing. This is baseline RED evidence, not production acceptance.
+
+- [ ] **GREEN — released minimum host + integrated local package:** After Task 5 installs/selects the official minimum release, run `C1_MINIMUM_OPEN_CODE_BIN="$(command -v opencode)"` and `C1_ACTUAL_OPEN_CODE_VERSION="$("$C1_MINIMUM_OPEN_CODE_BIN" --version)"`; require `C1_ACTUAL_OPEN_CODE_VERSION` to equal `C1_MINIMUM_SUPPORTED_VERSION`. Use the local `C1_INTEGRATED_PLUGIN_SPEC`, not a registry package. Run the following isolated scenarios:
+
+  For success fixtures, first assert that the four required environment values are present without printing them; actual values come from the protected local environment and MUST NOT be recorded:
 
   ```sh
-  write_c1_config() {
-    C1_CONFIG_FILE="$C1_XDG_CONFIG_HOME/opencode/opencode.json" \
-    C1_PLUGIN_SPEC="$1" \
-    C1_ENABLED_PROVIDERS_JSON="$2" \
-      node --input-type=module -e '
-        import { writeFileSync } from "node:fs";
-        const config = {
-          plugin: [process.env.C1_PLUGIN_SPEC],
-          model: "openai/gpt-6-sol",
-        };
-        if (process.env.C1_ENABLED_PROVIDERS_JSON !== "") {
-          config.enabled_providers = JSON.parse(process.env.C1_ENABLED_PROVIDERS_JSON);
-        }
-        writeFileSync(process.env.C1_CONFIG_FILE, JSON.stringify(config, null, 2));
-      '
-  }
+  for name in RELAY_CF_ACCOUNT_ID RELAY_CF_GATEWAY_ID RELAY_CF_AIG_TOKEN RELAY_SECRET; do
+    test -n "${!name:-}"
+  done
   ```
 
-  The only runtime plugin specifiers allowed are `C1_BASELINE_PLUGIN_SPEC` and `C1_INTEGRATED_PLUGIN_SPEC`, both generated with Node's `pathToFileURL` from the respective local Project package directory. Verify each is a `file://` URL, resolves to its expected worktree's `packages/opencode-plugin/package.json`, whose `name` is `@yohi/cf-ai-gw-relay`, and whose `main` resolves to that same worktree's existing `dist/index.js`. OpenCode 1.18.31 classifies `file://` as a path plugin and resolves the directory's package `main`; a bare package specifier would use `Npm.add` and is forbidden here. npm may install the package's declared dependencies in the local worktree, but Task 11 MUST NOT fetch/execute the plugin itself by registry specifier or published version.
-
-- [ ] **RED preflight — baseline OpenCode + baseline local Project artifact:** Call `write_c1_config "$C1_BASELINE_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'`. Run only from `$C1_BASELINE_OPENCODE/packages/opencode`: `if (cd "$C1_BASELINE_OPENCODE/packages/opencode" && bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/baseline.out" 2>&1); then exit 1; fi`; then require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/baseline.out"`. Expected: provider/model unavailable before any Gateway/relay request; no automatic `openai/*` route. Confirm Gateway/relay logs show no request for this attempt. Then run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")` with the same config and expect usable HTTP 200 through the ordinary direct Codex route, without a C1 marker. Inspect only sanitized status/boundary evidence; never print raw headers, OAuth state, prompts or response body. Both the OpenCode binary source and plugin are the baseline local artifacts; no integrated OpenCode code or registry plugin is used for RED.
-
-- [ ] **GREEN — Tasks 1–7 integrated OpenCode + Task-8 integrated local Project artifact:** From the Task-8 Project worktree run `npm --prefix "$PROJECT_ROOT/packages/opencode-plugin" run build`; expect exit 0 and `$PROJECT_ROOT/packages/opencode-plugin/dist/index.js` exists. The integrated runtime uses `C1_INTEGRATED_OPENCODE`; it MUST NOT be checked for equality with `014614d35b397775e5d397a490fc72368c894ec2`. Its required base ancestry, Task 1–7 commit subjects, source artifacts, clean status, and passing Task 10 tests/typecheck are verified by the provenance checks above and Task 10. Verify Project tracked worktree cleanliness with `test -z "$(git -C "$PROJECT_ROOT" status --porcelain)"`. Generate and verify the integrated plugin spec:
+  Prepare the non-secret option fixture from those environment values without printing them:
 
   ```sh
-  C1_INTEGRATED_PLUGIN_DIR="$PROJECT_ROOT/packages/opencode-plugin"
-  test -f "$C1_INTEGRATED_PLUGIN_DIR/package.json"
-  test -f "$C1_INTEGRATED_PLUGIN_DIR/dist/index.js"
-  C1_INTEGRATED_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_INTEGRATED_PLUGIN_DIR")"
-  case "$C1_INTEGRATED_PLUGIN_SPEC" in file://*) ;; *) exit 1 ;; esac
-  verify_plugin_spec "$C1_INTEGRATED_PLUGIN_DIR" "$C1_INTEGRATED_PLUGIN_SPEC"
-  export C1_INTEGRATED_PLUGIN_SPEC
+  C1_ROUTE_OPTIONS_JSON="$(node --input-type=module -e '
+    const options = { credentialProvider: "openai" };
+    for (const [key, name] of [["accountId", "RELAY_CF_ACCOUNT_ID"], ["gatewayId", "RELAY_CF_GATEWAY_ID"]]) {
+      if (process.env[name] !== undefined) options[key] = process.env[name];
+    }
+    console.log(JSON.stringify(options));
+  ')"
   ```
 
-  Verify the package `main` in `package.json` resolves to this worktree's `dist/index.js`, package `name` is `@yohi/cf-ai-gw-relay`, and `C1_INTEGRATED_PLUGIN_SPEC` equals the `pathToFileURL` of this Project worktree (not `C1_BASELINE_PROJECT`).
+  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '' "$C1_ROUTE_OPTIONS_JSON"` omits `enabled_providers`; normal discovery applies. Run `"$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"`; require HTTP 200.
+  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' "$C1_ROUTE_OPTIONS_JSON"` enables both. Require non-empty `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, `RELAY_CF_AIG_TOKEN`, and `RELAY_SECRET` in the protected local acceptance environment without printing values. Run `"$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"` and then `"$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"`; require usable HTTP 200 for both, C1 through Gateway and ordinary OpenAI direct.
+  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]' "$C1_ROUTE_OPTIONS_JSON"` excludes C1. Run `if "$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-excluded.log" 2>&1; then exit 1; fi`; require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/c1-excluded.log"`, no network request/fallback, then invoke `"$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"` and require HTTP 200.
+  4. Call `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' '{"credentialProvider":"openai"}'`. Run `env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"`; ordinary OpenAI MUST return HTTP 200. Run `if env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-missing.log" 2>&1; then exit 1; fi`; require `rg -q 'MissingRelayConfigurationError' "$C1_XDG_CONFIG_HOME/c1-missing.log"` and `rg -q 'accountId.*gatewayId.*gatewayToken.*relaySecret' "$C1_XDG_CONFIG_HOME/c1-missing.log"`, and confirm zero Gateway/relay calls.
 
-  Run all three host allowlist fixtures with the integrated file URL:
+  For each successful C1 call, verify selected provider identity `cf-ai-gw-relay`, effective owner `openai`, reuse of the existing OpenCode ChatGPT OAuth identity and subscription quota (no separate OAuth/billing path), Gateway `custom-relay-chatgpt/v1/responses`, Gateway authentication, relay `POST /v1/responses`, upstream HTTP 200, usable streaming response and abort behavior, no direct rewrite, and no fallback. Never print or retain secret values, headers, prompts, response bodies, or raw `ChatGPT-Account-Id` values. The temporary XDG config is deleted after acceptance.
 
-  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" ''` omits `enabled_providers`; normal host discovery applies. Run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK")`; expect usable HTTP 200.
-  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'` explicitly enables both routes. Run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK")` and then `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")`; expect each usable HTTP 200 with C1 Gateway path and ordinary direct Codex route respectively.
-  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]'` excludes the dedicated provider. Run `if (cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/excluded.out" 2>&1); then exit 1; fi` and require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/excluded.out"`; expect no Gateway/relay request and no fallback. Then run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")` and expect usable HTTP 200 with its existing direct Codex behavior.
+- [ ] **Production readiness decision:** Mark production-ready only if every Issue #28 acceptance row passes on the released minimum host and real Cloudflare manual acceptance succeeds. If the public host capability has not shipped or any blocker remains, preserve `production-ready: blocked` and report the exact version/release dependency; do not reopen the validated C1 architecture.
+- [ ] **Cleanup:** Remove only generated detached baseline OpenCode/Project worktrees and the temporary XDG config. Do not remove the actual integrated worktrees or published package.
 
-  For each C1 HTTP 200, inspect only sanitized runtime boundaries: selected provider `cf-ai-gw-relay`, effective credential owner `openai`, existing OpenCode OAuth reused, Gateway `custom-relay-chatgpt/v1/responses` preserved, no direct ChatGPT rewrite, Gateway auth PASS, relay `POST /v1/responses`, fixed upstream accepted HTTP 200, usable OpenCode response. No raw header/token/account value or request/response body may be printed or retained. **REFACTOR:** None required. **Commit:** None; attach both OpenCode provenance categories (`pinned baseline detached worktree`, `Tasks 1–7 integrated worktree`) and both plugin provenance categories (`local baseline file URL`, `integrated local file URL`) with redacted status/boundary results to review handoff. After evidence is saved, remove only the generated detached baseline worktrees with `git -C "$PROJECT_ROOT" worktree remove --force "$C1_BASELINE_PROJECT"` and `git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_BASELINE_OPENCODE"`; do not remove or alter either actual integrated Project/OpenCode worktree.
+## Verification Commands
 
-## Error handling and observability matrix
+From `apps/opencode-plugin`: `npm ci --ignore-scripts`, `npm run typecheck`, `npm test`, `npm run build`. From repository root: `deno fmt --check`, `deno lint`, `deno test apps/deno-relay .github/scripts`. From the OpenCode upstream worktree's `packages/opencode`: `bun typecheck` and the provider/LLM/agent/Codex focused suites. Protected OAuth-free acceptance remains separate and MUST NOT be represented as a live OAuth test.
 
-| Boundary | Owner and exact propagation |
-| --- | --- |
-| Selected provider/model absent | `Provider.getModel` yields existing `Provider.ModelNotFoundError`; no network request. |
-| Invalid credential owner pairing/value | `credentialProviderID` throws new `CredentialProviderError` without credential/config value; stop before auth/SDK. |
-| Host `enabled_providers` excludes dedicated provider | OpenCode's existing provider filter omits `cf-ai-gw-relay`; plugin does not change the allowlist; C1 selection fails as provider/model unavailable with no fallback. |
-| Project C1 config resolution fails | OpenCode logs/ignores the `config` hook exception. The plugin has no committed C1 closure state or partial provider entry; ordinary models no-op before closure access, while C1 `chat.headers` throws `PluginConfigurationError("C1 configuration unavailable")` before dispatch. |
-| Effective owner absent/model absent | Provider initialization fails closed with existing `Provider.ModelNotFoundError` for model absence; owner provider absence uses `Provider.InitError` with selected ID and no secret. |
-| Auth lookup missing/refresh fails | Preserve `Auth.Service.get` error/undefined behavior and built-in Codex refresh error; no new token store or fallback. Dedicated missing OAuth fails before dispatch, not as anonymous Gateway request. |
-| Profile/request semantics mismatch | Provider model-loader error remains `Provider.InitError`/`Provider.ModelNotFoundError` at existing boundary; rejected upstream HTTP 400 surfaces unchanged. Never retry by switching profile/provider. |
-| Gateway transport/auth | Native fetch/AI SDK error or Gateway 401/403 surfaces to caller; no direct rewrite/fallback. |
-| Relay | Relay 401/503/504/other existing error or stream abort surfaces unchanged; no second request. |
-| Upstream Codex | Relay forwards upstream status and sanitized response unchanged; no fallback. |
+## Completion Gate
 
-Existing OpenCode diagnostics need no new log fields: safe IDs and existing HTTP status/boundary are sufficient. If attaching a local acceptance record, allow selected/effective provider ID, target category, failing boundary and HTTP status only. Never record `Authorization`, OAuth access/refresh, raw `ChatGPT-Account-Id`, full headers/auth object, prompt or response body. Project plugin and relay must remain blind to OAuth internals.
-
-## Verification and review gate
-
-1. Run OpenCode `bun test test/provider/provider.test.ts test/session/llm.test.ts test/plugin/codex.test.ts test/agent/agent.test.ts` and `bun typecheck` from `packages/opencode`; Project `npm ci --ignore-scripts`, `npm run typecheck`, `npm test`, `npm run build` from `packages/opencode-plugin`. Run project root `deno test apps/deno-relay .github/scripts`, `deno fmt --check`, `deno lint` only if relay/provisioning files change; these are outside this implementation scope.
-2. Verify task-level RED failures are behavior-specific and GREEN commands pass; compare normal and delegated Responses bodies by semantically important field presence/absence (`max_output_tokens`, `reasoning`, `text`), not complete snapshots or a permanent hard-coded allowlist.
-3. Run the English/Japanese guide parity checks specified in Task 8 and compare every task/interface against `SPEC.md`: provider identity/owner, allowlist, config-hook error lifecycle, env-only secrets, payload logging false, OAuth ownership, model semantics, hooks, target-aware transport, ordinary OpenAI isolation, public configuration docs and runtime acceptance must agree. Final pre-implementation condition: **設計書と実装計画書に仕様・用語・型/インターフェース・エラー処理・テスト方針・非機能要件の乖離がないこと**. This plan is `READY FOR REVIEW` only; it does not self-authorize implementation, production support, or release. The §3/§9 protected host-capability and OAuth-free CI gates remain mandatory and separate from local OAuth runtime acceptance.
+This plan is `READY FOR REVIEW`, not implementation approval. Before claiming Issue #28 complete, verify both directions: every Issue #28 acceptance row maps to a normative SPEC rule and a task/test/manual acceptance; every plan behavior agrees with SPEC and Issue #28. Production readiness remains blocked until Task 11 passes on the released minimum host and real Cloudflare manual acceptance succeeds.
