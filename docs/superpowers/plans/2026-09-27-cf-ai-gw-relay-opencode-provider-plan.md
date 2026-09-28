@@ -120,11 +120,29 @@ Task 9 + Task 10 → Task 11 production-source runtime acceptance
 
 Tasks 2 and 5 can be developed independently after Task 1 (different consumers); Task 8 can be developed alongside Tasks 3–4 after Task 6 (different repositories). Integrate and run both suites before either merged commit; never share mutable working trees. All `bun test ...` and `bun typecheck` commands below run in OpenCode `packages/opencode`; all `npm test -- ...` commands run in Project `packages/opencode-plugin`. Never run Bun tests from the OpenCode repository root. RED must be a behavior assertion failing against unchanged implementation, not an import/compiler failure; when adding a test for a new symbol, import it only after the RED test uses an existing public seam, or treat the missing symbol as an explicitly stated RED signal.
 
+OpenCode runtime provenance is fixed for all tasks: Task 1 creates `C1_INTEGRATED_OPENCODE` from the clean worktree at the pinned base and creates a detached `C1_BASELINE_OPENCODE` at that exact base commit. Tasks 1–7 modify and commit only `C1_INTEGRATED_OPENCODE`; run their commands from `$C1_INTEGRATED_OPENCODE/packages/opencode`. Task 10 and Task 11 GREEN use `C1_INTEGRATED_OPENCODE`; Task 11 RED uses `C1_BASELINE_OPENCODE` and runs from `$C1_BASELINE_OPENCODE/packages/opencode`. Never reset the integrated worktree to baseline or use it for baseline RED.
+
 ### Task 1 — Explicit configuration and bounded resolver (A)
 
 **Files:** OpenCode create `packages/opencode/src/provider/credential-provider.ts`; modify `packages/core/src/v1/config/provider.ts` `Info.options`; modify `packages/opencode/test/provider/provider.test.ts`.
 
 **Consumes:** `Provider.Info.id`, `.options.credentialProvider`, `ProviderV2.ID`. **Produces:** `credentialProviderID(Pick<Provider.Info, "id" | "options">): ProviderV2.ID`, `CredentialProviderError`.
+
+- [ ] **PROVENANCE PREPARATION:** From the clean OpenCode 1.18.31 worktree capture the integrated worktree and its exact starting commit, verify cleanliness, and create the baseline worktree:
+
+  ```sh
+  C1_INTEGRATED_OPENCODE="$(git rev-parse --show-toplevel)"
+  C1_CORE_BASELINE_COMMIT="$(git rev-parse HEAD)"
+  test "$C1_CORE_BASELINE_COMMIT" = "014614d35b397775e5d397a490fc72368c894ec2"
+  test -z "$(git -C "$C1_INTEGRATED_OPENCODE" status --porcelain)"
+  C1_CORE_BASELINE_PARENT="$(mktemp -d)"
+  C1_BASELINE_OPENCODE="$C1_CORE_BASELINE_PARENT/opencode-baseline"
+  git -C "$C1_INTEGRATED_OPENCODE" worktree add --detach "$C1_BASELINE_OPENCODE" "$C1_CORE_BASELINE_COMMIT"
+  (cd "$C1_BASELINE_OPENCODE" && bun install --frozen-lockfile)
+  export C1_INTEGRATED_OPENCODE C1_CORE_BASELINE_COMMIT C1_CORE_BASELINE_PARENT C1_BASELINE_OPENCODE
+  ```
+
+  Keep both worktrees and variables until Task 11 completes. Only `C1_BASELINE_OPENCODE` is disposable; `C1_INTEGRATED_OPENCODE` is the implementation worktree and MUST NOT be removed.
 
 - [ ] **RED:** In `test/provider/provider.test.ts` add `test("C1 credential owner is explicit and bounded", ...)`: normal `openai` → `openai`; marked `cf-ai-gw-relay` → `openai`; unmarked `anthropic` → itself; marked `anthropic` or unknown owner throws without echo. Run `bun test test/provider/provider.test.ts -t "C1 credential owner is explicit and bounded"`. Expected FAIL: missing resolver export or wrong delegated value; proves no shared bounded decision exists yet.
 - [ ] **GREEN:** Add the exact symbol and error above; add optional literal field in `ConfigProviderV1.Info.options` (rest fields stay intact). Run `bun test test/provider/provider.test.ts -t "C1 credential owner is explicit and bounded"`; expected PASS for all four identity categories. Run `bun typecheck`; expected exit 0.
@@ -231,8 +249,8 @@ Tasks 2 and 5 can be developed independently after Task 1 (different consumers);
 
 **Consumes:** Integrated Tasks 1–9 and the ordinary-OpenAI guards established before the corresponding GREEN changes. **Produces:** final proof that stock `openai/gpt-6-sol` remains self-owned, uses its existing direct Codex transport, receives no C1 marker or project control headers, and is unaffected by failed C1 config.
 
-- [ ] **VERIFY:** Run `bun test test/session/llm.test.ts -t "ordinary OpenAI auth lookup remains self-owned"`; `bun test test/session/llm.test.ts -t "ordinary OpenAI OAuth request preparation is unchanged"`; `bun test test/plugin/codex.test.ts -t "ordinary OpenAI Codex hooks remain unchanged"`; `bun test test/plugin/codex.test.ts -t "ordinary OpenAI OAuth transport keeps direct rewrite and no C1 marker"`; and `npm test -- --run test/plugin.test.ts -t "ordinary OpenAI config and headers are untouched"` from the respective package working directories. Expected: all PASS. If any fails, stop and classify as a regression; do not edit production code in this verification task.
-- [ ] **Full verification:** Run OpenCode `bun test test/provider/provider.test.ts test/session/llm.test.ts test/plugin/codex.test.ts test/agent/agent.test.ts` and `bun typecheck`; Project `npm test`, `npm run typecheck`, `npm run build`. Expected: all exit 0.
+- [ ] **VERIFY:** From `$C1_INTEGRATED_OPENCODE/packages/opencode`, run `bun test test/session/llm.test.ts -t "ordinary OpenAI auth lookup remains self-owned"`, `bun test test/session/llm.test.ts -t "ordinary OpenAI OAuth request preparation is unchanged"`, `bun test test/plugin/codex.test.ts -t "ordinary OpenAI Codex hooks remain unchanged"`, and `bun test test/plugin/codex.test.ts -t "ordinary OpenAI OAuth transport keeps direct rewrite and no C1 marker"`. From `$PROJECT_ROOT/packages/opencode-plugin`, run `npm test -- --run test/plugin.test.ts -t "ordinary OpenAI config and headers are untouched"`. Expected: all PASS. If any fails, stop and classify as a regression; do not edit production code in this verification task.
+- [ ] **Full verification:** From `$C1_INTEGRATED_OPENCODE/packages/opencode`, run `bun test test/provider/provider.test.ts test/session/llm.test.ts test/plugin/codex.test.ts test/agent/agent.test.ts` and `bun typecheck`; from `$PROJECT_ROOT/packages/opencode-plugin`, run `npm test`, `npm run typecheck`, `npm run build`. Expected: all exit 0.
 
 **RED:** Not applicable; Task 10 creates no tests and makes no implementation change. The characterization tests were added and passed before their associated production GREEN changes in Tasks 3/4/5/6/8.
 
@@ -242,16 +260,42 @@ Tasks 2 and 5 can be developed independently after Task 1 (different consumers);
 
 ### Task 11 — Production-source runtime acceptance (J; last)
 
-**Files:** No tracked source, test, configuration, or documentation edits. Use only the detached Project baseline worktree and isolated XDG config fixture created below; the final integrated plugin artifact is built from the Task-8 Project worktree. No commit.
+**Files:** No tracked source, test, configuration, or documentation edits. Use only the detached OpenCode/Project baseline worktrees and isolated XDG config fixture created below; the integrated runtime uses the existing Tasks 1–7 OpenCode implementation worktree and Task-8 Project implementation worktree. No commit.
 
-**Consumes:** OpenCode worktree at commit `014614d35b397775e5d397a490fc72368c894ec2`; Task-8 Project worktree and its `dist/index.js`; Task-8 baseline Project worktree and its local `dist/index.js`; existing local OpenCode OAuth in the existing `XDG_DATA_HOME` (OpenCode alone reads it); valid Gateway/relay runtime configuration; deployed existing Custom Provider and relay. **Produces:** sanitized, provenance-verified baseline RED plus integrated C1/ordinary OpenAI acceptance evidence.
+**Consumes:** `C1_BASELINE_OPENCODE` at commit `014614d35b397775e5d397a490fc72368c894ec2`; `C1_INTEGRATED_OPENCODE` containing the seven Task 1–7 commits; Task-8 Project implementation worktree and its `dist/index.js`; detached Task-8 baseline Project worktree and its local `dist/index.js`; existing local OpenCode OAuth in the existing `XDG_DATA_HOME` (OpenCode alone reads it); valid Gateway/relay runtime configuration; deployed existing Custom Provider and relay. **Produces:** sanitized, provenance-verified baseline RED plus integrated C1/ordinary OpenAI acceptance evidence.
 
-- [ ] **Prepare isolated runtime config:** Run from the clean OpenCode worktree, with Task 8's `PROJECT_ROOT`, `C1_BASELINE_PROJECT`, `C1_BASELINE_PLUGIN_SPEC` and `C1_PROJECT_BASELINE_COMMIT` values exported. Set `OPENCODE_ROOT` to the root of the clean pinned OpenCode worktree and verify its commit before running:
+| Phase | OpenCode runtime | Project plugin | Expected result |
+| --- | --- | --- | --- |
+| RED | `C1_BASELINE_OPENCODE`, HEAD exactly `014614d35b397775e5d397a490fc72368c894ec2` | detached baseline Project package via local file URL | C1 unavailable; ordinary `openai/gpt-6-sol` HTTP 200; no Gateway fallback |
+| GREEN | `C1_INTEGRATED_OPENCODE`, Tasks 1–7 commits present and base is ancestor; HEAD is not required or expected to equal the pinned base | Task-8 integrated Project package via local file URL | C1 HTTP 200 and ordinary `openai/gpt-6-sol` HTTP 200 under the stated allowlist fixtures |
+
+- [ ] **Prepare isolated runtime config and verify OpenCode provenance:** With Task 1's `C1_BASELINE_OPENCODE`, `C1_INTEGRATED_OPENCODE`, `C1_CORE_BASELINE_COMMIT`, and Task 8's `PROJECT_ROOT`, `C1_BASELINE_PROJECT`, `C1_BASELINE_PLUGIN_SPEC`, and `C1_PROJECT_BASELINE_COMMIT` values exported, run:
 
   ```sh
-  OPENCODE_ROOT="$(git rev-parse --show-toplevel)"
-  test "$(git -C "$OPENCODE_ROOT" rev-parse HEAD)" = "014614d35b397775e5d397a490fc72368c894ec2"
+  test "$(git -C "$C1_BASELINE_OPENCODE" rev-parse HEAD)" = "014614d35b397775e5d397a490fc72368c894ec2"
+  test -z "$(git -C "$C1_BASELINE_OPENCODE" status --porcelain)"
+  test "$C1_CORE_BASELINE_COMMIT" = "014614d35b397775e5d397a490fc72368c894ec2"
+  git -C "$C1_INTEGRATED_OPENCODE" merge-base --is-ancestor "$C1_CORE_BASELINE_COMMIT" HEAD
+  test -z "$(git -C "$C1_INTEGRATED_OPENCODE" status --porcelain)"
+  for subject in \
+    'feat(opencode): resolve explicit relay credential owner' \
+    'feat(opencode): materialize delegated OpenAI model profile' \
+    'feat(opencode): use delegated credential for LLM auth' \
+    'feat(opencode): preserve delegated Codex request preparation' \
+    'feat(opencode): apply Codex hooks to delegated provider' \
+    'feat(opencode): preserve gateway target in Codex OAuth transport' \
+    'feat(opencode): use credential owner for agent generation'
+  do
+    git -C "$C1_INTEGRATED_OPENCODE" log --format=%s "$C1_CORE_BASELINE_COMMIT..HEAD" | rg -Fxq "$subject" || exit 1
+  done
+  test -f "$C1_INTEGRATED_OPENCODE/packages/opencode/src/provider/credential-provider.ts"
+  rg -q '^export function credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/provider/credential-provider.ts"
+  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/session/llm.ts"
+  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/session/llm/request.ts"
+  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/agent/agent.ts"
+  rg -q 'credentialProviderID' "$C1_INTEGRATED_OPENCODE/packages/opencode/src/plugin/openai/codex.ts"
   test "$(git -C "$C1_BASELINE_PROJECT" rev-parse HEAD)" = "$C1_PROJECT_BASELINE_COMMIT"
+  test -z "$(git -C "$C1_BASELINE_PROJECT" status --porcelain)"
   test -f "$C1_BASELINE_PROJECT/packages/opencode-plugin/package.json"
   test -f "$C1_BASELINE_PROJECT/packages/opencode-plugin/dist/index.js"
   case "$C1_BASELINE_PLUGIN_SPEC" in file://*) ;; *) exit 1 ;; esac
@@ -268,8 +312,10 @@ Tasks 2 and 5 can be developed independently after Task 1 (different consumers);
     '
   }
   verify_plugin_spec "$C1_BASELINE_PROJECT/packages/opencode-plugin" "$C1_BASELINE_PLUGIN_SPEC"
+  test -f "$PROJECT_ROOT/packages/opencode-plugin/dist/index.js"
   C1_XDG_CONFIG_HOME="$(mktemp -d)"
   mkdir -p "$C1_XDG_CONFIG_HOME/opencode"
+  unset OPENCODE_CONFIG OPENCODE_CONFIG_DIR
   export XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME"
   ```
 
@@ -296,9 +342,9 @@ Tasks 2 and 5 can be developed independently after Task 1 (different consumers);
 
   The only runtime plugin specifiers allowed are `C1_BASELINE_PLUGIN_SPEC` and `C1_INTEGRATED_PLUGIN_SPEC`, both generated with Node's `pathToFileURL` from the respective local Project package directory. Verify each is a `file://` URL, resolves to its expected worktree's `packages/opencode-plugin/package.json`, whose `name` is `@yohi/cf-ai-gw-relay`, and whose `main` resolves to that same worktree's existing `dist/index.js`. OpenCode 1.18.31 classifies `file://` as a path plugin and resolves the directory's package `main`; a bare package specifier would use `Npm.add` and is forbidden here. npm may install the package's declared dependencies in the local worktree, but Task 11 MUST NOT fetch/execute the plugin itself by registry specifier or published version.
 
-- [ ] **RED preflight — baseline local Project artifact:** Call `write_c1_config "$C1_BASELINE_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'`. Run the dedicated selection from OpenCode `packages/opencode` with output redirected to a temporary log: `if bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/baseline.out" 2>&1; then exit 1; fi`; then require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/baseline.out"`. Expected: provider/model unavailable before any Gateway/relay request; no automatic `openai/*` route. Confirm Gateway/relay logs show no request for this attempt. Then run `bun run src/index.ts run -m openai/gpt-6-sol "Reply OK"` with the same config and expect usable HTTP 200 through the ordinary direct Codex route, without a C1 marker. Inspect only sanitized status/boundary evidence; never print raw headers, OAuth state, prompts or response body. This RED uses the detached baseline Project file URL built in Task 8, not a package downloaded from npm.
+- [ ] **RED preflight — baseline OpenCode + baseline local Project artifact:** Call `write_c1_config "$C1_BASELINE_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'`. Run only from `$C1_BASELINE_OPENCODE/packages/opencode`: `if (cd "$C1_BASELINE_OPENCODE/packages/opencode" && bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/baseline.out" 2>&1); then exit 1; fi`; then require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/baseline.out"`. Expected: provider/model unavailable before any Gateway/relay request; no automatic `openai/*` route. Confirm Gateway/relay logs show no request for this attempt. Then run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")` with the same config and expect usable HTTP 200 through the ordinary direct Codex route, without a C1 marker. Inspect only sanitized status/boundary evidence; never print raw headers, OAuth state, prompts or response body. Both the OpenCode binary source and plugin are the baseline local artifacts; no integrated OpenCode code or registry plugin is used for RED.
 
-- [ ] **GREEN — Task-8-integrated local Project artifact:** From the Task-8 Project worktree run `npm --prefix "$PROJECT_ROOT/packages/opencode-plugin" run build`; expect exit 0 and `$PROJECT_ROOT/packages/opencode-plugin/dist/index.js` exists. Generate and verify the integrated plugin spec:
+- [ ] **GREEN — Tasks 1–7 integrated OpenCode + Task-8 integrated local Project artifact:** From the Task-8 Project worktree run `npm --prefix "$PROJECT_ROOT/packages/opencode-plugin" run build`; expect exit 0 and `$PROJECT_ROOT/packages/opencode-plugin/dist/index.js` exists. The integrated runtime uses `C1_INTEGRATED_OPENCODE`; it MUST NOT be checked for equality with `014614d35b397775e5d397a490fc72368c894ec2`. Its required base ancestry, Task 1–7 commit subjects, source artifacts, clean status, and passing Task 10 tests/typecheck are verified by the provenance checks above and Task 10. Verify Project tracked worktree cleanliness with `test -z "$(git -C "$PROJECT_ROOT" status --porcelain)"`. Generate and verify the integrated plugin spec:
 
   ```sh
   C1_INTEGRATED_PLUGIN_DIR="$PROJECT_ROOT/packages/opencode-plugin"
@@ -314,11 +360,11 @@ Tasks 2 and 5 can be developed independently after Task 1 (different consumers);
 
   Run all three host allowlist fixtures with the integrated file URL:
 
-  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" ''` omits `enabled_providers`; normal host discovery applies. From OpenCode `packages/opencode`, run `XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"`; expect usable HTTP 200.
-  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'` explicitly enables both routes. Run `XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"` and then `XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK"`; expect each usable HTTP 200 with C1 Gateway path and ordinary direct Codex route respectively.
-  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]'` excludes the dedicated provider. Run `if XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/excluded.out" 2>&1; then exit 1; fi`, then require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/excluded.out"`; expect no Gateway/relay request and no fallback. Then run `XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK"` and expect usable HTTP 200 with its existing direct Codex behavior.
+  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" ''` omits `enabled_providers`; normal host discovery applies. Run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK")`; expect usable HTTP 200.
+  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]'` explicitly enables both routes. Run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK")` and then `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")`; expect each usable HTTP 200 with C1 Gateway path and ordinary direct Codex route respectively.
+  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]'` excludes the dedicated provider. Run `if (cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/excluded.out" 2>&1); then exit 1; fi` and require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/excluded.out"`; expect no Gateway/relay request and no fallback. Then run `(cd "$C1_INTEGRATED_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run -m openai/gpt-6-sol "Reply OK")` and expect usable HTTP 200 with its existing direct Codex behavior.
 
-  For each C1 HTTP 200, inspect only sanitized runtime boundaries: selected provider `cf-ai-gw-relay`, effective credential owner `openai`, existing OpenCode OAuth reused, Gateway `custom-relay-chatgpt/v1/responses` preserved, no direct ChatGPT rewrite, Gateway auth PASS, relay `POST /v1/responses`, fixed upstream accepted HTTP 200, usable OpenCode response. No raw header/token/account value or request/response body may be printed or retained. **REFACTOR:** None required. **Commit:** None; attach the two plugin provenance URLs' source categories (`local baseline file URL`, `integrated local file URL`), redacted status and pass/fail boundary evidence to review handoff. After evidence is saved, remove only the generated detached baseline worktree with `git -C "$PROJECT_ROOT" worktree remove --force "$C1_BASELINE_PROJECT"`; do not remove or alter either actual Project/OpenCode worktree.
+  For each C1 HTTP 200, inspect only sanitized runtime boundaries: selected provider `cf-ai-gw-relay`, effective credential owner `openai`, existing OpenCode OAuth reused, Gateway `custom-relay-chatgpt/v1/responses` preserved, no direct ChatGPT rewrite, Gateway auth PASS, relay `POST /v1/responses`, fixed upstream accepted HTTP 200, usable OpenCode response. No raw header/token/account value or request/response body may be printed or retained. **REFACTOR:** None required. **Commit:** None; attach both OpenCode provenance categories (`pinned baseline detached worktree`, `Tasks 1–7 integrated worktree`) and both plugin provenance categories (`local baseline file URL`, `integrated local file URL`) with redacted status/boundary results to review handoff. After evidence is saved, remove only the generated detached baseline worktrees with `git -C "$PROJECT_ROOT" worktree remove --force "$C1_BASELINE_PROJECT"` and `git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_BASELINE_OPENCODE"`; do not remove or alter either actual integrated Project/OpenCode worktree.
 
 ## Error handling and observability matrix
 
