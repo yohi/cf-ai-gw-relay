@@ -1,6 +1,6 @@
 # Issue #28 Dedicated OpenCode Provider Implementation Plan
 
-> **For agentic workers:** Execute tasks in the dependency order below. Each implementation task uses RED → verify RED → minimum GREEN → verify GREEN → REFACTOR → commit. Do not declare production-ready until Task 11 passes on the released minimum-supported OpenCode artifact.
+> **For agentic workers:** Execute tasks in the dependency order below. Each implementation task uses RED → verify RED → minimum GREEN → verify GREEN → REFACTOR → commit. Do not declare production-ready until Task 13 passes on the finalized package and released minimum-supported OpenCode artifact.
 
 **Goal:** Implement Issue #28 so users select `cf-ai-gw-relay/openai/<model>` for Gateway-routed traffic while OpenCode reuses its existing ChatGPT OAuth, ordinary `openai/<model>` remains unchanged, and the final package is `@yohi/cf-ai-gw-relay` under `apps/opencode-plugin/`.
 
@@ -49,7 +49,7 @@ Anthropic/Google upstream implementations, generic credential graphs, plugin-own
 | `apps/opencode-plugin/src/provider-models.ts` | Dedicated provider defaults and user-over-plugin model merge. |
 | `apps/opencode-plugin/src/gateway-url.ts` | `buildGatewayModelUrl`, `buildRegisteredModelUrl`, and non-dispatch registration placeholder. |
 | `apps/opencode-plugin/src/control-headers.ts` | C1-only Gateway/relay controls; ordinary OpenAI no-op. |
-| `apps/opencode-plugin/src/host-version.ts` | Gate against the minimum released OpenCode version established by Task 5. |
+| `apps/opencode-plugin/src/host-version.ts` | Candidate-only host guard during runtime selection; Task 12 replaces it with final supported range. |
 | `apps/opencode-plugin/src/core.ts` | Final stable plugin name. |
 | `apps/opencode-plugin/src/hooks.ts` | Public SDK hook types. |
 | `apps/opencode-plugin/test/config.test.ts` | Source precedence, lazy validation, missing/invalid key enumeration. |
@@ -97,6 +97,7 @@ The project plugin consumes only the published public contract (`@opencode-ai/pl
 ## Files to Create
 
 - OpenCode upstream: `packages/opencode/src/provider/credential-provider.ts`.
+- Project candidate phase: `apps/opencode-plugin/src/c1-release-candidates.ts`, generated from Task 5's ordered candidate TSV and removed in Task 12.
 - Project package files are relocated from `packages/opencode-plugin/` to `apps/opencode-plugin/`; no parallel legacy package is created.
 - Plan output: this file only.
 
@@ -184,33 +185,33 @@ Every criterion below is a separate acceptance row. All are open before implemen
 
 | Issue #28 criterion | SPEC | Task | Required test/manual acceptance | Pre-implementation status |
 | --- | --- | --- | --- | --- |
-| 1. Install `@yohi/cf-ai-gw-relay` as an OpenCode plugin | §§1, 4.1 | 6, 10 | Local package entrypoint smoke + released-package install in Task 11 | Open; C1 architecture only |
+| 1. Install `@yohi/cf-ai-gw-relay` as an OpenCode plugin | §§1, 4.1 | 6, 10, 13 | Task 10 local npm-packed artifact import + Task 13 final packed-package runtime load | Open; C1 architecture only |
 | 2. Remove independent `packages/opencode-plugin` structure | §1 | 6 | Package-layout RED/GREEN; old path absent and new package root builds | Open |
 | 3. Do not vendor OpenCode SDK/framework | §§3, 4.1 | 1, 6 | Package consistency asserts no SDK source copy; source import scan | Open |
 | 4. Use public plugin SDK/API dependency | §§3, 4.1 | 1, 5, 6 | Released public SDK contract/typecheck and manifest dependency assertion | Open |
 | 5. Define `provider.cf-ai-gw-relay` in `opencode.json[c]` | §§4.1, 4.4 | 6, 8 | Registration hook test and isolated runtime config fixture | Open |
 | 6. Do not require `provider.openai` config | §4.1 | 8, 9, 11 | Runtime fixture with only dedicated provider and OpenCode OAuth | Open |
-| 7. Reuse existing OpenCode ChatGPT OAuth identity and subscription quota | §§4.2, 6 | 1–4, 9, 11 | Upstream auth-owner tests and released-host runtime using the existing subscription identity; no separate OAuth/billing path | C1 architecture validated; production open |
-| 8. Select `cf-ai-gw-relay/openai/<model>` | §4.1 | 2, 8, 11 | Provider/model resolution test and runtime model invocation | C1 architecture validated; production open |
+| 7. Reuse existing OpenCode ChatGPT OAuth identity and subscription quota | §§4.2, 6 | 1–4, 9, 11, 13 | Upstream owner tests and final released-host runtime using the existing subscription identity; no separate OAuth/billing path | C1 architecture validated; production open |
+| 8. Select `cf-ai-gw-relay/openai/<model>` | §4.1 | 2, 8, 11, 13 | Provider/model resolution test and candidate/final runtime invocations | C1 architecture validated; production open |
 | 9. Plugin provides baseline models | §4.1 | 8 | Default model catalog availability test | Open |
 | 10. User can add models | §4.1 | 8 | User-only custom model fixture is retained | Open |
 | 11. User can partially override plugin model | §4.1 | 8 | Merge table test: user fields override; unspecified defaults remain | Open |
 | 12. Provider options and ENV both configure | §4.3 | 7 | Table-driven config-only/ENV-only tests for all four required fields | Open |
 | 13. ENV overrides provider options | §4.3 | 7 | Table-driven conflicting sentinel test for each field | Open |
 | 14. Missing settings validated on provider use, not plugin load | §4.4 | 7, 8 | Plugin registration PASS with all four absent; selected C1 raises before fetch | Open |
-| 15. Missing OAuth gives actionable error | §§4.6, 6 | 3, 9, 11 | Host test asserts sign-in guidance and no outbound request | C1 architecture validated; production open |
+| 15. Missing OAuth gives actionable error | §§4.6, 6 | 3, 9, 11, 13 | Task 3 host test asserts sign-in guidance/no fetch; later tasks reverify | C1 architecture validated; production open |
 | 16. Unsupported upstream rejected explicitly | §4.1 | 8, 9 | `cf-ai-gw-relay/anthropic/...` test yields unsupported-upstream error | Open |
-| 17. Gateway/relay failure has no direct fallback | §§4.6, 5, 6 | 9, 11 | Failure injection asserts one request, no direct ChatGPT/OpenAI second request | C1 architecture validated; production open |
-| 18. Ordinary and dedicated routes coexist | §§4.1, 4.2 | 8, 9, 11 | Both-enabled XDG fixture yields separate HTTP 200 paths | C1 architecture validated; production open |
-| 19. Plugin does not intercept/rewrite `openai/*` | §§4.1, 6 | 3, 4, 8, 9, 11 | Ordinary hook/request characterization before GREEN and integrated regression | C1 architecture validated; production open |
+| 17. Gateway/relay failure has no direct fallback | §§4.6, 5, 6 | 9, 11, 13 | Failure injection asserts one request, no direct ChatGPT/OpenAI second request | C1 architecture validated; production open |
+| 18. Ordinary and dedicated routes coexist | §§4.1, 4.2 | 8, 9, 11, 13 | Both-enabled XDG fixture yields separate HTTP 200 paths | C1 architecture validated; production open |
+| 19. Plugin does not intercept/rewrite `openai/*` | §§4.1, 6 | 3, 4, 8, 9, 11, 13 | Ordinary hook/request characterization before GREEN and candidate/final regression | C1 architecture validated; production open |
 | 20. Remove old fetch interception | §§1.1, 4.1 | 6, 8 | Legacy symbol/path scan and package test; no compatibility mode | Open |
 | 21. No OpenCode private/internal API copy/dependency | §§3, 4.2 | 1, 5, 6 | SDK public-contract tests and package import/source scan | Open |
-| 22. Determine minimum supported OpenCode version | §3.2 | 1, 5, 11 | Official released artifact/type contract and min/predecessor runtime matrix | Open; exact min deliberately determined by Task 5 |
-| 23. Resolve fetch-interposition production blocker | §§3.2, 4.5, 10 | 1–5, 11 | Released-host C1 acceptance proves dedicated Gateway target and no direct rewrite | C1 architecture validated; production open |
-| 24. Check for any other production blockers | §10 | 5, 9, 11 | Release checklist covers security, streams, abort, errors, compatibility | Open |
-| 25. README may say production-ready only after gates | §§3.2, 10 | 10, 11 | README assertion/status test; production wording remains gated until Task 11 passes | Open |
+| 22. Determine minimum supported OpenCode version | §3.2 | 5, 11, 12, 13 | Candidate discovery, candidate runtime loop, final minimum/predecessor host-version tests | Open; Task 11 selects, Task 12 records, Task 13 revalidates |
+| 23. Resolve fetch-interposition production blocker | §§3.2, 4.5, 10 | 1–5, 11, 13 | Released-host C1 acceptance proves dedicated Gateway target and no direct rewrite | C1 architecture validated; production open |
+| 24. Check for any other production blockers | §10 | 5, 9, 11, 13 | Release checklist covers security, streams, abort, errors, compatibility | Open |
+| 25. README may say production-ready only after gates | §§3.2, 10 | 10, 12, 13 | Task 10 retains blocked status; Task 12 records minimum; Task 13 gates ready wording | Open |
 | 26. Major flows have automated tests | §4.6 | 1–4, 7–9 | Full OpenCode and plugin suites/typecheck/build | Open |
-| 27. Manual real Cloudflare acceptance passes | §§5, 9, 10 | 11 | Protected manual real Gateway/relay acceptance and local OAuth C1 runtime | Open; C1 disposable validation only |
+| 27. Manual real Cloudflare acceptance passes | §§5, 9, 10 | 11, 13 | Candidate runtime selection and Task 13 post-metadata final Gateway/relay acceptance | Open; C1 disposable validation only |
 | 28. README main path updated | §1, 4.1 | 10 | English/Japanese README check for dedicated install/config/model examples | Open |
 
 ## Dependency Graph
@@ -221,13 +222,15 @@ Task 1 public OpenCode C1 contract + core capability
   -> Task 3 LLM auth, request-prep, and agent consumers
   -> Task 4 Codex hooks, target-aware transport, and all remaining host runtime behavior
   -> External Gate: Tasks 1–4 upstream contribution merged
-  -> Task 5 authoritative merge provenance + released minimum-host determination
-  -> Task 6 move package to apps/opencode-plugin and rewire build/release paths
+  -> Task 5 authoritative merge provenance + ordered released-host candidates
+  -> Task 6 move package to apps/opencode-plugin without claiming a production minimum
   -> Task 7 provider-option/ENV resolver and lazy missing-config errors
   -> Task 8 dedicated registration, models, and config-hook isolation
   -> Task 9 security, OAuth-missing, unsupported-upstream, streaming, regressions
-  -> Task 10 README/config/deployment/operations/docs and release workflows
-  -> Task 11 production-host runtime acceptance and production-ready decision
+  -> Task 10 README/config/deployment/operations/docs and release workflows (status remains blocked)
+  -> Task 11 candidate runtime loop selects first production-capable released host
+  -> Task 12 final minimum metadata/docs and host-version tests
+  -> Task 13 final runtime acceptance on the finalized package/host pair
 ```
 
 No implementation task is parallelized: package and host types cross these boundaries, and committing out of order would obscure the required public-host dependency.
@@ -290,11 +293,11 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 - [ ] **GREEN:** Use `credentialProviderID` for OpenAI semantics; use selected provider ID for route choice. Inject OAuth/account headers through the host owner path; preserve Gateway URL for C1; strip any internal target marker before dispatch; disable incompatible WebSocket target only for C1. Run focused tests and `bun typecheck`; expected PASS.
 - [ ] **REFACTOR:** None required. Commit `feat(opencode): preserve target-aware Codex OAuth transport`. Combine the Task 1–4 host commits in one upstream contribution PR; after creation, export its URL as `C1_OPENCODE_UPSTREAM_PR_URL`. Do not start Task 5 until that PR is merged into the authoritative OpenCode repository.
 
-## Task 5 — Establish the Released Minimum OpenCode Host
+## Task 5 — Discover Released OpenCode C1 Candidates
 
-**Files:** OpenCode official upstream release/source evidence and a temporary isolated npm CLI installation only. Task 5 MUST NOT edit Project files; package metadata and host-version tests are created in Task 6 after relocation.
+**Files:** OpenCode official upstream release/source evidence and temporary detached release-source worktrees only. Task 5 MUST NOT install the production CLI or edit Project files.
 
-**Consumes:** Tasks 1–4 public host capability and tests plus the merged upstream PR metadata. **Produces:** authoritative merged C1 commit SHA, exact `C1_MINIMUM_SUPPORTED_VERSION`, exact published `@opencode-ai/plugin` SDK version, tested compatibility interval, and exact `C1_MINIMUM_OPEN_CODE_BIN` path to the matching official `opencode-ai` artifact. The version comes from a released official artifact containing the merged public C1 commit, not a local HEAD or patched spike.
+**Consumes:** Tasks 1–4 public host capability/tests and merged upstream PR metadata. **Produces:** authoritative merged C1 commit SHA and a semver-sorted `C1_RELEASE_CANDIDATES_FILE`; each row contains `version`, `releaseTag`, `pluginSdkVersion`, `cliPackageVersion`, `releaseURL`, and `releaseCommit`. Task 5 does not choose or write a production minimum and does not edit Project files.
 
 - [ ] **BASELINE EVIDENCE:** On the detached stock OpenCode `1.18.31` worktree, run `if git -C "$C1_BASELINE_OPENCODE" grep -n credentialProvider -- packages/core/src/v1/config/provider.ts; then exit 1; fi`. Expected: no C1 public option in the stock baseline. Record the pinned commit and this negative result as architecture-validation context only; do not label this host production-supported.
 - [ ] **RELEASE VERIFICATION:** Only after OpenCode Tasks 1–4 are merged into the authoritative upstream, run from the OpenCode source root and save the resulting values for Tasks 6 and 11:
@@ -317,36 +320,37 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   C1_DEFAULT_BRANCH="$(gh repo view "$C1_OPEN_CODE_REPOSITORY" --json defaultBranchRef --jq .defaultBranchRef.name)"
   git fetch origin "$C1_DEFAULT_BRANCH"
   git -C "$C1_OPENCODE_SOURCE" merge-base --is-ancestor "$C1_PUBLIC_CORE_COMMIT" "origin/$C1_DEFAULT_BRANCH"
-  C1_MINIMUM_RELEASE_TAG=""
+  C1_RELEASE_CANDIDATE_PARENT="$(mktemp -d)"
+  C1_RELEASE_CANDIDATES_FILE="$C1_RELEASE_CANDIDATE_PARENT/candidates.tsv"
+  : > "$C1_RELEASE_CANDIDATES_FILE"
   for tag in $(git tag --sort=version:refname --contains "$C1_PUBLIC_CORE_COMMIT"); do
     case "$tag" in *-*) continue ;; esac
     version="${tag#v}"
-    if gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" >/dev/null 2>&1 && npm view "@opencode-ai/plugin@$version" version >/dev/null 2>&1; then
-      C1_MINIMUM_RELEASE_TAG="$tag"
-      C1_MINIMUM_SUPPORTED_VERSION="$version"
-      C1_PLUGIN_SDK_VERSION="$(npm view "@opencode-ai/plugin@$version" version)"
-      break
+    if ! gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" --json url >/dev/null 2>&1; then continue; fi
+    C1_PLUGIN_SDK_VERSION="$(npm view "@opencode-ai/plugin@$version" version 2>/dev/null)"
+    C1_CLI_PACKAGE_VERSION="$(npm view "opencode-ai@$version" version 2>/dev/null)"
+    if [ "$C1_PLUGIN_SDK_VERSION" != "$version" ] || [ "$C1_CLI_PACKAGE_VERSION" != "$version" ]; then continue; fi
+    C1_RELEASE_SOURCE="$C1_RELEASE_CANDIDATE_PARENT/opencode-$version"
+    git -C "$C1_OPENCODE_SOURCE" worktree add --detach "$C1_RELEASE_SOURCE" "$tag"
+    if (cd "$C1_RELEASE_SOURCE" && bun install --frozen-lockfile && cd packages/opencode && bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts && bun typecheck); then
+      C1_RELEASE_COMMIT="$(git -C "$C1_RELEASE_SOURCE" rev-parse HEAD)"
+      C1_RELEASE_URL="$(gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" --json url --jq .url)"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$version" "$tag" "$C1_PLUGIN_SDK_VERSION" "$C1_CLI_PACKAGE_VERSION" "$C1_RELEASE_URL" "$C1_RELEASE_COMMIT" >> "$C1_RELEASE_CANDIDATES_FILE"
     fi
+    git -C "$C1_OPENCODE_SOURCE" worktree remove --force "$C1_RELEASE_SOURCE"
   done
-  test -n "$C1_MINIMUM_RELEASE_TAG"
-  npm view "opencode-ai@$C1_MINIMUM_SUPPORTED_VERSION" version
-  C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX="$(mktemp -d)"
-  npm install --prefix "$C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX" --no-save --no-audit --no-fund "opencode-ai@$C1_MINIMUM_SUPPORTED_VERSION"
-  C1_MINIMUM_OPEN_CODE_BIN="$C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX/node_modules/.bin/opencode"
-  test -x "$C1_MINIMUM_OPEN_CODE_BIN"
-  C1_ACTUAL_OPEN_CODE_VERSION="$("$C1_MINIMUM_OPEN_CODE_BIN" --version)"
-  test "$C1_ACTUAL_OPEN_CODE_VERSION" = "$C1_MINIMUM_SUPPORTED_VERSION"
-  export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_DEFAULT_BRANCH C1_MINIMUM_RELEASE_TAG C1_MINIMUM_SUPPORTED_VERSION C1_PLUGIN_SDK_VERSION C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX C1_MINIMUM_OPEN_CODE_BIN C1_ACTUAL_OPEN_CODE_VERSION
+  test -s "$C1_RELEASE_CANDIDATES_FILE"
+  export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_DEFAULT_BRANCH C1_RELEASE_CANDIDATE_PARENT C1_RELEASE_CANDIDATES_FILE
   ```
 
-  `C1_OPENCODE_UPSTREAM_PR_URL` is the merged PR containing all Tasks 1–4 host changes; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase merge strategies; verify that SHA is an ancestor of the official default branch. The loop then selects the lowest stable release tag containing that merged SHA for which both the official release and matching public SDK package exist. On that released source tag, run `bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts` and `bun typecheck`; the C1 Codex/transport tests use synthetic OAuth and a local fetch recorder to prove Gateway URL preservation and owner semantics. Task 11 performs the full C1 product runtime acceptance on the official released CLI. Verify the immediately preceding stable release is rejected by `host-version.test.ts`. Record PR URL/state/merge SHA, official repository/default branch, release tag/URL, `C1_MINIMUM_SUPPORTED_VERSION`, SDK version, and test output. If no qualifying release exists, stop and keep production support blocked; do not select the disposable patched `1.18.31` runtime.
-- [ ] **Task boundary:** Task 5 produces `C1_PUBLIC_CORE_COMMIT`, `C1_MINIMUM_SUPPORTED_VERSION`, `C1_PLUGIN_SDK_VERSION`, `C1_MINIMUM_OPEN_CODE_BIN`, official release evidence, and the tested compatibility range. Task 5 MUST NOT edit Project package metadata or tests; Task 6 applies the host values after relocating the package.
+  `C1_OPENCODE_UPSTREAM_PR_URL` identifies the single upstream PR containing Tasks 1–4; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase strategies; verify the merge SHA is an ancestor of the authoritative default branch. For each candidate tag in semver order, the script verifies official release metadata, matching published SDK/CLI versions, and the C1 host test/typecheck suite on a detached source worktree at that exact tag. The TSV candidate file retains version/tag/package/release provenance for Task 11. Candidate discovery is not a minimum-version decision; no `engines.opencode`, peer SDK range, or supported minimum is finalized in this task. Remove the generated candidate source worktree for each tag after testing.
+- [ ] **Task boundary:** Task 5 produces only merged-host provenance and the ordered release-candidate file. It MUST NOT edit Project package metadata, `host-version.ts`, tests, README, or production-minimum documentation.
 
 ## Task 6 — Relocate the Publishable Plugin Package
 
 **Files:** Move every tracked `packages/opencode-plugin/{CHANGELOG.md,README.md,package-lock.json,package.json,tsconfig.json,vitest.config.ts,src/**,test/**}` to the same relative path under `apps/opencode-plugin/`; modify `.gitignore`, `deno.json`, `.release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
 
-**Consumes:** Task 5 minimum host version/SDK version. **Produces:** one npm-publishable `@yohi/cf-ai-gw-relay` package rooted at `apps/opencode-plugin/`; zero `packages/opencode-plugin/` directory; no vendor copy of OpenCode SDK.
+**Consumes:** Task 5 ordered official release candidate list. **Produces:** the single local development package root `apps/opencode-plugin/`; zero `packages/opencode-plugin/` directory; a candidate-only host gate for runtime qualification; no final peer/engine minimum metadata yet.
 
 - [ ] **PROVENANCE PREPARATION:** Before editing the package tree, run from project root:
 
@@ -367,8 +371,8 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 
   Keep this detached worktree, local file URL, and environment values through Task 11 RED. The pre-migration package artifact is local; do not install it by npm registry specifier.
 
-- [ ] **RED:** In the existing `packages/opencode-plugin/test/package-consistency.test.ts`, add `it("uses apps/opencode-plugin as the only package root", ...)` asserting `apps/opencode-plugin/package.json` exists, `packages/opencode-plugin/package.json` does not, and manifest/release config point to the new root. Add `it("accepts minimum released host and rejects previous host", ...)` to `host-version.test.ts`, driven by `C1_MINIMUM_SUPPORTED_VERSION` and the preceding stable version returned by Task 5. Run `npm test -- --run test/package-consistency.test.ts test/host-version.test.ts` from `packages/opencode-plugin`; expected path assertion fails and the host guard still pins the architecture-validation version.
-- [ ] **GREEN:** `git mv packages/opencode-plugin apps/opencode-plugin`; update package scripts/config references and the consistency test. Use `peerDependencies["@opencode-ai/plugin"]` for the host-supplied SDK contract and an exact matching `devDependencies["@opencode-ai/plugin"]` for typecheck/tests; do not bundle or list the SDK as a runtime dependency. Set `engines.opencode` to `C1_MINIMUM_SUPPORTED_VERSION`, `SUPPORTED_OPENCODE_RANGE` to the tested compatible range, and the SDK peer/dev versions from Task 5. Keep `semver` as the only runtime dependency. Update `.gitignore`, release-please paths, workflow working directories/cache path, and Deno fmt/lint exclusions. Run `(cd apps/opencode-plugin && npm ci --ignore-scripts && npm run typecheck && npm test && npm run build)`; expected all pass. Run `test ! -e packages/opencode-plugin`.
+- [ ] **RED:** In the existing `packages/opencode-plugin/test/package-consistency.test.ts`, add `it("uses apps/opencode-plugin as the only package root", ...)` asserting `apps/opencode-plugin/package.json` exists, `packages/opencode-plugin/package.json` does not, and manifest/release config point to the new root. Add `it("candidate host gate admits only Task 5 releases", ...)` to `host-version.test.ts`, reading every version from `C1_RELEASE_CANDIDATES_FILE`; each listed release is accepted and an unlisted release is rejected. Run `npm test -- --run test/package-consistency.test.ts test/host-version.test.ts` from `packages/opencode-plugin`; expected the path check to fail and the old single-version guard to reject candidate releases.
+- [ ] **GREEN:** `git mv packages/opencode-plugin apps/opencode-plugin`; update package scripts/config references and the consistency test. Remove old `engines.opencode` and peer-range claims; do not set a production minimum in this task. Pin `devDependencies["@opencode-ai/plugin"]` to the SDK version in the first Task 5 candidate row for local typecheck/tests. Generate `apps/opencode-plugin/src/c1-release-candidates.ts` from the ordered TSV with `export const C1_RELEASE_CANDIDATE_VERSIONS = [...] as const`; `host-version.ts` accepts only these unpublished candidates during Task 11. The module and candidate guard are temporary development artifacts and are removed/replaced in Task 12. Keep `semver` as the runtime dependency. Update `.gitignore`, release-please paths, workflow working directories/cache path, and Deno fmt/lint exclusions. Run `(cd apps/opencode-plugin && npm ci --ignore-scripts && npm run typecheck && npm test && npm run build)`; expected all pass. Run `test ! -e packages/opencode-plugin`.
 - [ ] **REFACTOR:** Remove stale path aliases and release references; do not maintain a compatibility copy/symlink. Run `rg -n 'packages/opencode-plugin' .github .release-please-config.json .release-please-manifest.json deno.json .gitignore`; expected no active references. Stage only the package move and layout config with `git add -A packages/opencode-plugin apps/opencode-plugin .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml` and commit `refactor: relocate OpenCode plugin under apps`.
 
 ## Task 7 — Provider Options, ENV Resolver, and Request-Time Errors
@@ -411,7 +415,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 **Consumes:** final package path and exact released host/config contract. **Produces:** no active docs/build/release reference to the old package path and equivalent English/Japanese product guidance.
 
 - [ ] **RED:** Add `it("release, build, and user documentation paths use apps/opencode-plugin", ...)` in `apps/opencode-plugin/test/package-consistency.test.ts` asserting release config/workflows and user docs refer to `apps/opencode-plugin`, package `main`/`exports` resolve under that root, and the old package root is absent. Run `(cd apps/opencode-plugin && npm test -- --run test/package-consistency.test.ts -t "paths use apps/opencode-plugin")`; expected fail while old paths are present.
-- [ ] **GREEN:** Update both READMEs to install `@yohi/cf-ai-gw-relay`, require OpenCode OpenAI/ChatGPT OAuth, define provider `cf-ai-gw-relay`, select `cf-ai-gw-relay/openai/<model>`, explain direct `openai/*` coexistence and no fallback, state only `openai` upstream is initially supported, and route future upstreams to a non-normative future section. State the established `C1_MINIMUM_SUPPORTED_VERSION` and keep production-ready claims blocked until Task 11 succeeds. Update both configuration guides with provider option keys, matching ENV keys, ENV > provider precedence, request-time missing-config behavior, and secret handling: token options are supported but must not be committed; environment variables let users keep secret values out of Git-managed files. Update deployment/operations package references, release-please component/manifest path, CI/release working directory/cache path, `deno.json` lint/fmt exclusion, `.gitignore`, and AGENTS.
+- [ ] **GREEN:** Update both READMEs to install `@yohi/cf-ai-gw-relay`, require OpenCode OpenAI/ChatGPT OAuth, define provider `cf-ai-gw-relay`, select `cf-ai-gw-relay/openai/<model>`, explain direct `openai/*` coexistence and no fallback, state only `openai` upstream is initially supported, and route future upstreams to a non-normative future section. State that the production minimum is pending candidate runtime acceptance and keep production-ready claims blocked. Update both configuration guides with provider option keys, matching ENV keys, ENV > provider precedence, request-time missing-config behavior, and secret handling: token options are supported but must not be committed; environment variables let users keep secret values out of Git-managed files. Update deployment/operations package references, release-please component/manifest path, CI/release working directory/cache path, `deno.json` lint/fmt exclusion, `.gitignore`, and AGENTS.
 
   Verify the produced npm package is installable without resolving the plugin itself from a registry:
 
@@ -428,16 +432,16 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   Expected: the locally packed artifact installs and its public entrypoint imports; only declared runtime dependencies may resolve from npm. Run the package reference test, English/Japanese parity grep checks, `deno fmt --check`, and `deno lint`; expected no active `packages/opencode-plugin` references outside SPEC's explicitly historical notice, this plan's migration steps, and the package-consistency negative assertion. Commit build/release path changes and `package-consistency.test.ts` with `git add .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml apps/opencode-plugin/test/package-consistency.test.ts && git commit -m "build: release plugin from apps path"`. Commit human docs separately with `git add README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md AGENTS.md apps/opencode-plugin/README.md apps/opencode-plugin/CHANGELOG.md && git commit -m "docs: document Issue 28 dedicated provider"`.
 - [ ] **REFACTOR:** Remove obsolete install instructions and stale `apiKey`/`relayToken` precedence from human docs. Run `rg -n 'packages/opencode-plugin|openai/gpt-5\.6-luna|apiKey|relayToken|defaults to .true.' README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md apps/opencode-plugin/README.md .github .release-please-config.json .release-please-manifest.json deno.json`; permitted `apiKey`/`relayToken` matches must explicitly label them as rejected legacy options, and the two named model/path strings must have no active user guidance/config matches. Separately scan production/config paths (excluding the deliberate negative migration assertion in `apps/opencode-plugin/test/package-consistency.test.ts`) for `packages/opencode-plugin`; require zero matches outside SPEC's explicit historical note and this implementation plan. Positive checks for `cf-ai-gw-relay/openai/gpt-6-sol`, `credentialProvider`, `accountId`, `gatewayId`, `gatewayToken`, `relaySecret`, and all four ENV names must find equivalent guidance in English/Japanese. Commit source/config path synchronization with `git add .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml && git commit -m "build: relocate plugin package release paths"`; commit English/Japanese human docs with `git add README.md README.ja.md docs/configuration.md docs/configuration.ja.md docs/deployment.md docs/operations.md AGENTS.md apps/opencode-plugin/README.md apps/opencode-plugin/CHANGELOG.md && git commit -m "docs: document Issue 28 dedicated provider"`.
 
-## Task 11 — Production Host/Runtime Acceptance (last)
+## Task 11 — Candidate Runtime Acceptance and Minimum Selection
 
-**Files:** No source/test edits for acceptance; only local `dist/` builds and temporary worktrees/XDG config outside tracked files.
+**Files:** No tracked edits; runtime binaries, local package `dist/` and temporary candidate prefixes/worktrees/XDG config are generated outside tracked source content.
 
-**Consumes:** Task 5 released minimum OpenCode host; Tasks 1–4 released public C1 core capability; Task 6–10 implementation and documentation; existing local OpenCode OAuth state. **Produces:** redacted RED/GREEN runtime evidence and a production-readiness decision based only on the released host artifact.
+**Consumes:** `C1_RELEASE_CANDIDATES_FILE`; Task 6–10 integrated local package; existing local OpenCode OAuth; protected Cloudflare/relay configuration. **Produces:** the first official release candidate passing full C1 product runtime acceptance as `C1_MINIMUM_SUPPORTED_VERSION`, exact official CLI path, and candidate pass/failure evidence.
 
 | Phase | OpenCode artifact | Plugin artifact | Required result |
 | --- | --- | --- | --- |
 | RED | Detached stock source worktree at `014614d35b397775e5d397a490fc72368c894ec2`, invoked by its `bun run src/index.ts` | Local file URL to the detached pre-migration `packages/opencode-plugin` package | C1 unavailable before network; ordinary OpenAI HTTP 200; no fallback |
-| GREEN | Official released `C1_MINIMUM_SUPPORTED_VERSION` CLI containing the C1 public core commit | Local file URL to the Task 6–10 `apps/opencode-plugin` build | C1 and ordinary OpenAI HTTP 200; lazy configuration and all three allowlist cases pass |
+| Candidate selection | Each official released CLI from `C1_RELEASE_CANDIDATES_FILE` | Local file URL to the integrated `apps/opencode-plugin` build | Evaluate candidates in ascending order; the first full C1 acceptance pass defines the minimum |
 
 - [ ] **Prepare local plugin artifacts and isolated config:** From Project root run `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" ci --ignore-scripts`, then `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" run build`; require `dist/index.js`. Generate `C1_INTEGRATED_PLUGIN_SPEC` as a file URL to the package directory:
 
@@ -447,9 +451,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   test -n "$C1_INTEGRATED_PLUGIN_SPEC"
   test -f "$C1_INTEGRATED_PLUGIN_DIR/package.json"
   test -f "$C1_INTEGRATED_PLUGIN_DIR/dist/index.js"
-  C1_ACTUAL_OPEN_CODE_VERSION="$("$C1_MINIMUM_OPEN_CODE_BIN" --version)"
-  test "$C1_ACTUAL_OPEN_CODE_VERSION" = "$C1_MINIMUM_SUPPORTED_VERSION"
-  export C1_INTEGRATED_PLUGIN_SPEC C1_MINIMUM_OPEN_CODE_BIN C1_ACTUAL_OPEN_CODE_VERSION
+  export C1_INTEGRATED_PLUGIN_SPEC
   ```
 
   For RED use `C1_BASELINE_PLUGIN_SPEC` generated in Task 6. Verify each URL decodes to its stated local package directory, `package.json.name` is `@yohi/cf-ai-gw-relay`, and `package.json.main` resolves to that same directory's `dist/index.js`. Run `npm --prefix "$PROJECT_ROOT/apps/opencode-plugin" pack --dry-run` and verify the generated package contains `dist/index.js` and no OpenCode SDK source. A bare registry specifier MUST NOT be used.
@@ -486,6 +488,20 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   }
   ```
 
+  Install each candidate CLI at its versioned official npm artifact; do not use a PATH-resolved executable:
+
+  ```sh
+  install_c1_candidate_cli() {
+    C1_CANDIDATE_VERSION="$1"
+    C1_CANDIDATE_INSTALL_PREFIX="$(mktemp -d)"
+    npm install --prefix "$C1_CANDIDATE_INSTALL_PREFIX" --no-save --no-audit --no-fund "opencode-ai@$C1_CANDIDATE_VERSION"
+    C1_CANDIDATE_BIN="$C1_CANDIDATE_INSTALL_PREFIX/node_modules/.bin/opencode"
+    test -x "$C1_CANDIDATE_BIN"
+    C1_ACTUAL_CANDIDATE_VERSION="$("$C1_CANDIDATE_BIN" --version)"
+    test "$C1_ACTUAL_CANDIDATE_VERSION" = "$C1_CANDIDATE_VERSION"
+  }
+  ```
+
   Verify the local package URL with this exact helper before either runtime phase:
 
   ```sh
@@ -510,7 +526,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 
 - [ ] **RED — baseline OpenCode + local pre-migration plugin:** Call `write_c1_config "$C1_BASELINE_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' '{"credentialProvider":"openai"}'`. From `$C1_BASELINE_OPENCODE/packages/opencode`, run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-baseline.log" 2>&1)`; require nonzero exit and `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/c1-baseline.log"`. Confirm no Gateway/relay event occurred. Then run `(cd "$C1_BASELINE_OPENCODE/packages/opencode" && XDG_CONFIG_HOME="$C1_XDG_CONFIG_HOME" bun run src/index.ts run --model openai/gpt-6-sol "Reply OK")`; expect usable HTTP 200 with direct Codex routing. This is baseline RED evidence, not production acceptance.
 
-- [ ] **GREEN — released minimum host + integrated local package:** Use only the official binary at `C1_MINIMUM_OPEN_CODE_BIN`, created and version-checked by Task 5. Do not resolve a host executable from PATH. Require its `--version` to equal `C1_MINIMUM_SUPPORTED_VERSION`. Use the local `C1_INTEGRATED_PLUGIN_SPEC`, not a registry package. Run the following isolated scenarios:
+- [ ] **Candidate runtime acceptance — official released host + integrated local package:** Process `C1_RELEASE_CANDIDATES_FILE` in ascending version order. Read each TSV row in the Task 5 field order into `C1_CANDIDATE_VERSION`, `C1_CANDIDATE_TAG`, `C1_CANDIDATE_SDK_VERSION`, `C1_CANDIDATE_CLI_VERSION`, `C1_CANDIDATE_RELEASE_URL`, and `C1_CANDIDATE_RELEASE_COMMIT`; require `C1_CANDIDATE_CLI_VERSION` to equal `C1_CANDIDATE_VERSION`. For each row, call `install_c1_candidate_cli "$C1_CANDIDATE_VERSION"`, set `C1_HOST_UNDER_TEST_BIN="$C1_CANDIDATE_BIN"`, and require the CLI-reported version to equal `C1_CANDIDATE_VERSION`. Use the local `C1_INTEGRATED_PLUGIN_SPEC`, never a registry plugin package. Run scenarios 1–4 below for that candidate before reading the next row. Mark `HOST-INCOMPATIBLE` and advance only when package identity/entrypoint and configuration are verified, safe diagnostics identify a released-host API/runtime incompatibility before a C1 request (or prove a direct ChatGPT rewrite), and the same failure is not a Project implementation/configuration error. A generic `ProviderModelNotFoundError` alone is insufficient to classify host incompatibility. Gateway/relay outages, npm/network installation failures, invalid live credentials, OAuth/configuration failures, or ambiguous external failures are `INCONCLUSIVE`: stop without advancing or claiming a minimum. Any other product/runtime failure is `PRODUCT-FAILURE`; stop for correction in Tasks 7–10 rather than hiding it by raising the minimum. Record only safe outcome/category and candidate version/tag; never retain secret-bearing diagnostics. After recording a rejected candidate, remove its temporary install prefix. The first candidate passing all four scenarios and every streaming, abort, OAuth ownership, Gateway, relay, and no-fallback assertion is the minimum: set `C1_MINIMUM_SUPPORTED_VERSION="$C1_CANDIDATE_VERSION"`, `C1_MINIMUM_RELEASE_TAG="$C1_CANDIDATE_TAG"`, `C1_PLUGIN_SDK_VERSION="$C1_CANDIDATE_SDK_VERSION"`, and `C1_MINIMUM_OPEN_CODE_BIN="$C1_HOST_UNDER_TEST_BIN"`; retain its install prefix as `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX`, then stop. If the list is exhausted without a full pass, report no supported minimum and keep production readiness blocked.
 
   For success fixtures, first assert that the four required environment values are present without printing them; actual values come from the protected local environment and MUST NOT be recorded:
 
@@ -532,15 +548,38 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   ')"
   ```
 
-  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '' "$C1_ROUTE_OPTIONS_JSON"` omits `enabled_providers`; normal discovery applies. Run `"$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"`; require HTTP 200.
-  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' "$C1_ROUTE_OPTIONS_JSON"` enables both. Require non-empty `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, `RELAY_CF_AIG_TOKEN`, and `RELAY_SECRET` in the protected local acceptance environment without printing values. Run `"$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"` and then `"$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"`; require usable HTTP 200 for both, C1 through Gateway and ordinary OpenAI direct.
-  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]' "$C1_ROUTE_OPTIONS_JSON"` excludes C1. Run `if "$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-excluded.log" 2>&1; then exit 1; fi`; require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/c1-excluded.log"`, no network request/fallback, then invoke `"$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"` and require HTTP 200.
-  4. Call `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' '{"credentialProvider":"openai"}'`. Run `env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_MINIMUM_OPEN_CODE_BIN" run --model openai/gpt-6-sol "Reply OK"`; ordinary OpenAI MUST return HTTP 200. Run `if env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_MINIMUM_OPEN_CODE_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-missing.log" 2>&1; then exit 1; fi`; require `rg -q 'MissingRelayConfigurationError' "$C1_XDG_CONFIG_HOME/c1-missing.log"` and `rg -q 'accountId.*gatewayId.*gatewayToken.*relaySecret' "$C1_XDG_CONFIG_HOME/c1-missing.log"`, and confirm zero Gateway/relay calls.
+  1. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '' "$C1_ROUTE_OPTIONS_JSON"` omits `enabled_providers`; normal discovery applies. Run `"$C1_HOST_UNDER_TEST_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"`; require HTTP 200.
+  2. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' "$C1_ROUTE_OPTIONS_JSON"` enables both. Require non-empty `RELAY_CF_ACCOUNT_ID`, `RELAY_CF_GATEWAY_ID`, `RELAY_CF_AIG_TOKEN`, and `RELAY_SECRET` in the protected local acceptance environment without printing values. Run `"$C1_HOST_UNDER_TEST_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK"` and then `"$C1_HOST_UNDER_TEST_BIN" run --model openai/gpt-6-sol "Reply OK"`; require usable HTTP 200 for both, C1 through Gateway and ordinary OpenAI direct.
+  3. `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai"]' "$C1_ROUTE_OPTIONS_JSON"` excludes C1. Run `if "$C1_HOST_UNDER_TEST_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-excluded.log" 2>&1; then exit 1; fi`; require `rg -q 'ProviderModelNotFoundError' "$C1_XDG_CONFIG_HOME/c1-excluded.log"`, no network request/fallback, then invoke `"$C1_HOST_UNDER_TEST_BIN" run --model openai/gpt-6-sol "Reply OK"` and require HTTP 200.
+  4. Call `write_c1_config "$C1_INTEGRATED_PLUGIN_SPEC" '["openai","cf-ai-gw-relay"]' '{"credentialProvider":"openai"}'`. Run `env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_HOST_UNDER_TEST_BIN" run --model openai/gpt-6-sol "Reply OK"`; ordinary OpenAI MUST return HTTP 200. Run `if env -u RELAY_CF_ACCOUNT_ID -u RELAY_CF_GATEWAY_ID -u RELAY_CF_AIG_TOKEN -u RELAY_SECRET "$C1_HOST_UNDER_TEST_BIN" run --model cf-ai-gw-relay/openai/gpt-6-sol "Reply OK" > "$C1_XDG_CONFIG_HOME/c1-missing.log" 2>&1; then exit 1; fi`; require `rg -q 'MissingRelayConfigurationError' "$C1_XDG_CONFIG_HOME/c1-missing.log"` and `rg -q 'accountId.*gatewayId.*gatewayToken.*relaySecret' "$C1_XDG_CONFIG_HOME/c1-missing.log"`, and confirm zero Gateway/relay calls.
 
   For each successful C1 call, verify selected provider identity `cf-ai-gw-relay`, effective owner `openai`, reuse of the existing OpenCode ChatGPT OAuth identity and subscription quota (no separate OAuth/billing path), Gateway `custom-relay-chatgpt/v1/responses`, Gateway authentication, relay `POST /v1/responses`, upstream HTTP 200, usable streaming response and abort behavior, no direct rewrite, and no fallback. Never print or retain secret values, headers, prompts, response bodies, or raw `ChatGPT-Account-Id` values. The temporary XDG config is deleted after acceptance.
 
-- [ ] **Production readiness decision:** Mark production-ready only if every Issue #28 acceptance row passes on the released minimum host and real Cloudflare manual acceptance succeeds. If the public host capability has not shipped or any blocker remains, preserve `production-ready: blocked` and report the exact version/release dependency; do not reopen the validated C1 architecture.
-- [ ] **Cleanup:** Remove only generated detached baseline OpenCode/Project worktrees, Task 5's temporary `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX`, and the temporary XDG config. Do not remove the actual integrated worktrees or published package.
+- [ ] **Candidate selection result:** Record each candidate's exact version/tag and `PASS`, `HOST-INCOMPATIBLE`, `PRODUCT-FAILURE`, or `INCONCLUSIVE` outcome without secrets or request data. Do not mark production ready in this task; production readiness stays blocked until Task 13 passes after final metadata changes.
+- [ ] **Cleanup rejected candidates:** Remove each rejected candidate's temporary install prefix after recording its safe outcome. Retain `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX`, `C1_RELEASE_CANDIDATES_FILE` and its parent directory, and the temporary XDG config through Tasks 12–13. Do not remove the actual integrated worktrees or published package.
+
+## Task 12 — Final Minimum Metadata and Host Boundary
+
+**Files:** `apps/opencode-plugin/package.json`, `apps/opencode-plugin/src/host-version.ts`, `apps/opencode-plugin/src/c1-release-candidates.ts` (delete), `apps/opencode-plugin/test/host-version.test.ts`, `README.md`, `README.ja.md`, `docs/configuration.md`, `docs/configuration.ja.md`, `docs/deployment.md`, `docs/operations.md`, and `apps/opencode-plugin/README.md`.
+
+**Consumes:** Task 11's first full-PASS candidate, including its exact CLI version, release tag, matching `@opencode-ai/plugin` SDK version, and retained official binary. **Produces:** final package engine/peer metadata, a semver host guard with a tested lower boundary, removal of candidate-only runtime data, and documentation that names the selected minimum while keeping readiness blocked until Task 13.
+
+- [ ] **RED — final range boundary:** In `host-version.test.ts`, add cases that the selected minimum is admitted, the immediately preceding semver version is rejected with the existing fixed unsupported-host error, every later Task 5 release candidate in the tested same-major range is admitted, and a valid same-major version above the highest listed candidate is admitted. Add package-metadata assertions that `engines.opencode` rejects the predecessor and accepts the minimum, and that the OpenCode plugin SDK peer range includes the exact matching Task 11 SDK. Run `(cd apps/opencode-plugin && npm test -- --run test/host-version.test.ts)`; expected the candidate-only guard to fail the above-list version case and final package metadata assertions to fail until finalized.
+- [ ] **GREEN — commit the measured minimum:** Derive all values only from the Task 11 PASS row. Replace candidate-list lookup in `host-version.ts` with the final semver lower-bound guard; set `engines.opencode` to `>=<C1_MINIMUM_SUPPORTED_VERSION>`; set the `@opencode-ai/plugin` peer range to `>=<C1_PLUGIN_SDK_VERSION> <next-major.0.0`, where `next-major` is calculated from that SDK version. Delete `c1-release-candidates.ts`; retain semver validation and a fixed, redacted unsupported-host error. Run the focused host test, full `npm test`, `npm run typecheck`, and `npm run build`; expected PASS.
+- [ ] **Update human guidance from measured values:** Replace “minimum pending” wording in English/Japanese READMEs, configuration/deployment/operations docs, and the package README with the exact selected OpenCode minimum. Keep every production-ready statement blocked pending Task 13 and real Cloudflare acceptance. Add package consistency assertions for exact engine minimum, SDK peer range, and no candidate-list module/reference in runtime source. Run the package consistency and host-version suites plus English/Japanese parity checks; expected PASS.
+- [ ] **REFACTOR and commit:** Remove candidate-only fixtures and stale pending-minimum wording. Commit package/source/tests with `git add apps/opencode-plugin/package.json apps/opencode-plugin/src/host-version.ts apps/opencode-plugin/src/c1-release-candidates.ts apps/opencode-plugin/test/host-version.test.ts && git commit -m "build: set verified OpenCode minimum"`; commit human docs separately using the Task 10 documentation file list and `git commit -m "docs: record verified OpenCode minimum"`.
+
+## Task 13 — Final Artifact Runtime Revalidation and Readiness Gate
+
+**Files:** No tracked edits unless acceptance exposes a defect; fix the owning Task 1–12 implementation and rerun its relevant RED/GREEN checks before continuing. Runtime package tarballs, installed copies, CLI prefixes, logs, and XDG config are temporary.
+
+**Consumes:** Task 12 final package and metadata; `C1_MINIMUM_OPEN_CODE_BIN` and `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX` retained from the Task 11 PASS row; local OAuth and protected Cloudflare/relay credentials. **Produces:** final-pair acceptance evidence and the only production-readiness decision in this plan.
+
+- [ ] **Build and install the exact local package artifact:** From project root run `npm --prefix apps/opencode-plugin ci --ignore-scripts`, `npm --prefix apps/opencode-plugin run typecheck`, `npm --prefix apps/opencode-plugin test`, and `npm --prefix apps/opencode-plugin run build`. Set `C1_FINAL_PACK_DIR="$(mktemp -d)"` and `C1_FINAL_PLUGIN_PARENT="$(mktemp -d)"`; run `npm --prefix apps/opencode-plugin pack --pack-destination "$C1_FINAL_PACK_DIR"`, then set `C1_PACKAGE_TARBALL="$(node --input-type=module -e 'import { readdirSync } from "node:fs"; const files = readdirSync(process.argv[1]).filter((name) => name.endsWith(".tgz")); if (files.length !== 1) process.exit(1); console.log(`${process.argv[1]}/${files[0]}`)' "$C1_FINAL_PACK_DIR")"`. Install it with `npm install --prefix "$C1_FINAL_PLUGIN_PARENT" --ignore-scripts --legacy-peer-deps "$C1_PACKAGE_TARBALL"`. Set `C1_FINAL_PLUGIN_DIR="$C1_FINAL_PLUGIN_PARENT/node_modules/@yohi/cf-ai-gw-relay"`, derive `C1_FINAL_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_FINAL_PLUGIN_DIR")"`, call `verify_c1_plugin_spec "$C1_FINAL_PLUGIN_DIR" "$C1_FINAL_PLUGIN_SPEC"`, and verify packed files, final `engines.opencode`, and SDK peer range. Never use a registry plugin specifier.
+- [ ] **Re-run final host boundary and executable identity:** Run `host-version.test.ts` and package consistency tests against finalized metadata. Require `"$C1_MINIMUM_OPEN_CODE_BIN" --version` to equal `C1_MINIMUM_SUPPORTED_VERSION`; require Task 12's predecessor-rejection test to pass. Do not resolve OpenCode from PATH.
+- [ ] **Re-run the full Task 11 runtime matrix against the packed plugin:** Replace `C1_INTEGRATED_PLUGIN_SPEC` with `C1_FINAL_PLUGIN_SPEC`; execute scenarios 1–4 from Task 11 on the retained minimum binary, in a fresh isolated XDG config. Require all prior provider identity, OpenAI OAuth ownership, no-extra-billing, Gateway authentication/routing, relay `/v1/responses`, streaming/abort, missing-config, allowlist, ordinary-OpenAI isolation, and no-fallback assertions to pass. Repeat the real Cloudflare manual acceptance for the finalized artifact. Any failure blocks release; do not raise the minimum or weaken C1 invariants to make it pass.
+- [ ] **Final gates and readiness decision:** Run package tests/typecheck/build, repository `deno fmt --check`, `deno lint`, `deno test apps/deno-relay .github/scripts`, packed-artifact import smoke test, and English/Japanese parity and package-path checks. Mark production ready only if every Issue #28 acceptance row passes on the finalized released minimum host and the real Cloudflare manual acceptance succeeds. Otherwise retain `production-ready: blocked` and report the exact failing gate or release dependency.
+- [ ] **Cleanup:** Remove temporary rejected-candidate prefixes, final package install/pack directories, Task 5 candidate file/parent directory, baseline worktrees, minimum CLI install prefix, and isolated XDG config only after evidence is recorded and Task 13 is complete. Never delete the integrated OpenCode/Project worktrees or a published package.
 
 ## Verification Commands
 
@@ -548,4 +587,4 @@ From `apps/opencode-plugin`: `npm ci --ignore-scripts`, `npm run typecheck`, `np
 
 ## Completion Gate
 
-This plan is `READY FOR REVIEW`, not implementation approval. Before claiming Issue #28 complete, verify both directions: every Issue #28 acceptance row maps to a normative SPEC rule and a task/test/manual acceptance; every plan behavior agrees with SPEC and Issue #28. Production readiness remains blocked until Task 11 passes on the released minimum host and real Cloudflare manual acceptance succeeds.
+This plan is `READY FOR REVIEW`, not implementation approval. Before claiming Issue #28 complete, verify both directions: every Issue #28 acceptance row maps to a normative SPEC rule and a task/test/manual acceptance; every plan behavior agrees with SPEC and Issue #28. Production readiness remains blocked until Task 13 passes on the finalized released minimum host and real Cloudflare manual acceptance succeeds.
