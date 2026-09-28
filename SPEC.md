@@ -932,6 +932,35 @@ including path mapping, credential separation, Gateway logging, OpenAI/Anthropic
 route compatibility, malformed body handling, size limits, and root-`anyOf`
 behavior.
 
+### 9.2 C1 Disposable Runtime Validation
+
+C1 was validated in a disposable runtime; this evidence does not claim that
+production source or deployment was modified. The validation baseline was:
+
+```text
+OpenCode: 1.18.31
+Commit: 014614d35b397775e5d397a490fc72368c894ec2
+Bundled @ai-sdk/openai: 3.0.88
+Model: gpt-6-sol
+Agent: build
+```
+
+The stock `openai/gpt-6-sol` ChatGPT OAuth baseline passed before the C1
+candidate. The C1 candidate selected
+`cf-ai-gw-relay/openai/gpt-6-sol`, retained provider identity
+`cf-ai-gw-relay`, and delegated effective credential/model semantics to
+`openai`. Its first request reached Gateway and relay but returned HTTP `400`
+because owner-specific Codex request/model semantics were incomplete. The
+bounded correction propagated credential ownership through auth lookup, request
+preparation, model/profile materialization, Codex hooks, agent generation, and
+target-aware transport. The final Gateway, relay, upstream, and OpenCode response
+returned HTTP `200`; the Gateway target was preserved, no direct ChatGPT rewrite
+occurred, and no OAuth value was exposed to plugin logic. The subsequent normal
+`openai/gpt-6-sol` regression returned HTTP `200` with no C1 delegation marker.
+
+This evidence validates a **BOUNDED CORE CAPABILITY** only. It does not establish
+a minimum production version or satisfy the release gate in §10.
+
 ## 10. Release Gate
 
 A supported plugin release requires all of the following:
