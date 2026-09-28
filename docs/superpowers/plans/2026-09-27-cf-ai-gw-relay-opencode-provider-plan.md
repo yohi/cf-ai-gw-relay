@@ -295,7 +295,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 
 ## Task 5 — Discover Released OpenCode C1 Candidates
 
-**Files:** OpenCode official upstream release/source evidence and temporary detached release-source worktrees only. Task 5 MUST NOT install the production CLI or edit Project files.
+**Files:** OpenCode official upstream release/source evidence and temporary detached release-source worktrees/semver helper only. Task 5 MUST NOT install the production CLI or edit Project files.
 
 **Consumes:** Tasks 1–4 public host capability/tests and merged upstream PR metadata. **Produces:** authoritative merged C1 commit SHA and a semver-sorted `C1_RELEASE_CANDIDATES_FILE`; each row contains `version`, `releaseTag`, `pluginSdkVersion`, `cliPackageVersion`, `releaseURL`, and `releaseCommit`. Task 5 does not choose or write a production minimum and does not edit Project files.
 
@@ -322,11 +322,30 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   git -C "$C1_OPENCODE_SOURCE" merge-base --is-ancestor "$C1_PUBLIC_CORE_COMMIT" "origin/$C1_DEFAULT_BRANCH"
   C1_RELEASE_CANDIDATE_PARENT="$(mktemp -d)"
   C1_RELEASE_CANDIDATES_FILE="$C1_RELEASE_CANDIDATE_PARENT/candidates.tsv"
+  C1_RELEASE_TAGS_FILE="$C1_RELEASE_CANDIDATE_PARENT/tags.txt"
+  C1_STABLE_TAGS_FILE="$C1_RELEASE_CANDIDATE_PARENT/stable-tags.txt"
+  C1_RELEASE_SEMVER_PREFIX="$C1_RELEASE_CANDIDATE_PARENT/semver-tool"
   : > "$C1_RELEASE_CANDIDATES_FILE"
-  for tag in $(git tag --sort=version:refname --contains "$C1_PUBLIC_CORE_COMMIT"); do
-    case "$tag" in *-*) continue ;; esac
-    version="${tag#v}"
-    if ! gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" --json url >/dev/null 2>&1; then continue; fi
+  npm install --prefix "$C1_RELEASE_SEMVER_PREFIX" --no-save --ignore-scripts --no-audit --no-fund semver@7.7.1
+  git tag --contains "$C1_PUBLIC_CORE_COMMIT" > "$C1_RELEASE_TAGS_FILE"
+  NODE_PATH="$C1_RELEASE_SEMVER_PREFIX/node_modules" node -e '
+    const { readFileSync, writeFileSync } = require("node:fs");
+    const semver = require("semver");
+    const tags = readFileSync(process.argv[1], "utf8").split(/\r?\n/).filter(Boolean)
+      .map((tag) => ({ tag, version: semver.clean(tag) }))
+      .filter(({ version }) => version !== null && semver.prerelease(version) === null)
+      .sort((left, right) => semver.compare(left.version, right.version) || left.tag.localeCompare(right.tag));
+    writeFileSync(process.argv[2], tags.map(({ tag }) => tag).join("\n") + (tags.length > 0 ? "\n" : ""));
+  ' "$C1_RELEASE_TAGS_FILE" "$C1_STABLE_TAGS_FILE"
+  while IFS= read -r tag; do
+    version="$(NODE_PATH="$C1_RELEASE_SEMVER_PREFIX/node_modules" node -e '
+      const semver = require("semver");
+      const version = semver.clean(process.argv[1]);
+      if (version === null || semver.prerelease(version) !== null) process.exit(1);
+      console.log(version);
+    ' "$tag")" || continue
+    C1_RELEASE_URL="$(gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" --json url,isDraft,isPrerelease --jq 'select(.isDraft == false and .isPrerelease == false) | .url' 2>/dev/null)" || continue
+    test -n "$C1_RELEASE_URL" || continue
     C1_PLUGIN_SDK_VERSION="$(npm view "@opencode-ai/plugin@$version" version 2>/dev/null)"
     C1_CLI_PACKAGE_VERSION="$(npm view "opencode-ai@$version" version 2>/dev/null)"
     if [ "$C1_PLUGIN_SDK_VERSION" != "$version" ] || [ "$C1_CLI_PACKAGE_VERSION" != "$version" ]; then continue; fi
@@ -334,16 +353,15 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
     git -C "$C1_OPENCODE_SOURCE" worktree add --detach "$C1_RELEASE_SOURCE" "$tag"
     if (cd "$C1_RELEASE_SOURCE" && bun install --frozen-lockfile && cd packages/opencode && bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts && bun typecheck); then
       C1_RELEASE_COMMIT="$(git -C "$C1_RELEASE_SOURCE" rev-parse HEAD)"
-      C1_RELEASE_URL="$(gh release view "$tag" --repo "$C1_OPEN_CODE_REPOSITORY" --json url --jq .url)"
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$version" "$tag" "$C1_PLUGIN_SDK_VERSION" "$C1_CLI_PACKAGE_VERSION" "$C1_RELEASE_URL" "$C1_RELEASE_COMMIT" >> "$C1_RELEASE_CANDIDATES_FILE"
     fi
     git -C "$C1_OPENCODE_SOURCE" worktree remove --force "$C1_RELEASE_SOURCE"
-  done
+  done < "$C1_STABLE_TAGS_FILE"
   test -s "$C1_RELEASE_CANDIDATES_FILE"
   export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_DEFAULT_BRANCH C1_RELEASE_CANDIDATE_PARENT C1_RELEASE_CANDIDATES_FILE
   ```
 
-  `C1_OPENCODE_UPSTREAM_PR_URL` identifies the single upstream PR containing Tasks 1–4; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase strategies; verify the merge SHA is an ancestor of the authoritative default branch. For each candidate tag in semver order, the script verifies official release metadata, matching published SDK/CLI versions, and the C1 host test/typecheck suite on a detached source worktree at that exact tag. The TSV candidate file retains version/tag/package/release provenance for Task 11. Candidate discovery is not a minimum-version decision; no `engines.opencode`, peer SDK range, or supported minimum is finalized in this task. Remove the generated candidate source worktree for each tag after testing.
+  `C1_OPENCODE_UPSTREAM_PR_URL` identifies the single upstream PR containing Tasks 1–4; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase strategies; verify the merge SHA is an ancestor of the authoritative default branch. Task 5 installs the pinned semver helper only under `C1_RELEASE_CANDIDATE_PARENT`, normalizes tags with `semver.clean`, excludes invalid/prerelease tags, and sorts remaining stable versions by ascending SemVer (tag lexical order breaks ties). For each tag, `gh release view --json url,isDraft,isPrerelease` admits only an existing release with both metadata flags false; matching published SDK/CLI versions and the C1 host test/typecheck suite are then verified on a detached worktree at that exact tag. Only these candidates enter the TSV, which retains version/tag/package/release provenance for Task 11. Task 12 uses the same stable definition: valid stable SemVer plus non-draft, non-prerelease GitHub Release metadata. Candidate discovery is not a minimum-version decision; no `engines.opencode`, peer SDK range, or supported minimum is finalized in this task. Remove each generated candidate source worktree after testing; the temporary semver helper and tag lists are removed with `C1_RELEASE_CANDIDATE_PARENT` after Task 13.
 - [ ] **Task boundary:** Task 5 produces only merged-host provenance and the ordered release-candidate file. It MUST NOT edit Project package metadata, `host-version.ts`, tests, README, or production-minimum documentation.
 
 ## Task 6 — Relocate the Publishable Plugin Package
@@ -621,7 +639,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 
 **Consumes:** Task 11's first full-PASS candidate, including `C1_MINIMUM_SUPPORTED_VERSION`, `C1_MINIMUM_RELEASE_TAG`, its exact `C1_PLUGIN_SDK_VERSION`, and retained official binary. **Produces:** those three measured values plus `C1_PREVIOUS_STABLE_VERSION` and `C1_PREVIOUS_STABLE_TAG`; final `engines.opencode` range, SDK peer range, exact SDK devDependency, synchronized package-lock, tested host boundary, removal of candidate-only runtime data, and docs naming the minimum while readiness remains blocked until Task 13.
 
-- [ ] **Derive the previous official stable release:** Query all GitHub releases for `$C1_OPEN_CODE_REPOSITORY`; exclude draft and prerelease entries, normalize each `tag_name` using `semver.clean`, keep versions strictly less than `C1_MINIMUM_SUPPORTED_VERSION`, sort by semver descending, and select the first row. Use this exact procedure:
+- [ ] **Derive the previous official stable release:** Query all GitHub releases for `$C1_OPEN_CODE_REPOSITORY`; require both GitHub flags to be false, normalize each `tag_name` using `semver.clean`, exclude invalid and semver-prerelease versions, keep versions strictly less than `C1_MINIMUM_SUPPORTED_VERSION`, sort by semver descending, and select the first row. Use this exact procedure:
 
   ```sh
   C1_OFFICIAL_RELEASES_JSON="$(mktemp)"
@@ -633,7 +651,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
     const minimum = process.argv[2];
     const releases = pages.flat().filter((release) => !release.draft && !release.prerelease)
       .map((release) => ({ tag: release.tag_name, version: semver.clean(release.tag_name) }))
-      .filter((release) => release.version !== null && semver.lt(release.version, minimum))
+      .filter((release) => release.version !== null && semver.prerelease(release.version) === null && semver.lt(release.version, minimum))
       .sort((left, right) => semver.rcompare(left.version, right.version));
     if (releases.length > 0) console.log(`${releases[0].version}\t${releases[0].tag}`);
   ' "$C1_OFFICIAL_RELEASES_JSON" "$C1_MINIMUM_SUPPORTED_VERSION")"
