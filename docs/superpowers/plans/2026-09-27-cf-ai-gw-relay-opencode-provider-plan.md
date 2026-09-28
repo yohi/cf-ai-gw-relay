@@ -237,7 +237,7 @@ No implementation task is parallelized: package and host types cross these bound
 
 ## OpenCode Worktree Provenance
 
-At Task 1 start, set `C1_OPENCODE_SOURCE` to the root of the clean OpenCode source worktree at commit `014614d35b397775e5d397a490fc72368c894ec2`. Task 5 verifies its `origin` matches the public repository URL published in `@opencode-ai/plugin` metadata. Capture it as `C1_INTEGRATED_OPENCODE`, create a detached `C1_BASELINE_OPENCODE` at that commit, and install its dependencies with `bun install --frozen-lockfile`. Tasks 1–4 modify and commit only `C1_INTEGRATED_OPENCODE`; `C1_BASELINE_OPENCODE` remains unchanged for Task 11 RED. Task 5 uses the merged/released public artifact; Task 11 GREEN runs the official minimum-supported OpenCode binary, not the local patched source tree. Never claim production readiness from the C1 patched validation worktree.
+At Task 1 start, set `C1_INTEGRATED_OPENCODE` to the root of the clean OpenCode source worktree at commit `014614d35b397775e5d397a490fc72368c894ec2`. Tasks 1–4 modify and commit only this worktree. Task 5 uses the same worktree as the authoritative local Git repository to fetch upstream refs/tags and create detached release worktrees; it verifies its `origin` matches the public repository URL published in `@opencode-ai/plugin` metadata. Create a detached `C1_BASELINE_OPENCODE` at the pinned commit and install its dependencies with `bun install --frozen-lockfile`; it remains unchanged for Task 11 RED. Task 5 evaluates merged/released public artifacts; Task 11 GREEN runs the official minimum-supported OpenCode binary, not the local patched source tree. Never claim production readiness from the C1 patched validation worktree.
 
 ## Task 1 — Public OpenCode C1 Option and Shared Credential Owner
 
@@ -300,13 +300,13 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 **Consumes:** Tasks 1–4 public host capability/tests and merged upstream PR metadata. **Produces:** authoritative merged C1 commit SHA and a semver-sorted `C1_RELEASE_CANDIDATES_FILE`; each row contains `version`, `releaseTag`, `pluginSdkVersion`, `cliPackageVersion`, `releaseURL`, and `releaseCommit`. Task 5 does not choose or write a production minimum and does not edit Project files.
 
 - [ ] **BASELINE EVIDENCE:** On the detached stock OpenCode `1.18.31` worktree, run `if git -C "$C1_BASELINE_OPENCODE" grep -n credentialProvider -- packages/core/src/v1/config/provider.ts; then exit 1; fi`. Expected: no C1 public option in the stock baseline. Record the pinned commit and this negative result as architecture-validation context only; do not label this host production-supported.
-- [ ] **RELEASE VERIFICATION:** Only after OpenCode Tasks 1–4 are merged into the authoritative upstream, run from the OpenCode source root and save the resulting values for Tasks 6 and 11:
+- [ ] **RELEASE VERIFICATION:** Only after OpenCode Tasks 1–4 are merged into the authoritative upstream, use the exported `C1_INTEGRATED_OPENCODE` and `C1_OPENCODE_UPSTREAM_PR_URL` values below; every Git operation names its repository with `git -C`. Save the resulting values for Tasks 6 and 11:
 
   ```sh
   C1_OPEN_CODE_SDK_REPO_URL="$(npm view @opencode-ai/plugin@1.18.31 repository.url)"
   C1_OPEN_CODE_REPO_URL="${C1_OPEN_CODE_SDK_REPO_URL#git+}"
   C1_OPEN_CODE_REPOSITORY="$(node --input-type=module -e 'const url = new URL(process.argv[1]); const [owner, repo] = url.pathname.split("/").filter(Boolean); console.log(`${owner}/${repo.endsWith(".git") ? repo.slice(0, -4) : repo}`)' "$C1_OPEN_CODE_REPO_URL")"
-  C1_SOURCE_REPOSITORY_URL="$(git remote get-url origin)"
+  C1_SOURCE_REPOSITORY_URL="$(git -C "$C1_INTEGRATED_OPENCODE" remote get-url origin)"
   C1_SOURCE_REPOSITORY_URL="${C1_SOURCE_REPOSITORY_URL#git+}"
   C1_SOURCE_REPOSITORY="$(node --input-type=module -e 'const raw = process.argv[1].startsWith("git@github.com:") ? `https://github.com/${process.argv[1].slice("git@github.com:".length)}` : process.argv[1]; const url = new URL(raw); const [owner, repo] = url.pathname.split("/").filter(Boolean); console.log(`${owner}/${repo.endsWith(".git") ? repo.slice(0, -4) : repo}`)' "$C1_SOURCE_REPOSITORY_URL")"
   test "$C1_SOURCE_REPOSITORY" = "$C1_OPEN_CODE_REPOSITORY"
@@ -316,10 +316,10 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   test -n "$C1_PR_MERGED_AT"
   C1_PUBLIC_CORE_COMMIT="$(gh pr view "$C1_OPENCODE_UPSTREAM_PR_URL" --repo "$C1_OPEN_CODE_REPOSITORY" --json mergeCommit --jq .mergeCommit.oid)"
   test -n "$C1_PUBLIC_CORE_COMMIT"
-  git fetch --tags origin
+  git -C "$C1_INTEGRATED_OPENCODE" fetch --tags origin
   C1_DEFAULT_BRANCH="$(gh repo view "$C1_OPEN_CODE_REPOSITORY" --json defaultBranchRef --jq .defaultBranchRef.name)"
-  git fetch origin "$C1_DEFAULT_BRANCH"
-  git -C "$C1_OPENCODE_SOURCE" merge-base --is-ancestor "$C1_PUBLIC_CORE_COMMIT" "origin/$C1_DEFAULT_BRANCH"
+  git -C "$C1_INTEGRATED_OPENCODE" fetch origin "$C1_DEFAULT_BRANCH"
+  git -C "$C1_INTEGRATED_OPENCODE" merge-base --is-ancestor "$C1_PUBLIC_CORE_COMMIT" "origin/$C1_DEFAULT_BRANCH"
   C1_RELEASE_CANDIDATE_PARENT="$(mktemp -d)"
   C1_RELEASE_CANDIDATES_FILE="$C1_RELEASE_CANDIDATE_PARENT/candidates.tsv"
   C1_RELEASE_TAGS_FILE="$C1_RELEASE_CANDIDATE_PARENT/tags.txt"
@@ -327,7 +327,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   C1_RELEASE_SEMVER_PREFIX="$C1_RELEASE_CANDIDATE_PARENT/semver-tool"
   : > "$C1_RELEASE_CANDIDATES_FILE"
   npm install --prefix "$C1_RELEASE_SEMVER_PREFIX" --no-save --ignore-scripts --no-audit --no-fund semver@7.7.1
-  git tag --contains "$C1_PUBLIC_CORE_COMMIT" > "$C1_RELEASE_TAGS_FILE"
+  git -C "$C1_INTEGRATED_OPENCODE" tag --contains "$C1_PUBLIC_CORE_COMMIT" > "$C1_RELEASE_TAGS_FILE"
   NODE_PATH="$C1_RELEASE_SEMVER_PREFIX/node_modules" node -e '
     const { readFileSync, writeFileSync } = require("node:fs");
     const semver = require("semver");
@@ -350,12 +350,12 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
     C1_CLI_PACKAGE_VERSION="$(npm view "opencode-ai@$version" version 2>/dev/null)"
     if [ "$C1_PLUGIN_SDK_VERSION" != "$version" ] || [ "$C1_CLI_PACKAGE_VERSION" != "$version" ]; then continue; fi
     C1_RELEASE_SOURCE="$C1_RELEASE_CANDIDATE_PARENT/opencode-$version"
-    git -C "$C1_OPENCODE_SOURCE" worktree add --detach "$C1_RELEASE_SOURCE" "$tag"
+    git -C "$C1_INTEGRATED_OPENCODE" worktree add --detach "$C1_RELEASE_SOURCE" "$tag"
     if (cd "$C1_RELEASE_SOURCE" && bun install --frozen-lockfile && cd packages/opencode && bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts && bun typecheck); then
       C1_RELEASE_COMMIT="$(git -C "$C1_RELEASE_SOURCE" rev-parse HEAD)"
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$version" "$tag" "$C1_PLUGIN_SDK_VERSION" "$C1_CLI_PACKAGE_VERSION" "$C1_RELEASE_URL" "$C1_RELEASE_COMMIT" >> "$C1_RELEASE_CANDIDATES_FILE"
     fi
-    git -C "$C1_OPENCODE_SOURCE" worktree remove --force "$C1_RELEASE_SOURCE"
+    git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_RELEASE_SOURCE"
   done < "$C1_STABLE_TAGS_FILE"
   test -s "$C1_RELEASE_CANDIDATES_FILE"
   export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_DEFAULT_BRANCH C1_RELEASE_CANDIDATE_PARENT C1_RELEASE_CANDIDATES_FILE
