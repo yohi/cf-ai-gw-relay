@@ -372,7 +372,42 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   Keep this detached worktree, local file URL, and environment values through Task 11 RED. The pre-migration package artifact is local; do not install it by npm registry specifier.
 
 - [ ] **RED:** In the existing `packages/opencode-plugin/test/package-consistency.test.ts`, add `it("uses apps/opencode-plugin as the only package root", ...)` asserting `apps/opencode-plugin/package.json` exists, `packages/opencode-plugin/package.json` does not, and manifest/release config point to the new root. Add `it("candidate host gate admits only Task 5 releases", ...)` to `host-version.test.ts`, reading every version from `C1_RELEASE_CANDIDATES_FILE`; each listed release is accepted and an unlisted release is rejected. Run `npm test -- --run test/package-consistency.test.ts test/host-version.test.ts` from `packages/opencode-plugin`; expected the path check to fail and the old single-version guard to reject candidate releases.
-- [ ] **GREEN:** `git mv packages/opencode-plugin apps/opencode-plugin`; update package scripts/config references and the consistency test. Remove old `engines.opencode` and peer-range claims; do not set a production minimum in this task. Pin `devDependencies["@opencode-ai/plugin"]` to the SDK version in the first Task 5 candidate row for local typecheck/tests. Generate `apps/opencode-plugin/src/c1-release-candidates.ts` from the ordered TSV with `export const C1_RELEASE_CANDIDATE_VERSIONS = [...] as const`; `host-version.ts` accepts only these unpublished candidates during Task 11. The module and candidate guard are temporary development artifacts and are removed/replaced in Task 12. Keep `semver` as the runtime dependency. Update `.gitignore`, release-please paths, workflow working directories/cache path, and Deno fmt/lint exclusions. Run `(cd apps/opencode-plugin && npm ci --ignore-scripts && npm run typecheck && npm test && npm run build)`; expected all pass. Run `test ! -e packages/opencode-plugin`.
+- [ ] **GREEN — synchronize the temporary candidate SDK before install:** Read the first TSV row with `IFS=$'\t' read -r C1_FIRST_CANDIDATE_VERSION C1_FIRST_CANDIDATE_TAG C1_FIRST_CANDIDATE_SDK_VERSION C1_FIRST_CANDIDATE_CLI_VERSION C1_FIRST_CANDIDATE_RELEASE_URL C1_FIRST_CANDIDATE_RELEASE_COMMIT < "$C1_RELEASE_CANDIDATES_FILE"`; run `test "$C1_FIRST_CANDIDATE_SDK_VERSION" = "$C1_FIRST_CANDIDATE_VERSION"` and `test "$C1_FIRST_CANDIDATE_CLI_VERSION" = "$C1_FIRST_CANDIDATE_VERSION"`. After `git mv packages/opencode-plugin apps/opencode-plugin`, set `package.json`'s `devDependencies["@opencode-ai/plugin"]` to that exact SDK value, then regenerate and verify the lock before any `npm ci`:
+
+  ```sh
+  node --input-type=module -e '
+    import { readFileSync, writeFileSync } from "node:fs";
+    const path = "apps/opencode-plugin/package.json";
+    const pkg = JSON.parse(readFileSync(path, "utf8"));
+    pkg.devDependencies["@opencode-ai/plugin"] = process.argv[1];
+    writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+  ' "$C1_FIRST_CANDIDATE_SDK_VERSION"
+  node --input-type=module -e '
+    import { readFileSync, writeFileSync } from "node:fs";
+    const rows = readFileSync(process.argv[1], "utf8").trimEnd().split("\n").map((line) => line.split("\t"));
+    const versions = rows.map(([version, , sdk, cli]) => {
+      if (!/^\d+\.\d+\.\d+$/.test(version) || sdk !== version || cli !== version) process.exit(1);
+      return version;
+    });
+    writeFileSync("apps/opencode-plugin/src/c1-release-candidates.ts", `export const C1_RELEASE_CANDIDATE_VERSIONS = ${JSON.stringify(versions)} as const;\n`);
+  ' "$C1_RELEASE_CANDIDATES_FILE"
+  npm --prefix apps/opencode-plugin install --package-lock-only --ignore-scripts --no-audit --no-fund
+  node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    const pkg = JSON.parse(readFileSync("apps/opencode-plugin/package.json", "utf8"));
+    const lock = JSON.parse(readFileSync("apps/opencode-plugin/package-lock.json", "utf8"));
+    const sdk = process.argv[1];
+    if (pkg.devDependencies["@opencode-ai/plugin"] !== sdk) process.exit(1);
+    if (lock.packages[""].devDependencies["@opencode-ai/plugin"] !== sdk) process.exit(1);
+    if (lock.name !== pkg.name || lock.version !== pkg.version) process.exit(1);
+  ' "$C1_FIRST_CANDIDATE_SDK_VERSION"
+  npm --prefix apps/opencode-plugin ci --ignore-scripts
+  npm --prefix apps/opencode-plugin run typecheck
+  npm --prefix apps/opencode-plugin test
+  npm --prefix apps/opencode-plugin run build
+  ```
+
+  Remove old `engines.opencode` and peer-range claims; do not set a production minimum in this task. `host-version.ts` accepts only the generated unpublished candidates during Task 11. The candidate module and guard are temporary development artifacts and are removed/replaced in Task 12. Keep `semver` as the runtime dependency. Update `.gitignore`, release-please paths, workflow working directories/cache path, and Deno fmt/lint exclusions. Run `test ! -e packages/opencode-plugin`.
 - [ ] **REFACTOR:** Remove stale path aliases and release references; do not maintain a compatibility copy/symlink. Run `rg -n 'packages/opencode-plugin' .github .release-please-config.json .release-please-manifest.json deno.json .gitignore`; expected no active references. Stage only the package move and layout config with `git add -A packages/opencode-plugin apps/opencode-plugin .gitignore deno.json .release-please-config.json .release-please-manifest.json .github/workflows/ci.yml .github/workflows/release.yml` and commit `refactor: relocate OpenCode plugin under apps`.
 
 ## Task 7 — Provider Options, ENV Resolver, and Request-Time Errors
@@ -560,26 +595,109 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
 
 ## Task 12 — Final Minimum Metadata and Host Boundary
 
-**Files:** `apps/opencode-plugin/package.json`, `apps/opencode-plugin/src/host-version.ts`, `apps/opencode-plugin/src/c1-release-candidates.ts` (delete), `apps/opencode-plugin/test/host-version.test.ts`, `README.md`, `README.ja.md`, `docs/configuration.md`, `docs/configuration.ja.md`, `docs/deployment.md`, `docs/operations.md`, and `apps/opencode-plugin/README.md`.
+**Files:** `apps/opencode-plugin/package.json`, `apps/opencode-plugin/package-lock.json`, `apps/opencode-plugin/src/host-version.ts`, `apps/opencode-plugin/src/c1-release-candidates.ts` (delete), `apps/opencode-plugin/test/host-version.test.ts`, `apps/opencode-plugin/test/package-consistency.test.ts`, `README.md`, `README.ja.md`, `docs/configuration.md`, `docs/configuration.ja.md`, `docs/deployment.md`, `docs/operations.md`, and `apps/opencode-plugin/README.md`.
 
-**Consumes:** Task 11's first full-PASS candidate, including its exact CLI version, release tag, matching `@opencode-ai/plugin` SDK version, and retained official binary. **Produces:** final package engine/peer metadata, a semver host guard with a tested lower boundary, removal of candidate-only runtime data, and documentation that names the selected minimum while keeping readiness blocked until Task 13.
+**Consumes:** Task 11's first full-PASS candidate, including `C1_MINIMUM_SUPPORTED_VERSION`, `C1_MINIMUM_RELEASE_TAG`, its exact `C1_PLUGIN_SDK_VERSION`, and retained official binary. **Produces:** those three measured values plus `C1_PREVIOUS_STABLE_VERSION` and `C1_PREVIOUS_STABLE_TAG`; final `engines.opencode` range, SDK peer range, exact SDK devDependency, synchronized package-lock, tested host boundary, removal of candidate-only runtime data, and docs naming the minimum while readiness remains blocked until Task 13.
 
-- [ ] **RED — final range boundary:** In `host-version.test.ts`, add cases that the selected minimum is admitted, the immediately preceding semver version is rejected with the existing fixed unsupported-host error, every later Task 5 release candidate in the tested same-major range is admitted, and a valid same-major version above the highest listed candidate is admitted. Add package-metadata assertions that `engines.opencode` rejects the predecessor and accepts the minimum, and that the OpenCode plugin SDK peer range includes the exact matching Task 11 SDK. Run `(cd apps/opencode-plugin && npm test -- --run test/host-version.test.ts)`; expected the candidate-only guard to fail the above-list version case and final package metadata assertions to fail until finalized.
-- [ ] **GREEN — commit the measured minimum:** Derive all values only from the Task 11 PASS row. Replace candidate-list lookup in `host-version.ts` with the final semver lower-bound guard; set `engines.opencode` to `>=<C1_MINIMUM_SUPPORTED_VERSION>`; set the `@opencode-ai/plugin` peer range to `>=<C1_PLUGIN_SDK_VERSION> <next-major.0.0`, where `next-major` is calculated from that SDK version. Delete `c1-release-candidates.ts`; retain semver validation and a fixed, redacted unsupported-host error. Run the focused host test, full `npm test`, `npm run typecheck`, and `npm run build`; expected PASS.
-- [ ] **Update human guidance from measured values:** Replace “minimum pending” wording in English/Japanese READMEs, configuration/deployment/operations docs, and the package README with the exact selected OpenCode minimum. Keep every production-ready statement blocked pending Task 13 and real Cloudflare acceptance. Add package consistency assertions for exact engine minimum, SDK peer range, and no candidate-list module/reference in runtime source. Run the package consistency and host-version suites plus English/Japanese parity checks; expected PASS.
-- [ ] **REFACTOR and commit:** Remove candidate-only fixtures and stale pending-minimum wording. Commit package/source/tests with `git add apps/opencode-plugin/package.json apps/opencode-plugin/src/host-version.ts apps/opencode-plugin/src/c1-release-candidates.ts apps/opencode-plugin/test/host-version.test.ts && git commit -m "build: set verified OpenCode minimum"`; commit human docs separately using the Task 10 documentation file list and `git commit -m "docs: record verified OpenCode minimum"`.
+- [ ] **Derive the previous official stable release:** Query all GitHub releases for `$C1_OPEN_CODE_REPOSITORY`; exclude draft and prerelease entries, normalize each `tag_name` using `semver.clean`, keep versions strictly less than `C1_MINIMUM_SUPPORTED_VERSION`, sort by semver descending, and select the first row. Use this exact procedure:
+
+  ```sh
+  C1_OFFICIAL_RELEASES_JSON="$(mktemp)"
+  gh api --paginate --slurp "repos/$C1_OPEN_CODE_REPOSITORY/releases?per_page=100" > "$C1_OFFICIAL_RELEASES_JSON"
+  C1_PREVIOUS_STABLE_SELECTION="$(cd apps/opencode-plugin && node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    import semver from "semver";
+    const pages = JSON.parse(readFileSync(process.argv[1], "utf8"));
+    const minimum = process.argv[2];
+    const releases = pages.flat().filter((release) => !release.draft && !release.prerelease)
+      .map((release) => ({ tag: release.tag_name, version: semver.clean(release.tag_name) }))
+      .filter((release) => release.version !== null && semver.lt(release.version, minimum))
+      .sort((left, right) => semver.rcompare(left.version, right.version));
+    if (releases.length > 0) console.log(`${releases[0].version}\t${releases[0].tag}`);
+  ' "$C1_OFFICIAL_RELEASES_JSON" "$C1_MINIMUM_SUPPORTED_VERSION")"
+  if [ -n "$C1_PREVIOUS_STABLE_SELECTION" ]; then
+    IFS=$'\t' read -r C1_PREVIOUS_STABLE_VERSION C1_PREVIOUS_STABLE_TAG <<< "$C1_PREVIOUS_STABLE_SELECTION"
+    C1_PREVIOUS_STABLE_INSTALL_PREFIX="$(mktemp -d)"
+    test "$(npm view "opencode-ai@$C1_PREVIOUS_STABLE_VERSION" version)" = "$C1_PREVIOUS_STABLE_VERSION"
+    npm install --prefix "$C1_PREVIOUS_STABLE_INSTALL_PREFIX" --no-save --no-audit --no-fund "opencode-ai@$C1_PREVIOUS_STABLE_VERSION"
+    C1_PREVIOUS_STABLE_BIN="$C1_PREVIOUS_STABLE_INSTALL_PREFIX/node_modules/.bin/opencode"
+    test "$("$C1_PREVIOUS_STABLE_BIN" --version)" = "$C1_PREVIOUS_STABLE_VERSION"
+  else
+    C1_PREVIOUS_STABLE_VERSION="NONE"
+    C1_PREVIOUS_STABLE_TAG="NONE"
+    C1_PREVIOUS_STABLE_INSTALL_PREFIX=""
+  fi
+  export C1_MINIMUM_SUPPORTED_VERSION C1_MINIMUM_RELEASE_TAG C1_PLUGIN_SDK_VERSION
+  export C1_PREVIOUS_STABLE_VERSION C1_PREVIOUS_STABLE_TAG C1_PREVIOUS_STABLE_INSTALL_PREFIX
+  ```
+
+  `NONE` is the explicit exception when no lower official stable release exists: do not invent or synthesize a version; mark the previous-release rejection check not applicable, while still testing minimum acceptance and the final metadata contract. Otherwise the selected tag/version must come from official GitHub release metadata and the exact `opencode-ai@version` CLI artifact must report that version. If that selected release has no matching published/installable CLI artifact, stop and keep readiness blocked; do not silently choose an older release or synthesize a predecessor.
+
+- [ ] **RED — final host and package boundaries:** In `host-version.test.ts`, assert `C1_MINIMUM_SUPPORTED_VERSION` is accepted, `C1_PREVIOUS_STABLE_VERSION` is rejected with the fixed unsupported-host error (skip only when it is `NONE`), every later Task 5 candidate in the tested same-major final range is accepted, and a valid same-major version above the highest listed candidate is accepted. In `package-consistency.test.ts`, add assertions that package manifest and lock root satisfy the exact SDK/peer/engine equalities below and, when the corresponding `C1_*` values are supplied by the Task 12 test command, each selected value matches them. Run the focused tests with `C1_MINIMUM_SUPPORTED_VERSION`, `C1_PLUGIN_SDK_VERSION`, and `C1_PREVIOUS_STABLE_VERSION` exported; expected the candidate-only guard to fail the above-list version case and package metadata checks to fail before GREEN.
+
+  ```text
+  package.json devDependencies["@opencode-ai/plugin"] == C1_PLUGIN_SDK_VERSION
+  package-lock packages[""].devDependencies["@opencode-ai/plugin"] == C1_PLUGIN_SDK_VERSION
+  package.json engines.opencode == ">=" + C1_MINIMUM_SUPPORTED_VERSION
+  package.json peerDependencies["@opencode-ai/plugin"] == ">=" + C1_PLUGIN_SDK_VERSION + " <" + semver.inc(C1_PLUGIN_SDK_VERSION, "major")
+  package-lock packages[""].peerDependencies["@opencode-ai/plugin"] == package.json peerDependencies["@opencode-ai/plugin"]
+  package-lock packages[""].engines.opencode == package.json engines.opencode
+  ```
+
+- [ ] **GREEN — finalize metadata and lock before install:** Set `package.json.engines.opencode` to `>=C1_MINIMUM_SUPPORTED_VERSION`; set `peerDependencies["@opencode-ai/plugin"]` to `>=C1_PLUGIN_SDK_VERSION <NEXT_MAJOR.0.0` (NEXT_MAJOR is the next major semver boundary of the exact SDK version); set `devDependencies["@opencode-ai/plugin"]` to exactly `C1_PLUGIN_SDK_VERSION`. Regenerate the lock and verify every equality in the assertion block before `npm ci`:
+
+  ```sh
+  node --input-type=module -e '
+    import { readFileSync, writeFileSync } from "node:fs";
+    import semver from "semver";
+    const path = "apps/opencode-plugin/package.json";
+    const pkg = JSON.parse(readFileSync(path, "utf8"));
+    const minimum = process.argv[1];
+    const sdk = process.argv[2];
+    const nextMajor = semver.inc(sdk, "major");
+    if (nextMajor === null) process.exit(1);
+    pkg.engines = { ...pkg.engines, opencode: `>=${minimum}` };
+    pkg.peerDependencies = { ...pkg.peerDependencies, "@opencode-ai/plugin": `>=${sdk} <${nextMajor}` };
+    pkg.devDependencies["@opencode-ai/plugin"] = sdk;
+    writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+  ' "$C1_MINIMUM_SUPPORTED_VERSION" "$C1_PLUGIN_SDK_VERSION"
+  npm --prefix apps/opencode-plugin install --package-lock-only --ignore-scripts --no-audit --no-fund
+  node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    import semver from "semver";
+    const pkg = JSON.parse(readFileSync("apps/opencode-plugin/package.json", "utf8"));
+    const lock = JSON.parse(readFileSync("apps/opencode-plugin/package-lock.json", "utf8"));
+    const root = lock.packages[""];
+    const minimum = process.argv[1];
+    const sdk = process.argv[2];
+    if (pkg.engines.opencode !== `>=${minimum}` || root.engines.opencode !== pkg.engines.opencode) process.exit(1);
+    if (pkg.devDependencies["@opencode-ai/plugin"] !== sdk || root.devDependencies["@opencode-ai/plugin"] !== sdk) process.exit(1);
+    const peer = pkg.peerDependencies["@opencode-ai/plugin"];
+    const expectedPeer = `>=${sdk} <${semver.inc(sdk, "major")}`;
+    if (peer !== expectedPeer || root.peerDependencies["@opencode-ai/plugin"] !== peer || !semver.satisfies(sdk, peer)) process.exit(1);
+  ' "$C1_MINIMUM_SUPPORTED_VERSION" "$C1_PLUGIN_SDK_VERSION"
+  npm --prefix apps/opencode-plugin ci --ignore-scripts
+  C1_MINIMUM_SUPPORTED_VERSION="$C1_MINIMUM_SUPPORTED_VERSION" C1_PLUGIN_SDK_VERSION="$C1_PLUGIN_SDK_VERSION" C1_PREVIOUS_STABLE_VERSION="$C1_PREVIOUS_STABLE_VERSION" npm --prefix apps/opencode-plugin test
+  npm --prefix apps/opencode-plugin run typecheck
+  npm --prefix apps/opencode-plugin run build
+  ```
+
+  Delete `c1-release-candidates.ts`; retain semver validation and the fixed, redacted unsupported-host error. `C1_PLUGIN_SDK_VERSION` is now the exact measured minimum-host SDK for all subsequent checks.
+- [ ] **Update human guidance from measured values:** Replace “minimum pending” wording in English/Japanese READMEs, configuration/deployment/operations docs, and the package README with the exact selected OpenCode minimum. Keep every production-ready statement blocked pending Task 13 and real Cloudflare acceptance. Assert the candidate-list module is absent from runtime source. Run package consistency and host-version suites plus English/Japanese parity checks.
+- [ ] **REFACTOR and commit:** Remove candidate-only fixtures and stale pending-minimum wording. Commit package/source/tests/lock with `git add apps/opencode-plugin/package.json apps/opencode-plugin/package-lock.json apps/opencode-plugin/src/host-version.ts apps/opencode-plugin/src/c1-release-candidates.ts apps/opencode-plugin/test/host-version.test.ts apps/opencode-plugin/test/package-consistency.test.ts && git commit -m "build: set verified OpenCode minimum and SDK"`; commit human docs separately using the Task 10 documentation file list and `git commit -m "docs: record verified OpenCode minimum"`.
 
 ## Task 13 — Final Artifact Runtime Revalidation and Readiness Gate
 
 **Files:** No tracked edits unless acceptance exposes a defect; fix the owning Task 1–12 implementation and rerun its relevant RED/GREEN checks before continuing. Runtime package tarballs, installed copies, CLI prefixes, logs, and XDG config are temporary.
 
-**Consumes:** Task 12 final package and metadata; `C1_MINIMUM_OPEN_CODE_BIN` and `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX` retained from the Task 11 PASS row; local OAuth and protected Cloudflare/relay credentials. **Produces:** final-pair acceptance evidence and the only production-readiness decision in this plan.
+**Consumes:** Task 12 final package and metadata; `C1_MINIMUM_OPEN_CODE_BIN`, `C1_MINIMUM_OPEN_CODE_INSTALL_PREFIX`, `C1_MINIMUM_SUPPORTED_VERSION`, `C1_PLUGIN_SDK_VERSION`, `C1_PREVIOUS_STABLE_VERSION`, `C1_PREVIOUS_STABLE_TAG`, and (when not `NONE`) `C1_PREVIOUS_STABLE_BIN` retained from Tasks 11–12; local OAuth and protected Cloudflare/relay credentials. **Produces:** final-pair acceptance evidence and the only production-readiness decision in this plan.
 
-- [ ] **Build and install the exact local package artifact:** From project root run `npm --prefix apps/opencode-plugin ci --ignore-scripts`, `npm --prefix apps/opencode-plugin run typecheck`, `npm --prefix apps/opencode-plugin test`, and `npm --prefix apps/opencode-plugin run build`. Set `C1_FINAL_PACK_DIR="$(mktemp -d)"` and `C1_FINAL_PLUGIN_PARENT="$(mktemp -d)"`; run `npm --prefix apps/opencode-plugin pack --pack-destination "$C1_FINAL_PACK_DIR"`, then set `C1_PACKAGE_TARBALL="$(node --input-type=module -e 'import { readdirSync } from "node:fs"; const files = readdirSync(process.argv[1]).filter((name) => name.endsWith(".tgz")); if (files.length !== 1) process.exit(1); console.log(`${process.argv[1]}/${files[0]}`)' "$C1_FINAL_PACK_DIR")"`. Install it with `npm install --prefix "$C1_FINAL_PLUGIN_PARENT" --ignore-scripts --legacy-peer-deps "$C1_PACKAGE_TARBALL"`. Set `C1_FINAL_PLUGIN_DIR="$C1_FINAL_PLUGIN_PARENT/node_modules/@yohi/cf-ai-gw-relay"`, derive `C1_FINAL_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_FINAL_PLUGIN_DIR")"`, call `verify_c1_plugin_spec "$C1_FINAL_PLUGIN_DIR" "$C1_FINAL_PLUGIN_SPEC"`, and verify packed files, final `engines.opencode`, and SDK peer range. Never use a registry plugin specifier.
-- [ ] **Re-run final host boundary and executable identity:** Run `host-version.test.ts` and package consistency tests against finalized metadata. Require `"$C1_MINIMUM_OPEN_CODE_BIN" --version` to equal `C1_MINIMUM_SUPPORTED_VERSION`; require Task 12's predecessor-rejection test to pass. Do not resolve OpenCode from PATH.
+- [ ] **Task 13 preflight — exact measured metadata and final install:** Reuse the recorded/exported Task 11–12 values; do not recalculate the minimum, SDK, or previous stable release. Require `C1_MINIMUM_SUPPORTED_VERSION` to equal Task 11's PASS row, `C1_PLUGIN_SDK_VERSION` to equal that row's SDK, `C1_PREVIOUS_STABLE_VERSION`/`C1_PREVIOUS_STABLE_TAG` to equal Task 12's recorded official predecessor (or both `NONE`), and package.json/package-lock root consistency checks from Task 12 to pass. Require manifest and lock `devDependencies["@opencode-ai/plugin"]` to equal `C1_PLUGIN_SDK_VERSION`, `engines.opencode` to equal `>=${C1_MINIMUM_SUPPORTED_VERSION}`, and their SDK peer ranges to match and include `C1_PLUGIN_SDK_VERSION`. Run, in order, `npm --prefix apps/opencode-plugin ci --ignore-scripts`, `npm --prefix apps/opencode-plugin run typecheck`, `C1_MINIMUM_SUPPORTED_VERSION="$C1_MINIMUM_SUPPORTED_VERSION" C1_PLUGIN_SDK_VERSION="$C1_PLUGIN_SDK_VERSION" C1_PREVIOUS_STABLE_VERSION="$C1_PREVIOUS_STABLE_VERSION" npm --prefix apps/opencode-plugin test`, and `npm --prefix apps/opencode-plugin run build`; require PASS before packing.
+- [ ] **Build and install the exact local package artifact:** Set `C1_FINAL_PACK_DIR="$(mktemp -d)"` and `C1_FINAL_PLUGIN_PARENT="$(mktemp -d)"`; run `npm --prefix apps/opencode-plugin pack --pack-destination "$C1_FINAL_PACK_DIR"`, then set `C1_PACKAGE_TARBALL="$(node --input-type=module -e 'import { readdirSync } from "node:fs"; const files = readdirSync(process.argv[1]).filter((name) => name.endsWith(".tgz")); if (files.length !== 1) process.exit(1); console.log(`${process.argv[1]}/${files[0]}`)' "$C1_FINAL_PACK_DIR")"`. Install it with `npm install --prefix "$C1_FINAL_PLUGIN_PARENT" --ignore-scripts --legacy-peer-deps "$C1_PACKAGE_TARBALL"`. Set `C1_FINAL_PLUGIN_DIR="$C1_FINAL_PLUGIN_PARENT/node_modules/@yohi/cf-ai-gw-relay"`, derive `C1_FINAL_PLUGIN_SPEC="$(node --input-type=module -e 'import { pathToFileURL } from "node:url"; console.log(pathToFileURL(process.argv[1]).href)' "$C1_FINAL_PLUGIN_DIR")"`, call `verify_c1_plugin_spec "$C1_FINAL_PLUGIN_DIR" "$C1_FINAL_PLUGIN_SPEC"`, and verify packed files. Never use a registry plugin specifier.
+- [ ] **Re-run final host boundary and executable identity:** Run `host-version.test.ts` and package consistency tests with the exact Task 12 values, including `C1_PREVIOUS_STABLE_VERSION`; do not recompute a predecessor. Require `"$C1_MINIMUM_OPEN_CODE_BIN" --version` to equal `C1_MINIMUM_SUPPORTED_VERSION`. When previous stable is not `NONE`, require `"$C1_PREVIOUS_STABLE_BIN" --version` to equal `C1_PREVIOUS_STABLE_VERSION` and require the same value to be rejected by the finalized host guard with its fixed unsupported-host error. If it is `NONE`, verify the recorded no-prior-release exception and skip only the previous-stable rejection assertion. Do not resolve either executable from PATH.
 - [ ] **Re-run the full Task 11 runtime matrix against the packed plugin:** Replace `C1_INTEGRATED_PLUGIN_SPEC` with `C1_FINAL_PLUGIN_SPEC`; execute scenarios 1–4 from Task 11 on the retained minimum binary, in a fresh isolated XDG config. Require all prior provider identity, OpenAI OAuth ownership, no-extra-billing, Gateway authentication/routing, relay `/v1/responses`, streaming/abort, missing-config, allowlist, ordinary-OpenAI isolation, and no-fallback assertions to pass. Repeat the real Cloudflare manual acceptance for the finalized artifact. Any failure blocks release; do not raise the minimum or weaken C1 invariants to make it pass.
 - [ ] **Final gates and readiness decision:** Run package tests/typecheck/build, repository `deno fmt --check`, `deno lint`, `deno test apps/deno-relay .github/scripts`, packed-artifact import smoke test, and English/Japanese parity and package-path checks. Mark production ready only if every Issue #28 acceptance row passes on the finalized released minimum host and the real Cloudflare manual acceptance succeeds. Otherwise retain `production-ready: blocked` and report the exact failing gate or release dependency.
-- [ ] **Cleanup:** Remove temporary rejected-candidate prefixes, final package install/pack directories, Task 5 candidate file/parent directory, baseline worktrees, minimum CLI install prefix, and isolated XDG config only after evidence is recorded and Task 13 is complete. Never delete the integrated OpenCode/Project worktrees or a published package.
+- [ ] **Cleanup:** Remove temporary rejected-candidate prefixes, final package install/pack directories, Task 5 candidate file/parent directory, baseline worktrees, previous-stable and minimum CLI install prefixes, and isolated XDG config only after evidence is recorded and Task 13 is complete. Never delete the integrated OpenCode/Project worktrees or a published package.
 
 ## Verification Commands
 
