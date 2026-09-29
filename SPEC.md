@@ -29,7 +29,8 @@ metadata, and release entry move to `apps/opencode-plugin`.
 
 ### 1.1 Pre-Issue #28 source snapshot (not the selected design)
 
-The checked-out source still contains this pre-Issue #28 integration snapshot:
+The current repository source still contains this pre-Issue-#28 integration
+snapshot:
 
 ```text
 OpenCode provider: openai
@@ -57,21 +58,22 @@ OpenCode provider identity: cf-ai-gw-relay
   -> https://chatgpt.com/backend-api/codex/responses
 ```
 
-Ordinary `openai/<model>` remains a distinct route. The C1 validation example
-was `cf-ai-gw-relay/openai/gpt-6-sol`, with OpenCode model ID
-`openai/gpt-6-sol` and wire-body model ID `gpt-6-sol`. The selected provider
-identity MUST remain `cf-ai-gw-relay`; `openai` is the effective credential and
-model-semantics owner. OpenCode owns OAuth acquisition, storage, refresh, and
-injection. C1 MUST reuse the user's existing ChatGPT OAuth identity and
-subscription quota; it MUST NOT create a separate OAuth identity or billing
-path. The plugin and relay MUST NOT receive raw OAuth credentials as
-application-visible values.
+Ordinary `openai/<model>` remains a distinct route. The C1 validation model was
+`gpt-6-sol`: its selected model ID was `cf-ai-gw-relay/openai/gpt-6-sol`, its
+OpenCode-visible upstream model ID was `openai/gpt-6-sol`, and its wire model ID
+was `gpt-6-sol`. The selected provider identity MUST remain
+`cf-ai-gw-relay`; `openai` is the effective credential and model-semantics owner.
+OpenCode owns OAuth acquisition, storage, refresh, and injection. C1 MUST reuse
+the user's existing ChatGPT OAuth identity and subscription quota; it MUST NOT
+create a separate OAuth identity or billing path. The plugin and relay MUST NOT
+receive raw OAuth credentials as application-visible values.
 
 This architecture was validated in a disposable patched OpenCode `1.18.31`
 runtime (§9.2). That validation baseline is not the minimum supported production
-version and does not claim that the checked-out source already implements C1.
+version and does not claim that the current repository source already implements
+C1.
 
-### 1.3 Planned generic relay, not implemented
+### 1.3 Planned but not implemented
 
 The generic fixed-provider relay:
 
@@ -88,17 +90,16 @@ The following invariants apply to the project:
 
 - The path MUST fail closed. No project component may intentionally fall back
   directly to ChatGPT when Gateway or relay routing fails.
-- The plugin MUST NOT implement OAuth login, token refresh, or account
-  extraction. It MUST NOT intercept, rewrite, or mutate ordinary `openai/*`
-  requests. It MAY provide models only under its dedicated provider and merge
-  user overrides as specified in §4.1. No component may add retry loops,
-  response caching, quota parsing, or SSE reconstruction.
+- The plugin MUST NOT implement OAuth login, token refresh, account extraction,
+  intercept or mutate ordinary `openai/*` traffic, retry loops, response caching,
+  quota parsing, or SSE reconstruction. It MUST provide its own `cf-ai-gw-relay`
+  provider models and merge user overrides according to §4.4.
 - The relay MUST remain stateless and MUST NOT persist request or response
   payloads.
 - The relay runtime MUST have zero external runtime dependencies.
-- The plugin MUST use OpenCode's public plugin SDK/API and MUST NOT vendor or
-  copy OpenCode plugin framework source. Its runtime dependency set MUST remain
-  limited to what its package metadata declares.
+- The plugin MUST use OpenCode's public plugin SDK/API and MUST NOT vendor or copy
+  OpenCode plugin framework or private source. Runtime dependencies are limited
+  to the final package metadata; release checks MUST verify the dependency set.
 - Gateway credentials and relay credentials MUST remain distinct.
 - Credentials and request payloads MUST NOT be included in configuration error
   messages.
@@ -117,7 +118,7 @@ bundled @ai-sdk/openai: 3.0.88
 ```
 
 This patched source checkout is validation evidence only. It MUST NOT be
-represented as a released production host or minimum supported version.
+represented as a released production host or as the minimum supported version.
 
 ### 3.2 Minimum supported production version
 
@@ -125,143 +126,159 @@ The minimum supported production OpenCode version MUST be the lowest released
 artifact that exposes the public plugin/provider/authentication capabilities
 required for C1 and passes the production-host acceptance gate in §10. No
 production minimum is established by the disposable `1.18.31` spike. The
-implementation plan MUST determine and record the exact released version and
-supported range from authoritative OpenCode release/source evidence; until then,
-production support MUST remain blocked.
+implementation plan MUST determine and record the exact version and supported
+range from authoritative OpenCode release/source evidence; until then, production
+support MUST remain blocked.
 
 The plugin MUST use only published public SDK/API contracts. It MUST NOT import
 OpenCode private runtime modules, read the private auth store, or vendor
-OpenCode implementation code. The host integration MUST block rejected C1
-requests so plugin activation failure cannot permit direct bypass. Protected
-OAuth-free CI MUST NOT claim to prove local OpenCode OAuth reuse.
+OpenCode implementation code. The host integration MUST provide fail-closed
+request blocking for a rejected C1 request; plugin activation failure alone is
+not proof that a request cannot bypass the Gateway.
 
 The release MUST be rejected when its host is below the established minimum or
-does not expose a required public capability. Supported production use remains
-blocked until the production artifact passes the release gate in §10.
+does not expose a required public capability. Protected OAuth-free CI MUST NOT
+claim to prove local OpenCode OAuth reuse.
 
 ## 4. OpenCode Plugin Contract
 
-### 4.1 Dedicated provider and model contract
+### 4.1 Dedicated provider identity and models
 
 The publishable plugin package is `@yohi/cf-ai-gw-relay`; its repository source
-and package root are `apps/opencode-plugin/`. OpenCode configuration MUST
-register the plugin and the dedicated provider identity `cf-ai-gw-relay`. C1
-models use IDs of the form `cf-ai-gw-relay/openai/<model>`; the `openai` segment
-identifies the upstream credential/model-semantics owner.
+and package root are `apps/opencode-plugin/`. The OpenCode configuration MUST
+register the plugin and explicitly define `provider.cf-ai-gw-relay`. The plugin
+MUST expose provider identity `cf-ai-gw-relay` and MUST provide its standard
+OpenAI-upstream models under IDs of the form `openai/<model>`.
+
+The selected model namespace is:
+
+```text
+cf-ai-gw-relay/openai/<model>
+```
 
 The C1 validation example is `cf-ai-gw-relay/openai/gpt-6-sol`, with OpenCode
-owner model ID `openai/gpt-6-sol` and wire-body model ID `gpt-6-sol`. When this
-model exists in the supported OpenAI owner catalog, the plugin's baseline model
-catalog MUST include it. Other upstream providers are unsupported in the
-initial release and MUST fail explicitly. Users MAY add models and partially
-override plugin model defaults, with user-supplied values taking precedence.
+model ID `openai/gpt-6-sol` and wire-body model ID `gpt-6-sol`. The initial
+plugin model catalog MUST include this validated model when it exists in the
+supported OpenAI owner catalog. Other upstreams are unsupported in the initial
+release and MUST fail explicitly. The plugin MUST provide baseline model
+definitions; users MAY add models and override any conflicting plugin-provided
+model field, with user configuration taking precedence over plugin defaults.
 
-The plugin MUST NOT require `provider.openai` configuration. Installing it MUST
-NOT intercept, rewrite, mutate, or add control headers to ordinary `openai/*`
-traffic. The standard and dedicated routes MUST coexist. OpenCode's
-`enabled_providers` setting remains user-owned: the plugin MUST NOT append or
-remove entries or bypass the host filter. If an explicit list excludes
-`cf-ai-gw-relay`, C1 is unavailable and MUST fail closed without fallback.
+The plugin MUST NOT require `provider.openai` to be defined in `opencode.json[c]`.
+Installing the plugin MUST NOT intercept, rewrite, mutate, or add control headers
+to ordinary `openai/*` traffic. Ordinary and dedicated routes MUST coexist.
+`enabled_providers` remains user-owned: the plugin MUST NOT modify an explicit
+allowlist; excluding `cf-ai-gw-relay` makes C1 unavailable, without fallback.
 
 ### 4.2 Credential owner and OAuth
+
+Selected provider identity and credential identity are separate:
 
 ```text
 selected provider identity: cf-ai-gw-relay
 effective credential owner: openai
 ```
 
-The exact C1 provider option is:
+The explicit provider option is:
 
 ```text
 provider.cf-ai-gw-relay.options.credentialProvider = "openai"
 ```
 
-The OpenCode host MUST resolve the effective owner through one shared
-`credentialProviderID(...)` decision across provider/model materialization,
-auth lookup, request preparation, agent generation, Codex hooks, and transport.
-The selected provider identity MUST remain `cf-ai-gw-relay`. Ordinary
-`openai/<model>` resolves to its own credentials and MUST be unaffected.
+The supported host MUST implement one shared credential-owner resolver and
+propagate that decision through auth lookup, OpenAI/Codex request and model
+semantics, agent/model generation, OAuth transport, and target-aware Gateway
+routing. It MUST preserve the selected provider identity. OpenCode exclusively
+owns ChatGPT OAuth acquisition, persistence, refresh, and injection. `openai/*`
+resolves to its own credentials and MUST remain unaffected by C1 delegation.
 
-OpenCode owns ChatGPT OAuth login, persistence, refresh, and injection. C1 MUST
-reuse the user's existing ChatGPT OAuth identity and subscription quota; it
-MUST NOT create a separate identity or billing path. Plugin and relay code MUST
-NOT read the private auth store or inspect, copy, log, or persist raw OAuth
-values. `Authorization` and `ChatGPT-Account-Id` MAY transit Gateway and relay
-only as opaque upstream transport data.
+### 4.3 Configuration contract and precedence
 
-### 4.3 Configuration sources and precedence
+`provider.cf-ai-gw-relay.options` and the corresponding environment variables
+both configure the C1 provider. For each pair, a present environment variable
+has precedence over the provider option. If an environment variable is present
+but empty or invalid, validation MUST fail for that value; it MUST NOT silently
+fall back to the provider option. Provider options are normal user configuration,
+not an OAuth credential store.
 
-`provider.cf-ai-gw-relay.options` and equivalent environment variables both
-configure C1. For each pair ENV takes precedence over the provider option. A
-present but empty/invalid environment value MUST fail; it MUST NOT fall back.
-Provider-option secrets are user configuration, not OAuth state, and MUST NOT
-be committed to Git-managed configuration. This specification defines the
-normative configuration contract; the English/Japanese human-facing guides MUST
-be synchronized with it by the implementation plan.
+This specification defines the normative C1 configuration contract. The
+human-facing English and Japanese configuration guides MUST be synchronized
+with it by the implementation plan; those guides do not override this document.
 
-| Setting | Provider option | Environment variable | Required on C1 use | Validation/precedence | Secret |
+| Setting | Provider option | Environment variable | Required | Precedence and validation | Secret |
 | --- | --- | --- | --- | --- | --- |
-| Cloudflare account ID | `accountId` | `RELAY_CF_ACCOUNT_ID` | Yes | ENV > option; non-empty string | No |
-| AI Gateway ID | `gatewayId` | `RELAY_CF_GATEWAY_ID` | Yes | ENV > option; non-empty string | No |
-| Gateway token | `gatewayToken` | `RELAY_CF_AIG_TOKEN` | Yes | ENV > option; non-empty string; never log | Yes |
-| Relay bearer secret | `relaySecret` | `RELAY_SECRET` | Yes | ENV > option; non-empty string; never log | Yes |
-| Custom Provider slug | `providerSlug` | `RELAY_CF_PROVIDER_SLUG` | No | ENV > option > `relay-chatgpt`; one path component | No |
-| Payload collection | Fixed `false` for C1 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | No | Only `false` accepted on C1 | No |
-| Gateway base origin override | No production option | `RELAY_CF_AIG_BASE_URL` | No | Test-only; requires `RELAY_CF_AIG_TEST_MODE=true` and exact origin `https://gateway.test.invalid` | No |
-| Gateway test mode | No provider option | `RELAY_CF_AIG_TEST_MODE` | No | Test-only; MUST NOT enable production overrides | No |
+| Cloudflare account ID | `accountId` | `RELAY_CF_ACCOUNT_ID` | For a C1 request | ENV > option; non-empty string | No |
+| AI Gateway ID | `gatewayId` | `RELAY_CF_GATEWAY_ID` | For a C1 request | ENV > option; non-empty string | No |
+| Gateway token | `gatewayToken` | `RELAY_CF_AIG_TOKEN` | For a C1 request | ENV > option; non-empty string, never log | Yes |
+| Relay bearer secret | `relaySecret` | `RELAY_SECRET` | For a C1 request | ENV > option; non-empty string, never log | Yes |
+| Custom Provider slug | `providerSlug` | `RELAY_CF_PROVIDER_SLUG` | No | ENV > option > `relay-chatgpt`; validate as one path component | No |
+| Gateway payload collection | fixed `false` for C1 | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | No | C1 accepts only `false`; `true` is rejected | No |
+| Gateway base origin | test-only; not a production option | `RELAY_CF_AIG_BASE_URL` | No | Production origin is `https://gateway.ai.cloudflare.com`; test override requires test mode and exact allowlisted origin | No |
+| Gateway test mode | not a provider option | `RELAY_CF_AIG_TEST_MODE` | No | Test-only; production configuration MUST NOT enable it | No |
 
-The old plugin option names `apiKey` and `relayToken` are not aliases for
-`gatewayToken` and `relaySecret`.
+Legacy plugin option names `apiKey` and `relayToken` are not aliases and MUST
+NOT be used for `gatewayToken` or `relaySecret`. Existing `RELAY_CF_*` variable
+names are preserved. C1 Gateway and relay secrets MUST remain distinct from
+OpenCode OAuth credentials.
+Provider-option secrets MUST NOT be committed to Git-managed configuration;
+environment variables MUST remain available so users can keep secret values out
+of configuration files.
 
-### 4.4 Registration and request-time completeness validation
+### 4.4 Registration and request-time validation
 
-Plugin loading and provider registration MUST succeed if any or all of
-`accountId`, `gatewayId`, `gatewayToken`, and `relaySecret` are missing. The
-public `config` hook MUST register the dedicated provider and baseline model
-catalog without completeness validation. It MUST build the provider entry
-before mutating host configuration, preserve user model settings and
-`enabled_providers`, and MUST NOT depend on a config-hook exception aborting
-OpenCode initialization. OpenCode 1.18.31 logs and ignores external `config`
-hook exceptions.
+Plugin loading and provider registration MUST succeed when any or all of
+`accountId`, `gatewayId`, `gatewayToken`, and `relaySecret` are absent. The
+registration/config hook MUST register the dedicated provider and baseline model
+catalog without requiring complete runtime configuration. It MUST construct
+the provider entry before mutating the host config, MUST preserve user model
+overrides and `enabled_providers`, and MUST NOT rely on a config-hook exception
+to abort OpenCode initialization. OpenCode 1.18.31 logs and ignores external
+plugin `config` hook exceptions; implementation MUST NOT depend on an exception
+preventing ordinary provider use.
 
-Required values MUST be resolved and validated only when a
-`cf-ai-gw-relay/openai/<model>` request is selected, before network dispatch.
-When route fields are missing or invalid at registration, the model may use the
-syntactically valid non-dispatch route
-`https://gateway.ai.cloudflare.com/v1/0/0/custom-relay-chatgpt/v1`; request-time
-validation MUST fail before this route is sent. Ordinary `openai/*` hooks MUST
-return before reading or validating C1 config.
+The implementation MUST resolve and validate all required fields only when a
+`cf-ai-gw-relay/openai/<model>` request is selected, before any network dispatch.
+When route fields are absent or invalid during registration, the provider may use
+the syntactically valid non-dispatch URL
+`https://gateway.ai.cloudflare.com/v1/0/0/custom-relay-chatgpt/v1`; this URL
+MUST never be sent because request-time validation fails first. With complete
+settings, the provider MUST materialize the actual route from §4.5.
+Ordinary `openai/*` requests MUST return without reading C1 runtime state or
+validating C1 settings.
 
-Missing and invalid settings use distinct exact errors:
+Missing and invalid settings use distinct request-time errors. Their exact types
+are `MissingRelayConfigurationError` and `InvalidRelayConfigurationError`.
+They expose only applicable option names in table order and MUST NOT expose
+values. Their messages use these formats:
 
 ```text
-MissingRelayConfigurationError(missingKeys)
-  Missing required cf-ai-gw-relay configuration: <missing keys>
-InvalidRelayConfigurationError(invalidKeys)
-  Invalid cf-ai-gw-relay configuration: <invalid keys>
+Missing required cf-ai-gw-relay configuration: <comma-separated missing keys>
+Invalid cf-ai-gw-relay configuration: <comma-separated invalid keys>
 ```
 
-The key lists MUST use stable order `accountId`, `gatewayId`, `gatewayToken`,
-`relaySecret` and contain names only. Missing OpenCode OAuth uses
-`OpenAIOAuthRequiredError` with a user message that OpenAI/ChatGPT OAuth is
-required and the user must sign in through OpenCode. No provider-not-found,
-generic `UnknownError`, network attempt, silent fallback, or automatic
-`openai/*` fallback is permitted for missing/invalid C1 settings.
+OAuth absence uses the separate host error `OpenAIOAuthRequiredError`; its
+user-facing message MUST state that OpenAI/ChatGPT OAuth is required and direct
+the user to sign in through OpenCode. No Gateway or relay request may occur when
+a configuration or OAuth error is raised; no provider-not-found, generic
+`UnknownError`, silent fallback, or automatic `openai/*` fallback is permitted
+for an otherwise registered C1 provider with incomplete runtime configuration.
 
-### 4.5 Gateway route and control headers
+### 4.5 Gateway route and authentication channels
 
-The suffix-free Gateway model base URL is:
+The plugin MUST materialize the selected model's suffix-free API base URL from
+the resolved `accountId`, `gatewayId`, and provider slug:
 
 ```text
 https://gateway.ai.cloudflare.com/v1/<accountId>/<gatewayId>/custom-<providerSlug>/v1
 ```
 
-Each path component MUST be percent-encoded independently. Stored Custom
-Provider slug: `relay-chatgpt`; Gateway route segment: `custom-relay-chatgpt`.
-Stored Custom Provider base origin is the relay HTTPS origin without a path. The
-AI SDK appends `/responses`, resulting in `POST /v1/responses`.
+Every path component MUST be percent-encoded independently. The stored slug is
+`relay-chatgpt`; `custom-relay-chatgpt` is its Gateway route segment. The
+Cloudflare Custom Provider's stored base URL MUST be the relay HTTPS origin
+without a path. The AI SDK owns the `/responses` suffix, so the effective
+Gateway route MUST end with `/v1/responses` and reach relay `POST /v1/responses`.
 
-For C1, the plugin MUST set:
+For a selected C1 request, the plugin MUST set:
 
 ```text
 cf-aig-authorization: Bearer <gatewayToken>
@@ -272,18 +289,20 @@ cf-aig-skip-cache: true
 cf-aig-max-attempts: 1
 ```
 
-`cf-aig-metadata`, if used, contains only static non-sensitive `source`,
-`auth_type`, and `plugin` fields. The Gateway token terminates at Gateway; the
-relay secret is removed before upstream dispatch. These settings MUST NOT
-replace OpenCode-owned `Authorization` or `ChatGPT-Account-Id`.
+If `cf-aig-metadata` is sent, it MUST contain only static `source`, `auth_type`,
+and `plugin` fields. Gateway authentication MUST NOT replace OpenCode-owned
+`Authorization` or `ChatGPT-Account-Id`. The Gateway token terminates at
+Cloudflare AI Gateway; the relay secret is removed before upstream dispatch.
+OAuth values remain opaque and MUST NOT be read by plugin logic or inspected by
+the relay.
 
-### 4.6 Streaming, abort, and failure behavior
+### 4.6 Streaming, abort, and failures
 
-C1 MUST preserve the existing Codex response stream and abort behavior. Missing
-OAuth, unsupported upstream, missing/invalid C1 configuration, Gateway,
-network, relay, authentication, and upstream failures MUST surface actionable
-errors without secrets. C1 failures MUST fail closed without direct ChatGPT or
-`openai/*` fallback.
+The C1 provider MUST preserve the existing Codex response stream and abort
+behavior. It MUST surface OAuth-missing, unsupported-upstream, invalid/missing
+C1 configuration, Gateway, relay, network, and upstream errors with actionable
+messages that do not contain secret values. Any C1 failure is fail-closed and
+MUST NOT fall back to `openai/*`.
 
 ## 5. Implemented Relay Contract
 
@@ -428,39 +447,61 @@ Non-SSE responses do not have a relay-defined total-duration timeout.
 The current implementation uses fixed values; the timeout environment-variable
 contract in §8 is planned behavior, not implemented behavior.
 
+### 5.8 C1 Error Ownership and Propagation
+
+- OpenCode owns selected provider/model resolution, effective credential-owner
+  resolution, OAuth lookup/refresh/injection, and OpenAI/Codex request semantics.
+- Cloudflare AI Gateway owns Gateway authentication, route selection, and Custom
+  Provider dispatch.
+- The relay owns `POST /v1/responses` validation, relay authentication, request
+  header sanitization, and dispatch to the fixed upstream.
+- The relay MUST return upstream status and sanitized headers without fallback.
+- Missing/invalid C1 options and missing OpenAI OAuth fail before network
+  dispatch. Gateway/relay/upstream failures surface to OpenCode without retry or
+  fallback to ordinary `openai/*`.
+- OpenCode 1.18.31 ignores external config-hook exceptions after logging them;
+  C1 validation occurs at selected-request time and MUST NOT break ordinary
+  providers.
+- User-owned `enabled_providers` filtering is defined in §4.1. Diagnostics MAY
+  identify the failing boundary and safe error category, but MUST NOT log secrets,
+  request bodies, or response bodies.
+
 ## 6. Security and Privacy
 
 - OpenCode core owns ChatGPT OAuth acquisition, storage, refresh, and injection.
   The project plugin and relay MUST NOT implement or store OAuth credentials.
-- The plugin MUST NOT read the private auth store or inspect, copy, log, or
-  persist raw OAuth values. OpenCode-owned `Authorization` and
-  `ChatGPT-Account-Id` values MAY transit Gateway and relay only as opaque
-  upstream transport data; relay code MUST NOT inspect or record them.
+- The plugin MUST NOT read the private OpenCode auth store or inspect, copy,
+  log, or persist raw OAuth values. The OpenCode-owned `Authorization` and
+  `ChatGPT-Account-Id` values MAY transit Gateway and relay as opaque transport
+  data only where required for upstream authentication; relay code MUST NOT
+  inspect or record them.
 - Gateway and relay provider-option secrets are user configuration, not OAuth
-  state, and MUST NOT be persisted in a new credential store.
+  state. They MUST NOT be persisted by a new credential store.
 - The Gateway token MUST terminate at Cloudflare AI Gateway. The relay secret
   MUST be removed before upstream dispatch.
 - No secret value, full auth object, prompt, request body, or response body may
-  appear in errors, logs, metadata, or persistent storage.
-- Plugin metadata MUST remain limited to fixed non-sensitive `source`,
-  `auth_type`, and `plugin` fields defined in §4.5. Agent/session/model/account,
-  credential, prompt, and response data MUST NOT be added.
+  appear in errors, normal/debug logs, metadata, or persistent storage.
+- Plugin metadata MUST remain limited to fixed, non-sensitive `source`,
+  `auth_type`, and `plugin` fields defined in §4.5. Agent, session, model,
+  account, OAuth, Gateway, relay, prompt, and response identifiers/content MUST
+  NOT be added.
 - Gateway, relay, DNS, connection, timeout, authentication, and upstream
-  failures MUST surface without direct fallback.
+  failures MUST surface to the user; they MUST NOT trigger direct fallback.
 
 ## 7. Non-goals
 
 The Issue #28 initial release does not provide:
 
 - plugin-owned OAuth login, token refresh, account extraction, or OAuth storage;
+- a separate provider-owned OAuth flow (C2);
 - interception or rewriting of built-in `openai/*` models or traffic;
 - retries, response caching, quota parsing, or SSE reconstruction;
-- arbitrary generic proxying or automatic direct/`openai/*` fallback;
+- arbitrary generic proxying;
+- automatic direct ChatGPT or `openai/*` fallback;
 - Anthropic, Google, or other upstream implementations;
-- PAT, `CODEX_ACCESS_TOKEN`, or a separate OAuth flow;
 - migration of ChatGPT OAuth traffic onto OpenCode's built-in Cloudflare native
   passthrough provider;
-- vendored copies or private imports of OpenCode plugin framework code.
+- vendored copies or private imports of the OpenCode plugin framework.
 
 Tools are included in the initial direct-forwarding scope. Managed residency is
 not supported in the initial scope. Requests containing either
@@ -828,6 +869,63 @@ architecture and security re-approval. OAuth state MUST remain outside CI; this
 condition does not authorize placing it in GitHub Secrets, workflow
 environments, artifacts, caches, logs, or other CI storage.
 
+### 9.2 C1 Architecture Validation
+
+C1 was validated in a disposable patched runtime; this validates architecture,
+not this repository's current source or a production release:
+
+```text
+OpenCode validation baseline: 1.18.31
+commit: 014614d35b397775e5d397a490fc72368c894ec2
+bundled @ai-sdk/openai: 3.0.88
+model: gpt-6-sol
+agent: build
+```
+
+The stock `openai/gpt-6-sol` OAuth baseline passed. The dedicated
+`cf-ai-gw-relay/openai/gpt-6-sol` request first reached Gateway and relay but
+returned HTTP 400 because OpenAI/Codex credential-owner request and model
+semantics were not fully propagated. After the bounded fix—shared owner
+resolution through auth lookup, request preparation, model/profile
+materialization, Codex hooks, agent generation, and target-aware transport—the
+C1 Gateway, relay, upstream, and OpenCode response all returned HTTP 200. The
+Gateway URL remained intact, direct ChatGPT rewriting did not occur, and no raw
+OAuth value was exposed to plugin logic. A subsequent ordinary
+`openai/gpt-6-sol` regression returned HTTP 200 with no C1 delegation marker.
+
+The first failure was classified as `R4 — UPSTREAM_HTTP_400`; its error body
+category was unavailable and no response body was retained. Safe request-shape
+comparison found C1 was missing owner-specific Codex semantics and carried an
+unwanted `max_output_tokens` field. After the bounded fix, the recorded evidence
+was:
+
+```text
+provider identity: cf-ai-gw-relay
+auth lookup key: openai
+auth type: oauth
+OpenAI/Codex request semantics: enabled
+Authorization present: yes (Bearer scheme; value not recorded)
+cf-aig-authorization present: yes (Bearer scheme; value not recorded)
+ChatGPT-Account-Id present: yes (raw value not recorded)
+Gateway URL preserved: yes
+direct chatgpt.com rewrite: no
+Gateway request path: /v1/responses
+relay path: /v1/responses
+upstream: chatgpt.com/backend-api/codex/responses
+Gateway status: 200
+relay/upstream status: 200
+OpenCode usable response: yes
+C1 result: VALIDATED
+```
+
+Gateway logs identified stored Custom Provider slug `relay-chatgpt`, exposed on
+the route as `custom-relay-chatgpt`, with HTTP `200`. The relay forwarded the
+upstream status unchanged. No response body or credential value is part of the
+evidence.
+
+This proves a **BOUNDED CORE CAPABILITY** in a disposable patched host. It does
+not establish a production minimum version or satisfy §10 by itself.
+
 Legacy and future generic acceptance are distinct test concerns. The generic
 contract, once implemented, requires live-path verification through real
 Cloudflare AI Gateway, real Deno Deploy, and the Command Code provider,
@@ -835,55 +933,26 @@ including path mapping, credential separation, Gateway logging, OpenAI/Anthropic
 route compatibility, malformed body handling, size limits, and root-`anyOf`
 behavior.
 
-### 9.2 C1 Disposable Runtime Validation
-
-C1 was validated in a disposable runtime; this evidence does not claim that
-production source or deployment was modified. The validation baseline was:
-
-```text
-OpenCode: 1.18.31
-Commit: 014614d35b397775e5d397a490fc72368c894ec2
-Bundled @ai-sdk/openai: 3.0.88
-Model: gpt-6-sol
-Agent: build
-```
-
-The stock `openai/gpt-6-sol` ChatGPT OAuth baseline passed before the C1
-candidate. The C1 candidate selected
-`cf-ai-gw-relay/openai/gpt-6-sol`, retained provider identity
-`cf-ai-gw-relay`, and delegated effective credential/model semantics to
-`openai`. Its first request reached Gateway and relay but returned HTTP `400`
-because owner-specific Codex request/model semantics were incomplete. The
-bounded correction propagated credential ownership through auth lookup, request
-preparation, model/profile materialization, Codex hooks, agent generation, and
-target-aware transport. The final Gateway, relay, upstream, and OpenCode response
-returned HTTP `200`; the Gateway target was preserved, no direct ChatGPT rewrite
-occurred, and no OAuth value was exposed to plugin logic. The subsequent normal
-`openai/gpt-6-sol` regression returned HTTP `200` with no C1 delegation marker.
-
-This evidence validates a **BOUNDED CORE CAPABILITY** only. It does not establish
-a minimum production version or satisfy the release gate in §10.
-
 ## 10. Release Gate
 
 A supported plugin release requires all of the following:
 
 1. The C1 public provider/authentication integration is available in a released
-   OpenCode artifact; the patched `1.18.31` checkout is not a production host.
-2. The released minimum and compatible range established in §3.2 are recorded in
-   `apps/opencode-plugin/package.json` and covered by host compatibility tests.
-3. A rejected C1 request is blocked and cannot bypass to direct ChatGPT or
-   ordinary `openai/*`.
-4. Relocated package tests, typecheck, build, pack, and release metadata checks
-   pass from `apps/opencode-plugin`.
-5. Every Issue #28 acceptance criterion is traced to a SPEC section, task, and
-   test or runtime/manual acceptance.
+   OpenCode artifact. A private patched checkout is not a supported host.
+2. The released minimum and compatible range established in §3.2 are recorded
+   in `apps/opencode-plugin/package.json` and covered by host compatibility tests.
+3. A rejected C1 request cannot proceed by direct bypass or fallback to
+   `openai/*`.
+4. The relocated package's tests, typecheck, build, pack, and release metadata
+   checks pass from `apps/opencode-plugin`.
+5. Every Issue #28 acceptance criterion has traceable SPEC, task, and
+   test/acceptance coverage.
 6. C1 end-to-end acceptance passes on the released minimum production host,
-   including streaming, abort, failure propagation, OAuth isolation, and ordinary
-   OpenAI regression.
-7. Protected OAuth-free CI passes the behavior it covers and is not represented
-   as proof of local OAuth reuse.
-8. Manual real Gateway/relay acceptance passes without recording secrets or
+   including streaming, abort, failure propagation, OAuth isolation, and the
+   ordinary OpenAI regression.
+7. Protected OAuth-free CI passes for the behavior it covers and is not
+   represented as proof of OAuth reuse.
+8. Manual real Gateway/relay acceptance passes without recording real secrets or
    payloads.
 
 Release history belongs in `apps/opencode-plugin/CHANGELOG.md`, not in this
@@ -909,24 +978,26 @@ and explicitly rejects superseded approaches:
    - Issue #28 requires selected identity `cf-ai-gw-relay` and namespace
      `cf-ai-gw-relay/openai/<model>`. The `openai` path segment identifies the
      credential/model-semantics owner; it does not change provider identity.
-   - The disposable `1.18.31` spike validated a bounded host-core capability;
-     production still requires the equivalent public integration in a released
-     host under §3.2.
+   - A disposable `1.18.31` spike validated a bounded host-core capability. The
+     production release still requires the equivalent public capability in a
+     released host artifact under §3.2.
+   - The `provider=openai` routing workaround is rejected because it collapses
+     the selected dedicated identity into the ordinary OpenAI namespace.
 
 2. **ENV over Provider Options**:
-   - Issue #28 requires both configuration sources with environment precedence;
-     the exact mapping is normative in §4.3.
+   - Issue #28 requires both sources, with environment variables taking
+     precedence. The exact option/environment pairs are normative in §4.3.
 
 3. **Request-Time Completeness Validation**:
-   - Plugin registration succeeds without Gateway/relay settings. Required
-     completeness is validated only when the dedicated provider is selected.
+   - Provider registration MUST succeed without Gateway/relay settings. Required
+     configuration is validated only when the dedicated provider is selected.
 
 4. **Superseded OpenAI Interception**:
-   - The checked-out pre-Issue source routes an `openai` model through
-     `provider.models`; Issue #28 replaces it with a dedicated provider that
-     MUST NOT mutate ordinary `openai/*`.
-   - Global fetch interposers, `installFetchInterposer`, and request rewriters
-     are not part of the final design.
+   - Earlier repository code routed a built-in `openai` model through a
+     `provider.models` hook. Issue #28 replaces it with a dedicated provider;
+     the final plugin MUST NOT mutate ordinary `openai/*`.
+   - The old global fetch interposer, `installFetchInterposer`, and request
+     rewriters are not part of the final design.
 
 5. **OpenCode-Owned OAuth vs. PAT / External Credential Management**:
    - Personal Access Tokens (PAT) and external credential broker architectures
@@ -935,6 +1006,8 @@ and explicitly rejects superseded approaches:
      refresh, and header injection.
    - The plugin and relay treat `Authorization` and `ChatGPT-Account-Id` as
      opaque transport data without inspecting, modifying, or persisting tokens.
+   - A separate provider-owned OAuth flow (C2), PAT, and `CODEX_ACCESS_TOKEN`
+     are not selected.
 
 6. **Managed Residency Scoping**:
    - Managed residency (`x-openai-internal-codex-residency` or
