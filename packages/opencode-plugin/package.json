@@ -1,5 +1,5 @@
 {
-  "name": "@yohi/cloudflare-ai-gateway-chatgpt",
+  "name": "@yohi/cf-ai-gw-relay",
   "version": "0.4.0",
   "description": "Routes ChatGPT Codex traffic through Cloudflare AI Gateway.",
   "license": "MIT",

@@ -1,4 +1,4 @@
-# @yohi/cloudflare-ai-gateway-chatgpt
+# @yohi/cf-ai-gw-relay
 
 OpenCode plugin that uses the built-in `openai` provider and the public
 `provider.models` hook to route ChatGPT Codex requests through Cloudflare AI

@@ -1,5 +1,7 @@
 # Configuration
 
+[日本語](configuration.ja.md)
+
 This document is the complete human-facing configuration reference for
 `cf-ai-gw-relay`. Normative protocol behavior is defined in
 [../SPEC.md](../SPEC.md).
@@ -19,6 +21,51 @@ settings.
 | Gateway payload logging | `RELAY_CF_AIG_COLLECT_LOG_PAYLOAD` | `collectLogPayload` | `true`                              | no                     |
 | Gateway base origin     | `RELAY_CF_AIG_BASE_URL`            | —                   | `https://gateway.ai.cloudflare.com` | no; test-only override |
 | Gateway test mode       | `RELAY_CF_AIG_TEST_MODE`           | —                   | unset                               | no; test-only          |
+
+### Install from GitHub Packages
+
+OpenCode installs npm plugins listed in `opencode.json` or `opencode.jsonc`.
+Configure npm authentication for the `@yohi` scope in the user's npm configuration
+(`~/.npmrc`):
+
+```ini
+@yohi:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
+```
+
+Set `GITHUB_PACKAGES_TOKEN` in the environment used to start OpenCode. It must be
+a GitHub Personal Access Token (classic) with `read:packages` access and access
+to this repository/package. Do not put the token value in `opencode.json[c]`,
+`.npmrc`, or a committed file.
+
+Register the plugin and configure the model it routes in the OpenCode
+configuration:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@yohi/cf-ai-gw-relay@0.4.0"],
+  "model": "openai/gpt-5.6-luna"
+}
+```
+
+The version is an example; use a version published to GitHub Packages. The
+plugin uses OpenCode's built-in `openai` provider and routes the selected
+`openai/gpt-5.6-luna` model to the Gateway. No `provider.openai` model definition
+is needed; the model must be available in the built-in provider catalog. OpenCode
+continues to own ChatGPT OAuth authentication. The plugin also requires its
+runtime settings in the environment of the OpenCode process. For example:
+
+```sh
+export RELAY_CF_ACCOUNT_ID="<cloudflare-account-id>"
+export RELAY_CF_GATEWAY_ID="<gateway-id>"
+export RELAY_CF_AIG_TOKEN="<gateway-token>"
+export RELAY_SECRET="<relay-secret>"
+opencode
+```
+
+See the table above for optional environment variables. Supported production
+use remains gated on the host capabilities described in [../SPEC.md](../SPEC.md).
 
 ### Precedence
 
