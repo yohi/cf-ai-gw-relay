@@ -351,9 +351,18 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
     if [ "$C1_PLUGIN_SDK_VERSION" != "$version" ] || [ "$C1_CLI_PACKAGE_VERSION" != "$version" ]; then continue; fi
     C1_RELEASE_SOURCE="$C1_RELEASE_CANDIDATE_PARENT/opencode-$version"
     git -C "$C1_INTEGRATED_OPENCODE" worktree add --detach "$C1_RELEASE_SOURCE" "$tag"
-    if (cd "$C1_RELEASE_SOURCE" && bun install --frozen-lockfile && cd packages/opencode && bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts && bun typecheck); then
+    if ! (cd "$C1_RELEASE_SOURCE" && bun install --frozen-lockfile); then
+      printf 'INCONCLUSIVE: release candidate dependency installation failed for %s\n' "$version" >&2
+      git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_RELEASE_SOURCE"
+      exit 1
+    fi
+    if (cd "$C1_RELEASE_SOURCE/packages/opencode" && bun test test/provider/provider.test.ts test/session/llm.test.ts test/agent/agent.test.ts test/plugin/codex.test.ts && bun typecheck); then
       C1_RELEASE_COMMIT="$(git -C "$C1_RELEASE_SOURCE" rev-parse HEAD)"
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$version" "$tag" "$C1_PLUGIN_SDK_VERSION" "$C1_CLI_PACKAGE_VERSION" "$C1_RELEASE_URL" "$C1_RELEASE_COMMIT" >> "$C1_RELEASE_CANDIDATES_FILE"
+    else
+      printf 'INCONCLUSIVE: release candidate verification failed without confirmed host incompatibility for %s; stop and investigate\n' "$version" >&2
+      git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_RELEASE_SOURCE"
+      exit 1
     fi
     git -C "$C1_INTEGRATED_OPENCODE" worktree remove --force "$C1_RELEASE_SOURCE"
   done < "$C1_STABLE_TAGS_FILE"
@@ -361,7 +370,7 @@ Its exact user message is `OpenAI/ChatGPT OAuth is required. Sign in through Ope
   export C1_PUBLIC_CORE_COMMIT C1_OPEN_CODE_REPOSITORY C1_DEFAULT_BRANCH C1_RELEASE_CANDIDATE_PARENT C1_RELEASE_CANDIDATES_FILE
   ```
 
-  `C1_OPENCODE_UPSTREAM_PR_URL` identifies the single upstream PR containing Tasks 1–4; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase strategies; verify the merge SHA is an ancestor of the authoritative default branch. Task 5 installs the pinned semver helper only under `C1_RELEASE_CANDIDATE_PARENT`, normalizes tags with `semver.clean`, excludes invalid/prerelease tags, and sorts remaining stable versions by ascending SemVer (tag lexical order breaks ties). For each tag, `gh release view --json url,isDraft,isPrerelease` admits only an existing release with both metadata flags false; matching published SDK/CLI versions and the C1 host test/typecheck suite are then verified on a detached worktree at that exact tag. Only these candidates enter the TSV, which retains version/tag/package/release provenance for Task 11. Task 12 uses the same stable definition: valid stable SemVer plus non-draft, non-prerelease GitHub Release metadata. Candidate discovery is not a minimum-version decision; no `engines.opencode`, peer SDK range, or supported minimum is finalized in this task. Remove each generated candidate source worktree after testing; the temporary semver helper and tag lists are removed with `C1_RELEASE_CANDIDATE_PARENT` after Task 13.
+  `C1_OPENCODE_UPSTREAM_PR_URL` identifies the single upstream PR containing Tasks 1–4; Task 4 records it. `mergeCommit.oid` is authoritative for merge, squash, and rebase strategies; verify the merge SHA is an ancestor of the authoritative default branch. Task 5 installs the pinned semver helper only under `C1_RELEASE_CANDIDATE_PARENT`, normalizes tags with `semver.clean`, excludes invalid/prerelease tags, and sorts remaining stable versions by ascending SemVer (tag lexical order breaks ties). For each tag, `gh release view --json url,isDraft,isPrerelease` admits only an existing release with both metadata flags false; matching published SDK/CLI versions and the C1 host test/typecheck suite are then verified on a detached worktree at that exact tag. A dependency-installation, test, typecheck, or verification-environment failure is `INCONCLUSIVE`: clean up the current source worktree and stop candidate discovery with a nonzero exit. Classify a candidate as `HOST-INCOMPATIBLE` and continue only when validation positively identifies a released-host incompatibility, not merely because a command failed; if the cause is ambiguous or could be a test, project, or environment failure, stop for investigation. Only passing candidates enter the TSV, which retains version/tag/package/release provenance for Task 11. Task 12 uses the same stable definition: valid stable SemVer plus non-draft, non-prerelease GitHub Release metadata. Candidate discovery is not a minimum-version decision; no `engines.opencode`, peer SDK range, or supported minimum is finalized in this task. Remove each generated candidate source worktree after testing; the temporary semver helper and tag lists are removed with `C1_RELEASE_CANDIDATE_PARENT` after Task 13.
 - [ ] **Task boundary:** Task 5 produces only merged-host provenance and the ordered release-candidate file. It MUST NOT edit Project package metadata, `host-version.ts`, tests, README, or production-minimum documentation.
 
 ## Task 6 — Relocate the Publishable Plugin Package
