@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/yohi/cf-ai-gw-relay/compare/v0.4.0...v0.5.0) (2026-09-29)
+
+
+### Features
+
+* GitHub Packages向けOpenCodeプラグイン設定を追加 ([4ffa8d1](https://github.com/yohi/cf-ai-gw-relay/commit/4ffa8d1e885277ef1400360ec0f826b5c5f4459d))
+* GitHub Packages向けplugin設定手順を追加 ([67d193c](https://github.com/yohi/cf-ai-gw-relay/commit/67d193c8a4fae8e3860670a6d0b9d19c3ad25ba6))
+
 ## [0.4.0](https://github.com/yohi/cf-ai-gw-relay/compare/v0.3.1...v0.4.0) (2026-09-25)
 
 
