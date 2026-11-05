@@ -1,0 +1,20 @@
+{
+  "name": "cf-ai-gw-relay-neon-functions-poc",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@neon/config": "latest",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "typescript": "^5.8.0"
+  }
+}
